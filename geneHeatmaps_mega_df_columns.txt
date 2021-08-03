@@ -1,0 +1,22 @@
+Data columns (total 19 columns):
+ #   Column           Non-Null Count  Dtype  
+---  ------           --------------  -----  
+ 0   transcript_id    9455 non-null   object 
+ 1   transcript_hits  9455 non-null   int64  
+ 2   read_len_mean    9455 non-null   float64
+ 3   read_len_std     9455 non-null   float64
+ 4   read_lengths     9455 non-null   object 
+ 5   polya_lengths    9455 non-null   object 
+ 6   polya_mean       9455 non-null   float64
+ 7   polya_stdev      9455 non-null   float64
+ 8   gene_id          9455 non-null   object 
+ 9   genomic_starts   9455 non-null   object 
+ 10  cigars           9455 non-null   object 
+ 11  gene_name        9455 non-null   object 
+ 12  gene_biotype     9455 non-null   object 
+ 13  exon_starts      9455 non-null   object 
+ 14  exon_ends        9455 non-null   object 
+ 15  exon_nums        9455 non-null   object 
+ 16  stop_start       9455 non-null   object 
+ 17  stop_end         9455 non-null   object 
+ 18  strand           9455 non-null   object

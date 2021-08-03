@@ -1,0 +1,11 @@
+# 210528_firstNanoporeRun_settingsFile.txt
+# Marcus Viscardi
+# This was my first attempt at a settings file for running a full python pipeline for nanopore
+
+genomeDir|/data16/marcus/genomes/elegansRelease100
+
+dataDir|/data16/marcus/minknow/data/210525_PolyA_WT_L3/210525_PolyA_WT_L3/20210526_0115_MN36576_FAP47925_42184fdb
+
+threads|30
+
+guppyConfig|rna_r9.4.1_70bps_hac.cfg
