@@ -8,7 +8,7 @@ Marcus Viscardi, 8/3/21
 
 import pandas as pd
 import scipy.stats
-from step0_nanopore_pipeline import finding_newest_matching_file
+from step0_nanopore_pipeline import find_newest_matching_file
 
 import warnings
 from pandas.core.common import SettingWithCopyWarning
@@ -391,15 +391,15 @@ if __name__ == '__main__':
     pathdict = {
         # "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/"
         #          "merge_files/210713_compressedOnGenes_simple.tsv",
-        # "totalRNA": finding_newest_matching_file("/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
-        #                                          "output_dir/merge_files/*_compressedOnGenes_simple.tsv"),
-        "totalRNA2": finding_newest_matching_file("/data16/marcus/working/"
-                                                  "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir/"
-                                                  "merge_files/*_compressedOnGenes_simple.tsv"),
-        # "polyA": finding_newest_matching_file("/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/"
-        #                                       "merge_files/*_compressedOnGenes_simple.tsv"),
-        "polyA2": finding_newest_matching_file("/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
-                                               "output_dir/merge_files/*_compressedOnGenes_simple.tsv")
+        # "totalRNA": find_newest_matching_file("/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
+        #                                       "output_dir/merge_files/*_compressedOnGenes_simple.tsv"),
+        "totalRNA2": find_newest_matching_file("/data16/marcus/working/"
+                                               "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir/"
+                                               "merge_files/*_compressedOnGenes_simple.tsv"),
+        # "polyA": find_newest_matching_file("/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/"
+        #                                    "merge_files/*_compressedOnGenes_simple.tsv"),
+        "polyA2": find_newest_matching_file("/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
+                                            "output_dir/merge_files/*_compressedOnGenes_simple.tsv")
     }
 
     cutoff = 20

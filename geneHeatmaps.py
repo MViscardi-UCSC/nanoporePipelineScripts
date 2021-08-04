@@ -17,7 +17,7 @@ import pandas as pd
 import numpy as np
 from typing import List
 
-from step0_nanopore_pipeline import finding_newest_matching_file, get_dt
+from step0_nanopore_pipeline import find_newest_matching_file, get_dt
 
 pd.set_option("display.max_columns", None)
 
@@ -175,10 +175,10 @@ def get_stop_distances(parquet_path=None, path_to_parsed_gtf=None,
         # TODO: There is currently a major error due to stranded-ness of exons
         #       For (-) strand transcripts, the exons are in reverse order
         #       but correct orientation!:
-        #           {+: {starts:[1, 3, 5], stops:[2, 4, 6]}}
-        #           {-: {starts:[10, 8, 6], stops:[11, 9, 7]}}
+        #           {+: {starts:[ 1, 3, 5], ends:[ 2, 4, 6]}}
+        #           {-: {starts:[10, 8, 6], ends:[11, 9, 7]}}
         #       In order to solve this I should have a check BEFORE EVERYTHING,
-        #           which will assess what direction I should be working through
+        #           which will assess what direction I should be prefix through
         #           exons in (ie. backwards for - strand genes/transcripts)
         # TODO: I have mostly solved the above, but the reads from "-" strand genes
         #       are still running into the issue of having their "starts" treated
@@ -205,8 +205,10 @@ def get_stop_distances(parquet_path=None, path_to_parsed_gtf=None,
 
             if return_exon != 0:  # Unsure why I don't have this up above?
                 read_exons.append(return_exon)
-            else:  # Now this part handles if the read end is outside
-                #        of annotated exons (even if only slightly!!)
+            else:  # Now this part handles if the read end is outside of annotated exons
+                #                                              (even if only slightly!!)
+                #     {+: {starts:[ 1, 3, 5], ends:[ 2, 4, 6]}}
+                #     {-: {starts:[10, 8, 6], ends:[11, 9, 7]}}
                 if strand == "+":
                     start = 0
                     end = -1
@@ -215,20 +217,20 @@ def get_stop_distances(parquet_path=None, path_to_parsed_gtf=None,
                     end = 0
                 else:
                     raise NotImplementedError(f"We need strand information as '+' or '-'!! Not: {strand}")
-                if read_loc <= exon_starts[start]:  # The first item in exon starts is the lowest #
-                    mis_annotated = f"{exon_starts[start] - read_loc}nt to first ({strand} {read_loc})"
+                
+                if read_loc <= exon_starts[start]:  # The first item in exon starts is the lowest for +
+                    #                                  The last item in exon starts is the lowest for -
                     mis_annotated = (exon_nums[start], read_loc, exon_starts[start] - read_loc)
-                elif read_loc >= exon_ends[end]:  # The last item in exon ends is the highest #
-                    mis_annotated = f"{read_loc - exon_ends[end]}nt past last ({strand} {read_loc})"
+                elif read_loc >= exon_ends[end]:  # The last item in exon ends is the highest for +
+                    #                              The first item in exon ends is the highest for -
                     mis_annotated = (exon_nums[end], read_loc, read_loc - exon_ends[end])
                 else:  # These will be intronic reads that don't map to outer edges of gene or exons
+                    
                     # First I can compute the distance to each exon start
                     distances_to_starts = {e: abs(exon_starts[i] - read_loc) for (i, e) in enumerate(exon_nums)}
                     # And return the minimum distance and the hit exon
                     nearest_distance, nearest_exon = min(distances_to_starts), \
                                                      min(distances_to_starts, key=distances_to_starts.get)
-
-                    mis_annotated = f"{nearest_distance}nt to {nearest_exon} ({strand})"
                     mis_annotated = (nearest_exon, read_loc, nearest_distance)
                 read_exons.append(mis_annotated)
         return read_exons
@@ -465,10 +467,10 @@ if __name__ == '__main__':
     path_to_parsed_gtf = "/data16/marcus/scripts/nanoporePipelineScripts/" \
                          "Caenorhabditis_elegans.WBcel235.100.gtf.dataframe_parse.tsv"
     try:
-        found_parquet_path = finding_newest_matching_file(f"{path_to_merge_dir}/*_superMerge.parquet")
+        found_parquet_path = find_newest_matching_file(f"{path_to_merge_dir}/*_superMerge.parquet")
     except ValueError:
         try:
-            path_to_new_merge_tsv = finding_newest_matching_file(f"{path_to_merge_dir}/*_compressedOnTranscripts.tsv")
+            path_to_new_merge_tsv = find_newest_matching_file(f"{path_to_merge_dir}/*_compressedOnTranscripts.tsv")
         except ValueError:
             raise NotImplementedError(f"Run the pipeline with '--stepsToRun L' on library @ {working_dir_name}")
         parquet_path = f"{path_to_merge_dir}/{get_dt(for_output=True)}_superMerge.parquet"

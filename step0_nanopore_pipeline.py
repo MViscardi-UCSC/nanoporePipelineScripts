@@ -60,7 +60,7 @@ def live_cmd_call(command):
         raise CalledProcessError(p.returncode, p.args)
 
 
-def finding_newest_matching_file(path_str):
+def find_newest_matching_file(path_str):
     # A tool that I'll want to use to grab the most recent file
     from glob import glob
     import os
@@ -73,6 +73,12 @@ def finding_newest_matching_file(path_str):
         raise ValueError(f"Failed to find any files matching \"{path_str}\"")
 
 
+def gene_names_to_gene_ids(tsv_path: str = "/home/marcus/PycharmProjects/"
+                                       "PersonalScripts/WBGene_to_geneName.tsv") -> pd.DataFrame:
+    df = pd.read_csv(tsv_path, sep="\t")
+    return df
+
+
 #################################################################################
 # Step0: Parse inputs
 #################################################################################
@@ -81,7 +87,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
     #   to the settings file). Spit out a dictionary of called settings.
     def parseArgs() -> dict:
         parser = ArgumentParser(description="A pipeline to handle the outputs "
-                                                     "of nanopore runs!")
+                                            "of nanopore runs!")
         # Required Arguments:
         parser.add_argument('settings', metavar='settings', type=str,
                             help="A .txt file with inputs all in arg|value format. "
@@ -519,10 +525,11 @@ def flair(outputDir, **other_kwargs):
         print(f"Loaded map file from FLAIR. . .\n")
         return fl_df
 
-    def merge_some_more(flair_df: pd.DataFrame, outputDir, dropGeneWithHitsLessThan: int = None, output_to_file=True) -> pd.DataFrame:
+    def merge_some_more(flair_df: pd.DataFrame, outputDir, dropGeneWithHitsLessThan: int = None,
+                        output_to_file=True) -> pd.DataFrame:
         merge_tsv_path = f"{outputDir}/merge_files/{get_dt(for_output=True)}_mergedOnReads.tsv"
         if not path.exists(merge_tsv_path):
-            older_merge_tsv = finding_newest_matching_file(f"{outputDir}/merge_files/*_mergedOnReads.tsv")
+            older_merge_tsv = find_newest_matching_file(f"{outputDir}/merge_files/*_mergedOnReads.tsv")
             print(f"Could not find file @ {merge_tsv_path}\n"
                   f"Going to use the older file @ {older_merge_tsv}")
             merge_tsv_path = older_merge_tsv
@@ -532,13 +539,14 @@ def flair(outputDir, **other_kwargs):
         super_df = merge_df.merge(flair_df, how="inner", on="read_id")
         super_df.to_csv(f"{outputDir}/merge_files/{get_dt(for_output=True)}_mergedWithTranscripts.tsv",
                         sep="\t", index=False)
-        
+
         super_df["read_length"] = super_df["sequence"].str.len()
         grouped_transcripts = super_df.groupby("transcript_id")
 
         transcript_df = grouped_transcripts["transcript_id"].apply(len).to_frame(name="transcript_hits")
-        
-        transcript_df["read_len_mean"] = grouped_transcripts["read_length"].apply(np.mean).to_frame(name="read_len_mean")
+
+        transcript_df["read_len_mean"] = grouped_transcripts["read_length"].apply(np.mean).to_frame(
+            name="read_len_mean")
         transcript_df["read_len_std"] = grouped_transcripts["read_length"].apply(np.std).to_frame(name="read_len_std")
         transcript_df["read_lengths"] = grouped_transcripts["read_length"].apply(list).to_frame(name="read_lengths")
 
@@ -550,7 +558,7 @@ def flair(outputDir, **other_kwargs):
         transcript_df["gene_ids"] = grouped_transcripts["gene_id"].apply(list).to_frame(name="gene_ids")
         transcript_df["gene_id"] = transcript_df["gene_ids"].apply(lambda x: pd.Series(x).dropna().mode()[0:1])
         transcript_df.drop(["gene_ids"], axis=1, inplace=True)
-        
+
         transcript_df["genomic_starts"] = grouped_transcripts["chr_pos"]. \
             apply(list).to_frame(name="genomic_starts")
         transcript_df["cigars"] = grouped_transcripts["cigar"]. \
@@ -571,7 +579,7 @@ def flair(outputDir, **other_kwargs):
                                     "polya_lengths",
                                     "read_lengths"], axis=1).to_csv(out_f, sep="\t")
         return transcript_df
-    
+
     flair_df = run_and_load_flair(outputDir, **other_kwargs)
     final_df = merge_some_more(flair_df, outputDir,
                                output_to_file=True)
@@ -580,7 +588,7 @@ def flair(outputDir, **other_kwargs):
 def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
     return_value = None
     buildOutputDirs(**args)
-    
+
     steps_dict = {"G": [guppy_basecall_w_gpu, "Guppy Basecalling"],
                   "A": [alternative_genome_filtering, "Filtering Alt. Genomes (not implemented)"],
                   # TODO: Add alternative genome filter mapping function here^^^

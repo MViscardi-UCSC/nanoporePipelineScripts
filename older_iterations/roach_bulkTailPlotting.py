@@ -96,7 +96,7 @@ def plot_all_tails(compressed_on_genes_filepath, max_value=250, window_size=3, s
 
 
 def roach_main():
-    ABS_PATH = f"/data16/marcus/working/210106_nanopolish_wRoachData"
+    ABS_PATH = f"/data16/marcus/prefix/210106_nanopolish_wRoachData"
     OUTDIR1 = f"{ABS_PATH}/output_dir_adultrep1"
     OUTDIR2 = f"{ABS_PATH}/output_dir_adultrep2"
     cutoff_length, rolling_window, subsample = 250, 3, 2000
@@ -124,7 +124,7 @@ def roach_main():
 
 
 if __name__ == '__main__':
-    outputDir = "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir"
+    outputDir = "/data16/marcus/prefix/210528_NanoporeRun_0639_L3s/output_dir"
     compressed_path = f"{outputDir}/merge_files/210601_05:05:54PM_compressedOnGenes.tsv"
     cutoff_length, rolling_window, subsample = 200, 3, 2000
 

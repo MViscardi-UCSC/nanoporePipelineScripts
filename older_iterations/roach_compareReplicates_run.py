@@ -213,17 +213,18 @@ def make_split_violins():
     plt.show()
 
 
-def make_split_violins2():
-    df1, df2 = load_comp_on_genes(f"{OUTDIR1}/210124_compressed_on_genes.tsv"), \
-               load_comp_on_genes("/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/output_dir/merge_files/210709_01:38:18PM_compressedOnGenes.tsv")
-               # load_comp_on_genes(f"{OUTDIR2}/210128_compressed_on_genes.tsv")
+def make_split_violins2(df1, df2, gene_list):
+    # df1, df2 = load_comp_on_genes(f"{OUTDIR1}/210124_compressed_on_genes.tsv"), \
+    #            load_comp_on_genes("/data16/marcus/prefix/210709_NanoporeRun_totalRNA_0639_L3/output_dir/merge_files/210709_01:38:18PM_compressedOnGenes.tsv")
+    #            # load_comp_on_genes(f"{OUTDIR2}/210128_compressed_on_genes.tsv")
     print(">> Dataframes loaded into memory.")
     new_dfs = []
     for i, df in enumerate((df1, df2)):
         i += 1
-        df["hits_rank"] = df['read_hits'].rank(ascending=False)
-        # TODO: drop the below line as it shrinks the dataset a bit to make it easier to manage:
-        df = df[df["hits_rank"] <= 15]
+        # df["hits_rank"] = df['read_hits'].rank(ascending=False)
+        # # TODO: drop the below line as it shrinks the dataset a bit to make it easier to manage:
+        # df = df[df["hits_rank"] <= 15]
+        df = df[df["gene_id"].isin(gene_list)]
         df_tails = df["polya_lengths"].apply(pd.Series).merge(df["gene_id"], right_index=True, left_index=True) \
             .melt(id_vars=["gene_id"], value_name="tail_length").dropna().drop("variable", axis=1)
         print(f">> Dataframe {i}'s tail lengths flattened")
@@ -231,7 +232,7 @@ def make_split_violins2():
             .melt(id_vars=["gene_id"], value_name="read_id").dropna().drop("variable", axis=1)
         print(f">> Dataframe {i}'s read ids flattened")
         df_merge = df_reads.merge(df_tails)
-        df_merge = df_merge.merge(df[["gene_id", "polya_mean", "read_hits", "hits_rank"]])
+        df_merge = df_merge.merge(df[["gene_id", "polya_mean", "read_hits"]])
         new_dfs.append(df_merge)
         print(f">> Dataframe {i} finished")
     df1_long, df2_long = new_dfs
@@ -240,12 +241,15 @@ def make_split_violins2():
     super_df = pd.concat([df1_long, df2_long], ignore_index=True)
     print(super_df.info())
 
-    # PLOT IT:
-    top_2 = super_df[super_df["hits_rank"] <= 2]
+    # # PLOT IT:
+    # top_2 = super_df[super_df["hits_rank"] <= 2]
     sea.set_theme(style="whitegrid")
-    ax = sea.swarmplot(x="tail_length", y="gene_id", hue="replicate",
-                       data=top_2, dodge=True, alpha=.01, zorder=1)
+    # ax = sea.swarmplot(x="tail_length", y="gene_id", hue="replicate",
+    #                    data=super_df, dodge=True, alpha=.01, zorder=1)
+    ax = sea.violinplot(x="gene_id", y="tail_length", hue="replicate",
+                        data=super_df, split=True, bw=0.2, inner="quartiles")
     plt.show()
+    print(" . . . Done!")
 
 
 if __name__ == '__main__':

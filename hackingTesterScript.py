@@ -10,7 +10,7 @@ I'll probably comment stuff out to silence pycharm's duplicate code warning
 """
 
 
-# def finding_newest_matching_file(path_str):
+# def find_newest_matching_file(path_str):
 #     # A tool that I'll want to use to grab the most recent file
 #     from glob import glob
 #     import os
@@ -23,5 +23,5 @@ I'll probably comment stuff out to silence pycharm's duplicate code warning
 
 
 if __name__ == '__main__':
-    # print(finding_newest_matching_file("./*.csv"))
+    # print(find_newest_matching_file("./*.csv"))
     pass
