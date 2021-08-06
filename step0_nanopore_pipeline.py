@@ -3,7 +3,7 @@
 step0_nanopore_pipeline.py
 Marcus Viscardi     May 29, 2021
 
-I have a ~working set of shell scripts that can go from raw ONT fast5 files
+I have a ~prefix set of shell scripts that can go from raw ONT fast5 files
     all the way to called, mapped, & tail-called reads. This system works but
     is lacking in it's ability to handle multiple input formats and ease of
     use (I've had to reverse engineer these scripts every time I used them).
@@ -74,7 +74,7 @@ def find_newest_matching_file(path_str):
 
 
 def gene_names_to_gene_ids(tsv_path: str = "/home/marcus/PycharmProjects/"
-                                       "PersonalScripts/WBGene_to_geneName.tsv") -> pd.DataFrame:
+                           "PersonalScripts/WBGene_to_geneName.tsv") -> pd.DataFrame:
     df = pd.read_csv(tsv_path, sep="\t")
     return df
 
@@ -263,11 +263,11 @@ def guppy_basecall_w_docker(dataDir, outputDir, threads, guppyConfig, regenerate
         callers = 3
         threads_per_caller = int(threads / callers)
         live_cmd_call(rf"""sudo docker run """
-                      rf"""-v {dataDir}:/usr/src/working/data_dir """
-                      rf"""-v {outputDir}:/usr/src/working/output_dir """
+                      rf"""-v {dataDir}:/usr/src/prefix/data_dir """
+                      rf"""-v {outputDir}:/usr/src/prefix/output_dir """
                       rf"""-it nanopore_empty """
                       rf"""guppy_basecaller --num_callers {callers} --cpu_threads_per_caller {threads_per_caller} """
-                      rf"""-c {guppyConfig} -i /usr/src/working/data_dir/fast5 -s /usr/src/working/output_dir/fastqs """
+                      rf"""-c {guppyConfig} -i /usr/src/prefix/data_dir/fast5 -s /usr/src/prefix/output_dir/fastqs """
                       rf"""2>&1 | tee {outputDir}/logs/{get_dt()}_guppy.log""")
         live_cmd_call(rf"cat {outputDir}/fastqs/*.fastq > {outputDir}/cat_files/cat.fastq")
     else:
@@ -372,7 +372,7 @@ def minimap_and_nanopolish(genomeDir, dataDir, outputDir, threads, regenerate, *
 #        we have per gene
 #################################################################################
 def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
-    # feature_counts_file = os.path.exists(f"{outputDir}/featureCounts/")
+    # feature_counts_file = os.tsv_path.exists(f"{outputDir}/featureCounts/")
     if regenerate or not path.exists(f"{outputDir}/featureCounts/cat.sorted.bam.featureCounts"):
         genome_gtf_file = glob(f"{genomeDir}/*.gtf")
         if len(genome_gtf_file) != 1:
@@ -478,18 +478,17 @@ def merge_results(**other_kwargs):
         gene_df["polya_mean"] = grouped_genes["polya_length"].apply(np.mean).to_frame(name="polya_mean")
         gene_df["polya_stdev"] = grouped_genes["polya_length"].apply(np.std).to_frame(name="polya_stdev")
 
+        gene_df["genomic_starts"] = grouped_genes["chr_pos"].apply(list).to_frame(name="genomic_starts")
+        gene_df["cigars"] = grouped_genes["cigar"].apply(list).to_frame(name="cigars")
+
         if dropGeneWithHitsLessThan:
             print(f"Dropping any genes with less than {dropGeneWithHitsLessThan} read hits")
             gene_df = gene_df[gene_df["read_hits"] >= dropGeneWithHitsLessThan]
         gene_df.sort_values("read_hits", ascending=False, inplace=True)
-        # if dip_test:
-        #     print(f"Starting dip test at {dt.now().strftime('%H:%M:%S')}")
-        #     gene_df["dip_test"] = grouped_genes["polya_length"].apply(quick_dip).to_frame(name="dip_test")
-        #     gene_df["modality"] = gene_df["dip_test"].apply(len)
-        #     print(f"Finished dip test at {dt.now().strftime('%H:%M:%S')}")
         print(f"Mean PolyA Length: {gene_df['polya_mean'].mean():.3f}")
         filename = f"{get_dt(for_output=True)}_compressedOnGenes"
         if output_to_file:
+            gene_df.to_parquet(f"{outputDir}/merge_files/{filename}.parquet")
             with open(f"{outputDir}/merge_files/{filename}.tsv", "w") as out_f:
                 gene_df.to_csv(out_f, sep="\t")
             with open(f"{outputDir}/merge_files/{filename}_simple.tsv", "w") as out_f:
@@ -594,7 +593,7 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
                   # TODO: Add alternative genome filter mapping function here^^^
                   "M": [minimap_and_nanopolish, "Minimap2 & Nanopolish"],  # Also N until I split them up!
                   "F": [feature_counts, "FeatureCounts"],
-                  "C": [final_touches, "Concatinate Files"],
+                  "C": [final_touches, "Concatenate Files"],
                   "P": [merge_results, "Merging Results w/ Pandas"],
                   "L": [flair, "Calling Transcripts w/ Flair"]
                   }

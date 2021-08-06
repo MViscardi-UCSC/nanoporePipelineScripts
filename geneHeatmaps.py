@@ -7,11 +7,24 @@ Goal here is to make a CDF for 5'-ends of nanopore reads anchored to the
     gene and make a heatmap of that, allowing the visualization of global
     5'-end trends.
 Still not sure that the polyA site is the best anchoring spot...
+I ended up going with stop codons as the anchoring site (much better
+annotated)
 
 Biggest issue here that wasn't a problem for short riboseq reads is that
     the long reads from nanopore will span introns, meaning I will need to
     make sure I am counting distance in mRNA space (exons) not genomic
     space (exons+introns)!!
+
+August 4, 2021:
+Realized that flair is losing a lot of the reads that I am interested that
+are short and only map to the 3'UTR. This is because, for genes with more
+than 1 isoform, these short reads don't have enough information to identify
+them as one isoform ID or the other, so flair tosses them.
+Because of this issue I am going to try to use CIGAR parsing to "walk" along
+transcript & genomic space to find the distance to the stop codon.
+    CIGAR parsing:
+        Transcript walking -> add up Ms from CIGAR
+        Genomic walking -> add up Ms and Ds/Ns from CIGAR
 """
 import pandas as pd
 import numpy as np
@@ -50,48 +63,82 @@ def gtf_to_df(gtf_path: str) -> pd.DataFrame:
     return gtf_df
 
 
-def parse_parsed_gtf(parsed_gtf_path: str) -> pd.DataFrame:
+def parse_parsed_gtf(parsed_gtf_path: str, for_isoforms=True) -> pd.DataFrame:
+    def drop_dup_stops(stop_starts: List[int], stop_ends: List[int],
+                       ends_not_starts) -> List[int]:
+        stacked = np.c_[stop_starts, stop_ends]
+        u_stacked = np.unique(stacked, axis=0)
+        new_stop_starts = [x[0] for x in u_stacked]
+        new_stop_ends = [x[1] for x in u_stacked]
+        if not ends_not_starts:
+            return new_stop_starts
+        else:
+            return new_stop_ends
     print("Loading parsed gtf. . .")
     df = pd.read_csv(parsed_gtf_path, sep="\t")
-
-    print("Starting to process exon info from gtf. . .")
-    exon_df = df[df["feature"] == "exon"].reset_index(drop=True)[["transcript_id",
-                                                                  "gene_id",
-                                                                  "start", "end",
-                                                                  "exon_number",
-                                                                  "strand",
-                                                                  "gene_biotype",
-                                                                  "gene_name"]]
-    exon_group = exon_df.groupby("transcript_id")
-
-    crush_exon_df = exon_group["start"].apply(list).to_frame(name="exon_starts")
-    crush_exon_df["exon_ends"] = exon_group["end"].apply(list).to_frame(name="exon_ends")
-    crush_exon_df["exon_nums"] = exon_group["exon_number"].apply(list).to_frame(name="exon_nums")
-
-    for single_column in ["gene_id", "gene_biotype", "gene_name", "strand"]:
-        crush_exon_df[f"{single_column}s"] = exon_group[f"{single_column}"].apply(list).to_frame(
-            name=f"{single_column}s")
-        crush_exon_df[f"{single_column}"] = crush_exon_df[f"{single_column}s"].apply(
-            lambda x: pd.Series(x).dropna().mode()[0:1])
-        crush_exon_df.drop([f"{single_column}s"], axis=1, inplace=True)
-    print("Finished parsing exon information. . .")
+    if for_isoforms:
+        print("Starting to process exon info from gtf. . .")
+        exon_df = df[df["feature"] == "exon"].reset_index(drop=True)[["transcript_id",
+                                                                      "gene_id",
+                                                                      "start", "end",
+                                                                      "exon_number",
+                                                                      "strand",
+                                                                      "gene_biotype",
+                                                                      "gene_name"]]
+        exon_group = exon_df.groupby("transcript_id")
+    
+        crush_exon_df = exon_group["start"].apply(list).to_frame(name="exon_starts")
+        crush_exon_df["exon_ends"] = exon_group["end"].apply(list).to_frame(name="exon_ends")
+        crush_exon_df["exon_nums"] = exon_group["exon_number"].apply(list).to_frame(name="exon_nums")
+    
+        for single_column in ["gene_id", "gene_biotype", "gene_name", "strand"]:
+            crush_exon_df[f"{single_column}s"] = exon_group[f"{single_column}"].apply(list).to_frame(
+                name=f"{single_column}s")
+            crush_exon_df[f"{single_column}"] = crush_exon_df[f"{single_column}s"].apply(
+                lambda x: pd.Series(x).dropna().mode()[0:1])
+            crush_exon_df.drop([f"{single_column}s"], axis=1, inplace=True)
+        print("Finished parsing exon information. . .")
+    ###############################################
     print("Starting on stop information. . .")
     stop_df = df[df["feature"] == "stop_codon"].reset_index(drop=True)[["transcript_id",
                                                                         "gene_id",
+                                                                        "gene_name",
                                                                         "start", "end",
                                                                         "exon_number",
                                                                         "strand"]]
-    stop_group = stop_df.groupby("transcript_id")
-    crush_stop_df = stop_group["start"].apply(list).to_frame(name="stop_start")
-    crush_stop_df["stop_end"] = stop_group["end"].apply(list).to_frame(name="stop_end")
+    stop_group = stop_df.groupby(["gene_id", "gene_name", "strand"])
+    crush_stop_df = stop_group["start"].apply(list).to_frame(name="stop_starts")
+    crush_stop_df["stop_ends"] = stop_group["end"].apply(list).to_frame(name="stop_ends")
     print("Finished with stop information. . .")
-    print("Merging start info and exon info. . .")
-    large_df = crush_exon_df.merge(crush_stop_df, on="transcript_id", how="inner")
-    large_df = large_df.reset_index()[["transcript_id",
-                                       "gene_id", "gene_name", "gene_biotype",
-                                       "exon_starts", "exon_ends", "exon_nums",
-                                       "stop_start", "stop_end",
-                                       "strand"]]
+    if for_isoforms:
+        print("Merging stop info and exon info. . .")
+        large_df = crush_exon_df.merge(crush_stop_df, on="transcript_id", how="inner")
+        large_df = large_df.reset_index()[["transcript_id",
+                                           "gene_id", "gene_name", "gene_biotype",
+                                           "exon_starts", "exon_ends", "exon_nums",
+                                           "stop_start", "stop_end",
+                                           "strand"]]
+    else:
+        large_df = crush_stop_df.reset_index()
+        # TODO: Drop duplicate stop locations!!!
+        print("Dropping duplicate stop locations. . . ")
+        large_df["new_stop_starts"] = pd.DataFrame(large_df.apply(lambda x: drop_dup_stops(x["stop_starts"],
+                                                                                           x["stop_ends"],
+                                                                                           ends_not_starts=False),
+                                                                  axis=1),
+                                                   index=large_df.index)
+        large_df["new_stop_ends"] = pd.DataFrame(large_df.apply(lambda x: drop_dup_stops(x["stop_starts"],
+                                                                                           x["stop_ends"],
+                                                                                           ends_not_starts=True),
+                                                                  axis=1),
+                                                 index=large_df.index)
+        large_df.drop(["stop_starts", "stop_ends"], axis=1, inplace=True)
+        large_df.rename(columns={"new_stop_ends": "stop_ends",
+                                 "new_stop_starts": "stop_starts"},
+                        inplace=True)
+        large_df["stop_count"] = large_df["stop_ends"].apply(len)
+        print("Finished with duplicate stop locations. . . ")
+        # print(large_df.head())
     # print(large_df.info())
     return large_df
 
@@ -131,10 +178,10 @@ def merge_gtf_and_transcripts_plus(path_to_parsed_gtf, path_to_compressedOnTrans
     return mega_df
 
 
-def get_stop_distances(parquet_path=None, path_to_parsed_gtf=None,
-                       path_to_compressedOnTranscripts=None,
-                       minify=False, dropSubHits=None,
-                       stranded=None) -> [pd.DataFrame, pd.DataFrame]:
+def get_stop_distances_transcripts(parquet_path=None, path_to_parsed_gtf=None,
+                                   path_to_compressedOnTranscripts=None,
+                                   minify=False, dropSubHits=None,
+                                   stranded=None) -> [pd.DataFrame, pd.DataFrame]:
     def cigar_parse_to_genomic_dist(cigar) -> int:
         from regex import findall
         # TODO: Add something to remove soft clipped reads from length!!
@@ -217,7 +264,7 @@ def get_stop_distances(parquet_path=None, path_to_parsed_gtf=None,
                     end = 0
                 else:
                     raise NotImplementedError(f"We need strand information as '+' or '-'!! Not: {strand}")
-                
+
                 if read_loc <= exon_starts[start]:  # The first item in exon starts is the lowest for +
                     #                                  The last item in exon starts is the lowest for -
                     mis_annotated = (exon_nums[start], read_loc, exon_starts[start] - read_loc)
@@ -225,7 +272,7 @@ def get_stop_distances(parquet_path=None, path_to_parsed_gtf=None,
                     #                              The first item in exon ends is the highest for -
                     mis_annotated = (exon_nums[end], read_loc, read_loc - exon_ends[end])
                 else:  # These will be intronic reads that don't map to outer edges of gene or exons
-                    
+
                     # First I can compute the distance to each exon start
                     distances_to_starts = {e: abs(exon_starts[i] - read_loc) for (i, e) in enumerate(exon_nums)}
                     # And return the minimum distance and the hit exon
@@ -341,16 +388,68 @@ def get_stop_distances(parquet_path=None, path_to_parsed_gtf=None,
                                                                                         x["strand"]),
                                                            axis=1),
                                              index=mega_df.index)
-    mega_df[["cdf_x", "stop_cdf"]] = pd.DataFrame(
-        mega_df.apply(lambda x: calc_cdf_per_row(x['stop_distances']),
-                      axis=1).to_list(),
-        index=mega_df.index)
+    # mega_df[["cdf_x", "stop_cdf"]] = pd.DataFrame(
+    #     mega_df.apply(lambda x: calc_cdf_per_row(x['stop_distances']),
+    #                   axis=1).to_list(),
+    #     index=mega_df.index)
     return mega_df, mega_df[["transcript_id",
                              "gene_id",
                              "gene_name",
                              "transcript_hits",
                              "stop_distances",
+                             "strand",
                              # "stop_cdf", "cdf_x",
+                             ]]
+
+
+def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
+                             path_to_compressedOnGenes=None,
+                             minify=False, dropSubHits=None,
+                             stranded=None, save_parquet_path=None) -> [pd.DataFrame, pd.DataFrame]:
+    def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends):
+        # TODO!!!: This
+        #       Focus on taking the negative or positive strand genes into account
+        #       Also try to figure out if you need to drop softclips or ignore them!
+        pass
+    if parquet_path:
+        print(f"Loading parquet from: {parquet_path}")
+        mega_df = pd.read_parquet(parquet_path)
+    elif path_to_compressedOnGenes and path_to_parsed_gtf:
+        from ast import literal_eval
+        gene_df = pd.read_parquet(path_to_compressedOnGenes)
+        gtf_df = parse_parsed_gtf(path_to_parsed_gtf, for_isoforms=False)
+        mega_df = gene_df.merge(gtf_df, on=["gene_id"])
+        if isinstance(save_parquet_path, str):
+            mega_df.to_parquet(save_parquet_path)
+    else:
+        raise ImportError(f"Please provide either a parquet path or the path to GTF and compressedOnTranscripts")
+
+    if minify:
+        if isinstance(minify, int):
+            mega_df = mega_df.sample(minify, axis=0)
+        else:
+            mega_df = mega_df.head()
+    if dropSubHits and isinstance(dropSubHits, int):
+        mega_df = mega_df[mega_df["gene_hits"] >= dropSubHits]
+    if stranded and isinstance(stranded, str):
+        mega_df = mega_df[mega_df["strand"] == stranded]
+    mega_df.sort_values(by="stop_count", ascending=False, inplace=True)
+    # print(mega_df[["gene_id", "stop_len_max"]])
+    # print(mega_df.head())
+    
+    # TODO: Below call:
+    # mega_df["stop_distances"] = pd.DataFrame(mega_df.apply(lambda row: calc_stop_dist_cigar(row["genomic_starts"],
+    #                                                                                         row["cigars"],
+    #                                                                                         row["strand"],
+    #                                                                                         row["stop_starts"],
+    #                                                                                         row["stop_ends"]), axis=1),
+    #                                          index=mega_df.index)
+    
+    return mega_df, mega_df[["gene_id",
+                             "gene_name",
+                             "read_hits",
+                             # "stop_distances",  # TODO: This is the big thing to implement!!
+                             "strand",
                              ]]
 
 
@@ -453,39 +552,26 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-100, 500),
     fig.show()
 
 
-if __name__ == '__main__':
-    working_dir_dict = {"polyA": "210528_NanoporeRun_0639_L3s",  # Best (overkill) depth
-                        "riboD": "210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3",  # Gross
-                        "totalRNA": "210709_NanoporeRun_totalRNA_0639_L3",  # Low depth
-                        "polyA2": "210719_nanoporeRun_polyA_0639_L3_replicate",  # Good depth
-                        "totalRNA2": "210720_nanoporeRun_totalRNA_0639_L3_replicate",  # Good depth
-                        }
-
-    working_dir_name = working_dir_dict["polyA2"]
-
-    path_to_merge_dir = f"/data16/marcus/working/{working_dir_name}/output_dir/merge_files"
-    path_to_parsed_gtf = "/data16/marcus/scripts/nanoporePipelineScripts/" \
-                         "Caenorhabditis_elegans.WBcel235.100.gtf.dataframe_parse.tsv"
+def flair_main(working_dir, path_to_merge, parsed_gtf):
     try:
-        found_parquet_path = find_newest_matching_file(f"{path_to_merge_dir}/*_superMerge.parquet")
+        found_parquet_path = find_newest_matching_file(f"{path_to_merge}/*_superMerge.parquet")
     except ValueError:
         try:
-            path_to_new_merge_tsv = find_newest_matching_file(f"{path_to_merge_dir}/*_compressedOnTranscripts.tsv")
+            path_to_new_merge_tsv = find_newest_matching_file(f"{path_to_merge}/*_compressedOnTranscripts.tsv")
         except ValueError:
-            raise NotImplementedError(f"Run the pipeline with '--stepsToRun L' on library @ {working_dir_name}")
-        parquet_path = f"{path_to_merge_dir}/{get_dt(for_output=True)}_superMerge.parquet"
-        final_df = merge_gtf_and_transcripts_plus(path_to_parsed_gtf, path_to_new_merge_tsv,
-                                                  output_path=parquet_path)
+            raise NotImplementedError(f"Run the pipeline with '--stepsToRun L' on library @ {working_dir}")
+        parquet_path = f"{path_to_merge}/{get_dt(for_output=True)}_superMerge.parquet"
+        merge_gtf_and_transcripts_plus(parsed_gtf, path_to_new_merge_tsv,
+                                       output_path=parquet_path)
         found_parquet_path = parquet_path
-
-    minNumHits = 50  # or None
-    strand_to_plot = None  # or "-" or None
-    df, smaller_df = get_stop_distances(parquet_path=found_parquet_path,
-                                        # minify=500,
-                                        dropSubHits=minNumHits,
-                                        stranded=strand_to_plot,
-                                        )
-
+    minNumHits = 5  # or None
+    strand_to_plot = None
+    # or "-" or None
+    df, smaller_df = get_stop_distances_transcripts(parquet_path=found_parquet_path,
+                                                    # minify=500,
+                                                    dropSubHits=minNumHits,
+                                                    stranded=strand_to_plot,
+                                                    )
     print("Total number of reads that passed all cutoffs:",
           smaller_df.transcript_hits.sum(),
           "\nMapping to a total number of", smaller_df.shape[0], "transcripts")
@@ -498,6 +584,46 @@ if __name__ == '__main__':
         plot_title = f"5' End CDF Heatmap Relative to Stop Codon, transcripts on \"{strand_to_plot}\" strand"
     else:
         plot_title = None
+    # Add step to filter out an only show ski/pelo targets: 
+    skipelo_path = "/data16/marcus/working/210119_SkiPeloTargets_fromStarDust/" \
+                   "170723_MSandM.wtAndSkiPelo_Bounds_-12_-14_S." \
+                   "DESeqgeneCts_diffExpression_2.7319418642771283e-06Down.txt"
+    skipelo_df = pd.read_csv(skipelo_path, names=["gene_id"])
+    smaller_df = smaller_df.merge(skipelo_df, on="gene_id", how="inner")
     plot_heatmap(smaller_df.loc[:], bounds=[-750, 2000],
-                 title=plot_title, extra_annotation=working_dir_name)
-    print(df[["gene_name", "strand"]])
+                 title=plot_title, extra_annotation=working_dir)
+    print(smaller_df[["gene_name", "strand", "transcript_id"]])
+
+
+def cigar_main(working_dir, path_to_merge, parsed_gtf):
+    try:
+        found_parquet_path = find_newest_matching_file(f"{path_to_merge}/*_superMerge-genes.parquet")
+        df, smaller_df = get_stop_distances_genes(parquet_path=found_parquet_path)
+    except ValueError:
+        try:
+            path_to_new_merge_tsv = find_newest_matching_file(f"{path_to_merge}/*_compressedOnGenes.parquet")
+        except ValueError:
+            raise NotImplementedError(f"Rerun the pipeline with '--stepsToRun P' on library @ {working_dir}")
+        parquet_path = f"{path_to_merge}/{get_dt(for_output=True)}_superMerge-genes.parquet"
+        print(f"Saving new 'supermerge-genes.parquet' to: {parquet_path}")
+        df, smaller_df = get_stop_distances_genes(path_to_parsed_gtf=parsed_gtf,
+                                                  path_to_compressedOnGenes=path_to_new_merge_tsv,
+                                                  save_parquet_path=parquet_path)
+    print(smaller_df)
+
+
+if __name__ == '__main__':
+    working_dir_dict = {"polyA": "210528_NanoporeRun_0639_L3s",  # Best (overkill) depth
+                        "riboD": "210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3",  # Gross
+                        "totalRNA": "210709_NanoporeRun_totalRNA_0639_L3",  # Low depth
+                        "polyA2": "210719_nanoporeRun_polyA_0639_L3_replicate",  # Good depth
+                        "totalRNA2": "210720_nanoporeRun_totalRNA_0639_L3_replicate",  # Good depth
+                        }
+
+    working_dir_name = working_dir_dict["totalRNA2"]
+
+    path_to_merge_dir = f"/data16/marcus/working/{working_dir_name}/output_dir/merge_files"
+    path_to_parsed_gtf = "/data16/marcus/scripts/nanoporePipelineScripts/" \
+                         "Caenorhabditis_elegans.WBcel235.100.gtf.dataframe_parse.tsv"
+    # flair_main(working_dir_name, path_to_merge_dir, path_to_parsed_gtf)
+    cigar_main(working_dir_name, path_to_merge_dir, path_to_parsed_gtf)

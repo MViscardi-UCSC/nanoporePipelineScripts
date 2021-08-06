@@ -52,8 +52,8 @@ def count_nts_mapped(df_from_sam: pd.DataFrame):
 
 
 if __name__ == '__main__':
-    path_to_roach = "/data16/marcus/working/210106_nanopolish_wRoachData/output_dir_youngadultrep1tech1/cat_allReads.sam"
-    path_to_my = "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/cat_files/cat.sorted.sam"
+    path_to_roach = "/data16/marcus/prefix/210106_nanopolish_wRoachData/output_dir_youngadultrep1tech1/cat_allReads.sam"
+    path_to_my = "/data16/marcus/prefix/210528_NanoporeRun_0639_L3s/output_dir/cat_files/cat.sorted.sam"
     dictionary = {"Roach data (young adult worms - replicate 1)": path_to_roach,
                   "My data (L3 worms)": path_to_my}
     results = []
