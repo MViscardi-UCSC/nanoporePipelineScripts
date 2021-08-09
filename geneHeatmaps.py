@@ -29,6 +29,7 @@ transcript & genomic space to find the distance to the stop codon.
 import pandas as pd
 import numpy as np
 from typing import List
+import regex as re
 
 from step0_nanopore_pipeline import find_newest_matching_file, get_dt
 
@@ -406,11 +407,56 @@ def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
                              path_to_compressedOnGenes=None,
                              minify=False, dropSubHits=None,
                              stranded=None, save_parquet_path=None) -> [pd.DataFrame, pd.DataFrame]:
-    def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends):
+    def find_dist(gen_start, cigar, stops) -> List[int]:
+        distance_list = []
+        numbers = list(map(int, re.findall(rf'(\d+)[MDNSI]', cigar)))
+        cigar_chars = re.findall(rf'\d+([MDNSI])', cigar)
+        MND_nums, MND_chars = [], []
+        for i, cigar_char in enumerate(cigar_chars):
+            if cigar_char in "MND":
+                MND_chars.append(cigar_char)
+                MND_nums.append(numbers[i])
+                assert len(MND_chars) == len(MND_nums)
+
+        # Account for softclips pushing the left edge of reads:
+        if cigar_chars[0] == "S":
+            # So this will add the softclipped nucleotides, moving the read
+            # "start" to the right in chromosome space.
+            gen_start += numbers[0]
+        # Start handling negitive strand genes
+        if strand == "-":
+            # First change our start position to the other end of the read
+            # by "walking" along MNS
+            gen_start += sum(MND_chars)
+        return distance_list
+    
+    def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends) -> List[int]:
+        """
+        Pseudocode:
+            If +: find distance from genomic_start to stop codon by parsing out lengths of Ms & Ds/Ns
+            (later on I should probably prefer just Ns as to avoid inaccuracy of nanopore). I'll be
+            ignoring Is from the CIGAR for now (always?)
+        
+        :param genomic_starts: list of interagers that are the genomic position of the left of the read
+        :param cigars: list of strings that are the CIGARs
+        :param strand: (hopefully) as + or a -
+        :param stop_starts: locations of the stop codons
+        :param stop_ends: 
+        :return: 
+        """
         # TODO!!!: This
         #       Focus on taking the negative or positive strand genes into account
         #       Also try to figure out if you need to drop softclips or ignore them!
-        pass
+        dist_list = []
+        if strand == "+":
+            stops = stop_starts
+        elif strand == "-":
+            stops = stop_ends
+        else:
+            raise NotImplementedError(f"Please provide strand information as \"+\" or \"-\", not: \"{strand}\"")
+        for i, gen_start in enumerate(genomic_starts):
+            dist_list.append(find_dist(gen_start, cigars[i], stops))
+        return dist_list
     if parquet_path:
         print(f"Loading parquet from: {parquet_path}")
         mega_df = pd.read_parquet(parquet_path)
@@ -434,7 +480,7 @@ def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
     if stranded and isinstance(stranded, str):
         mega_df = mega_df[mega_df["strand"] == stranded]
     mega_df.sort_values(by="stop_count", ascending=False, inplace=True)
-    # print(mega_df[["gene_id", "stop_len_max"]])
+    # print(mega_df[["gene_id", "stop_count", "stop_starts"]])
     # print(mega_df.head())
     
     # TODO: Below call:
