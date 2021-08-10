@@ -403,7 +403,7 @@ def get_stop_distances_transcripts(parquet_path=None, path_to_parsed_gtf=None,
                              ]]
 
 
-def find_dist(gen_start, cigar, stops, strand, read_id) -> List[int]:
+def find_dist(gen_start, cigar, stops, strand, read_id, gene_id) -> np.ndarray:
     numbers = list(map(int, re.findall(rf'(\d+)[MDNSI]', cigar)))
     cigar_chars = re.findall(rf'\d+([MDNSI])', cigar)
     MND_nums, MND_chars = [], []
@@ -425,7 +425,7 @@ def find_dist(gen_start, cigar, stops, strand, read_id) -> List[int]:
         MND_nums.reverse()
         MND_chars.reverse()
         # Add a stop list 
-        distance_list = [0] * len(stops)
+        distance_list = [None] * len(stops)
         counter = 0
         counter_finished_at = len(stops)
         
@@ -434,7 +434,7 @@ def find_dist(gen_start, cigar, stops, strand, read_id) -> List[int]:
                 break
             pos -= num
             for stop_i, stop in enumerate(stops):
-                if pos <= stop and distance_list[stop_i] == 0:
+                if pos <= stop and distance_list[stop_i] == None:
                     distance = sum([MND_nums[index] for index, char in enumerate(MND_chars[:i]) if char == "M"])
                     # The above step suffers from missing out on Ds from CIGAR that were not introns, meaning
                     # that the estimation of transcript distance is always going to be a bit off. . . Unless
@@ -445,13 +445,11 @@ def find_dist(gen_start, cigar, stops, strand, read_id) -> List[int]:
                     distance += abs(pos - stop)
                     distance_list[stop_i] = distance
                     counter +=1
-                    # continue
                 if counter == counter_finished_at:
                     break
-        return distance_list
     elif strand == "+":
         pos = gen_start
-        distance_list = [0] * len(stops)
+        distance_list = [None] * len(stops)
         counter = 0
         counter_finished_at = len(stops)
 
@@ -460,18 +458,21 @@ def find_dist(gen_start, cigar, stops, strand, read_id) -> List[int]:
                 break
             pos += num
             for stop_i, stop in enumerate(stops):
-                if pos >= stop and distance_list[stop_i] == 0:
+                if pos >= stop and distance_list[stop_i] == None:
                     distance = sum([MND_nums[index] for index, char in enumerate(MND_chars[:i]) if char == "M"])
                     distance += abs(pos - stop) # I am a little worried about this step?
                     distance_list[stop_i] = distance
+                    if distance < 5:
+                        print(f"Woah, near hit for {read_id} on {gene_id}")
                     counter +=1
-                    # continue
                 if counter == counter_finished_at:
                     break
-        return distance_list
+    # TODO: This has the large issue of missing out on reads that don't span the STOP codon!
+    #       In order to fix this I will need to 
+    return distance_list
 
 
-def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends, read_ids) -> List[int]:
+def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends, read_ids, gene_id) -> List[int]:
     # TODO!!!: This
     #       Focus on taking the negative or positive strand genes into account
     #       Also try to figure out if you need to drop softclips or ignore them!
@@ -483,8 +484,19 @@ def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends,
     else:
         raise NotImplementedError(f"Please provide strand information as \"+\" or \"-\", not: \"{strand}\"")
     for i, gen_start in enumerate(genomic_starts):
-        dist_list.append(find_dist(gen_start, cigars[i], stops, strand, read_ids[i]))
-    return dist_list
+        dist_list.append(find_dist(gen_start, cigars[i], stops, strand, read_ids[i], gene_id))
+        # The above call is creating a list with the following structure:
+        #   [[read1-stop1, read1-stop2], [read2-stop1, read2-stop2]]
+        # For plotting it would likely be easier to have it as:
+        #   [[read1-stop1, read2-stop1], [read1-stop2, read2-stop2]]
+        # So that I have a few huge lists rather than hella tiny ones
+    dist_array = np.array(dist_list)
+    # np.array([dist_array[:, i] for i in range(dist_array.shape[1])])
+    # While I was proud of the obove function, transpose is likely faster:
+    dist_array = dist_array.transpose()
+    if None in dist_array:
+        print(f"Got some 'unreachable' stop codons for {gene_id}")
+    return dist_array
 
 
 def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
@@ -520,15 +532,16 @@ def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
                                                                                             row["strand"],
                                                                                             row["stop_starts"],
                                                                                             row["stop_ends"],
-                                                                                            row["read_ids"]), axis=1),
+                                                                                            row["read_ids"],
+                                                                                            row["gene_id"]), axis=1),
                                              index=mega_df.index)
     
     return mega_df, mega_df[["gene_id",
                              "gene_name",
                              "read_hits",
-                             "stop_distances",  # TODO: This is the big thing to implement!!
+                             "stop_distances",
                              "strand",
-                             ]]
+                             ]].sort_values(by="read_hits", ascending=False)
 
 
 def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-100, 500),
@@ -688,7 +701,13 @@ def cigar_main(working_dir, path_to_merge, parsed_gtf, sub_sample=False):
                                                   path_to_compressedOnGenes=path_to_new_merge_tsv,
                                                   save_parquet_path=parquet_path,
                                                   minify=sub_sample)
+    # print(smaller_df)
+    smaller_df = smaller_df.explode("stop_distances", ignore_index=True)
+    smaller_df["stop_distances"] = smaller_df["stop_distances"].apply(lambda x: x[x != None])
+    smaller_df = smaller_df[smaller_df["stop_distances"].str.len() != 0]
+    smaller_df["stop_distances"] = smaller_df["stop_distances"].apply(lambda x: x.tolist())
     print(smaller_df)
+    plot_heatmap(smaller_df)
 
 
 if __name__ == '__main__':
