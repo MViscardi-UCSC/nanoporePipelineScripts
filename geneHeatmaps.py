@@ -403,7 +403,7 @@ def get_stop_distances_transcripts(parquet_path=None, path_to_parsed_gtf=None,
                              ]]
 
 
-def find_dist(gen_start, cigar, stops, strand) -> List[int]:
+def find_dist(gen_start, cigar, stops, strand, read_id) -> List[int]:
     numbers = list(map(int, re.findall(rf'(\d+)[MDNSI]', cigar)))
     cigar_chars = re.findall(rf'\d+([MDNSI])', cigar)
     MND_nums, MND_chars = [], []
@@ -413,78 +413,65 @@ def find_dist(gen_start, cigar, stops, strand) -> List[int]:
             MND_nums.append(numbers[i])
 
     # Account for softclips pushing the left edge of reads:
-    if cigar_chars[0] == "S":
-        # So this will add the softclipped nucleotides, moving the read
-        # "start" to the right in chromosome space.
-        gen_start += numbers[0]
+    #   I DON'T NEED TO DO THIS. Softclipped reads are not accounted
+    #   for by the chr_pos that is given by the SAM files!!
     # Start handling negative strand genes
+    # TODO: get + and - unified as this double code is hard to maintain
     if strand == "-":
         # First change our start position to the other end of the read
         # by "walking" along MNS
-        gen_start += sum(MND_nums)
+        pos = gen_start + sum(MND_nums)
         # Flip the cigar information!
         MND_nums.reverse()
         MND_chars.reverse()
-        # This will get rewritten over and over
-        pos = gen_start
         # Add a stop list 
-        distance_list = list(range(0, len(stops)))
+        distance_list = [0] * len(stops)
         counter = 0
         counter_finished_at = len(stops)
+        
         for i, num in enumerate(MND_nums):
+            if counter == counter_finished_at:
+                break
             pos -= num
             for stop_i, stop in enumerate(stops):
-                if pos <= stop:
+                if pos <= stop and distance_list[stop_i] == 0:
                     distance = sum([MND_nums[index] for index, char in enumerate(MND_chars[:i]) if char == "M"])
+                    # The above step suffers from missing out on Ds from CIGAR that were not introns, meaning
+                    # that the estimation of transcript distance is always going to be a bit off. . . Unless
+                    # I can find a way to preferentially drop Ds that were from introns but not exons?
+                    #
+                    # The above idea would hit the same issue as flair as I don't know which transcripts many
+                    # of these reads should get matched to!!
                     distance += abs(pos - stop)
                     distance_list[stop_i] = distance
                     counter +=1
-                    continue
+                    # continue
                 if counter == counter_finished_at:
                     break
         return distance_list
     elif strand == "+":
-        # This will get rewritten over and over
         pos = gen_start
-        # Add a distance list w/ same length as stops list
-        # distance_list = list(range(0, len(stops)))
         distance_list = [0] * len(stops)
-        # A counter to make sure we hit each stop codon
         counter = 0
         counter_finished_at = len(stops)
 
         for i, num in enumerate(MND_nums):
+            if counter == counter_finished_at:
+                break
             pos += num
             for stop_i, stop in enumerate(stops):
-                # TODO: This is looping through each stop, but the if statement below
-                #       is getting caught each time by the shortest stop distance (first one).
-                #       I need a way to stop this part of the script from rewriting the same
-                #       stop distance over and over!!
                 if pos >= stop and distance_list[stop_i] == 0:
                     distance = sum([MND_nums[index] for index, char in enumerate(MND_chars[:i]) if char == "M"])
-                    distance += abs(pos - stop)
+                    distance += abs(pos - stop) # I am a little worried about this step?
                     distance_list[stop_i] = distance
                     counter +=1
-                    continue
+                    # continue
                 if counter == counter_finished_at:
                     break
         return distance_list
 
 
-def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends) -> List[int]:
-    """
-    Pseudocode:
-        If +: find distance from genomic_start to stop codon by parsing out lengths of Ms & Ds/Ns
-        (later on I should probably prefer just Ns as to avoid inaccuracy of nanopore). I'll be
-        ignoring Is from the CIGAR for now (always?)
-    
-    :param genomic_starts: list of interagers that are the genomic position of the left of the read
-    :param cigars: list of strings that are the CIGARs
-    :param strand: (hopefully) as + or a -
-    :param stop_starts: locations of the stop codons
-    :param stop_ends: 
-    :return: 
-    """
+def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends, read_ids) -> List[int]:
     # TODO!!!: This
     #       Focus on taking the negative or positive strand genes into account
     #       Also try to figure out if you need to drop softclips or ignore them!
@@ -496,8 +483,9 @@ def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends)
     else:
         raise NotImplementedError(f"Please provide strand information as \"+\" or \"-\", not: \"{strand}\"")
     for i, gen_start in enumerate(genomic_starts):
-        dist_list.append(find_dist(gen_start, cigars[i], stops, strand))
+        dist_list.append(find_dist(gen_start, cigars[i], stops, strand, read_ids[i]))
     return dist_list
+
 
 def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
                              path_to_compressedOnGenes=None,
@@ -518,7 +506,7 @@ def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
 
     if minify:
         if isinstance(minify, int):
-            mega_df = mega_df.sample(minify, axis=0)
+            mega_df = mega_df.tail(minify)
         else:
             mega_df = mega_df.head()
     if dropSubHits and isinstance(dropSubHits, int):
@@ -526,15 +514,13 @@ def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
     if stranded and isinstance(stranded, str):
         mega_df = mega_df[mega_df["strand"] == stranded]
     mega_df.sort_values(by="stop_count", ascending=False, inplace=True)
-    # print(mega_df[["gene_id", "stop_count", "stop_starts"]])
-    # print(mega_df.head())
-    
-    # TODO: Below call:
+
     mega_df["stop_distances"] = pd.DataFrame(mega_df.apply(lambda row: calc_stop_dist_cigar(row["genomic_starts"],
                                                                                             row["cigars"],
                                                                                             row["strand"],
                                                                                             row["stop_starts"],
-                                                                                            row["stop_ends"]), axis=1),
+                                                                                            row["stop_ends"],
+                                                                                            row["read_ids"]), axis=1),
                                              index=mega_df.index)
     
     return mega_df, mega_df[["gene_id",
@@ -687,10 +673,10 @@ def flair_main(working_dir, path_to_merge, parsed_gtf):
     print(smaller_df[["gene_name", "strand", "transcript_id"]])
 
 
-def cigar_main(working_dir, path_to_merge, parsed_gtf):
+def cigar_main(working_dir, path_to_merge, parsed_gtf, sub_sample=False):
     try:
         found_parquet_path = find_newest_matching_file(f"{path_to_merge}/*_superMerge-genes.parquet")
-        df, smaller_df = get_stop_distances_genes(parquet_path=found_parquet_path)
+        df, smaller_df = get_stop_distances_genes(parquet_path=found_parquet_path, minify=sub_sample)
     except ValueError:
         try:
             path_to_new_merge_tsv = find_newest_matching_file(f"{path_to_merge}/*_compressedOnGenes.parquet")
@@ -700,7 +686,8 @@ def cigar_main(working_dir, path_to_merge, parsed_gtf):
         print(f"Saving new 'supermerge-genes.parquet' to: {parquet_path}")
         df, smaller_df = get_stop_distances_genes(path_to_parsed_gtf=parsed_gtf,
                                                   path_to_compressedOnGenes=path_to_new_merge_tsv,
-                                                  save_parquet_path=parquet_path)
+                                                  save_parquet_path=parquet_path,
+                                                  minify=sub_sample)
     print(smaller_df)
 
 
