@@ -441,9 +441,12 @@ def merge_results(**other_kwargs):
         sam_df = sam_df.rename(columns=dict(enumerate(sam_header_names)))
         # Next lets pull in the featureCounts and nanopolish polyA results
         featc_df = pd.read_csv(f"{outputDir}/featureCounts/cat.sorted.bam.Assigned.featureCounts",
-                               sep="\t", names=["read_id", "qc_tag", "qc_pass", "gene_id"])
+                               sep="\t", names=["read_id", "qc_tag_featc", "qc_pass", "gene_id"])
         polya_df = pd.read_csv(f"{outputDir}/nanopolish/polya.passed.tsv", sep="\t")
-        polya_df = polya_df.rename(columns={"readname": "read_id"})
+        polya_df = polya_df.rename(columns={"readname": "read_id",
+                                            "qc_tag": "qc_tag_polya",  # b/c featC also has a qc_tag!
+                                            }
+                                   )
         if print_info:
             print("#" * 100)
             print(f"\n\nSAM Dataframe info:")
@@ -503,7 +506,8 @@ def merge_results(**other_kwargs):
         return gene_df
 
     print(f"Starting to merge all data at {get_dt(for_print=True)}\n")
-    merge_df = create_merge_df(**other_kwargs)
+    merge_df = create_merge_df(  # print_info=True,
+                               **other_kwargs)
     print(f"\n\nFinished merging all data at {get_dt(for_print=True)}")
     print(f"Starting to compress data on genes at {get_dt(for_print=True)}\n")
     gene_df = compress_on_genes(merge_df, **other_kwargs)
