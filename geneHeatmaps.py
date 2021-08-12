@@ -75,6 +75,7 @@ def parse_parsed_gtf(parsed_gtf_path: str, for_isoforms=True) -> pd.DataFrame:
             return new_stop_starts
         else:
             return new_stop_ends
+
     print("Loading parsed gtf. . .")
     df = pd.read_csv(parsed_gtf_path, sep="\t")
     if for_isoforms:
@@ -87,11 +88,11 @@ def parse_parsed_gtf(parsed_gtf_path: str, for_isoforms=True) -> pd.DataFrame:
                                                                       "gene_biotype",
                                                                       "gene_name"]]
         exon_group = exon_df.groupby("transcript_id")
-    
+
         crush_exon_df = exon_group["start"].apply(list).to_frame(name="exon_starts")
         crush_exon_df["exon_ends"] = exon_group["end"].apply(list).to_frame(name="exon_ends")
         crush_exon_df["exon_nums"] = exon_group["exon_number"].apply(list).to_frame(name="exon_nums")
-    
+
         for single_column in ["gene_id", "gene_biotype", "gene_name", "strand"]:
             crush_exon_df[f"{single_column}s"] = exon_group[f"{single_column}"].apply(list).to_frame(
                 name=f"{single_column}s")
@@ -129,9 +130,9 @@ def parse_parsed_gtf(parsed_gtf_path: str, for_isoforms=True) -> pd.DataFrame:
                                                                   axis=1),
                                                    index=large_df.index)
         large_df["new_stop_ends"] = pd.DataFrame(large_df.apply(lambda x: drop_dup_stops(x["stop_starts"],
-                                                                                           x["stop_ends"],
-                                                                                           ends_not_starts=True),
-                                                                  axis=1),
+                                                                                         x["stop_ends"],
+                                                                                         ends_not_starts=True),
+                                                                axis=1),
                                                  index=large_df.index)
         large_df.drop(["stop_starts", "stop_ends"], axis=1, inplace=True)
         large_df.rename(columns={"new_stop_ends": "stop_ends",
@@ -403,7 +404,7 @@ def get_stop_distances_transcripts(parquet_path=None, path_to_parsed_gtf=None,
                              ]]
 
 
-def find_dist(gen_start, cigar, stops, strand, read_id, gene_id) -> np.ndarray:
+def find_dist_w_cigar(gen_start, cigar, stops, strand, read_id, gene_id) -> np.ndarray:
     numbers = list(map(int, re.findall(rf'(\d+)[MDNSI]', cigar)))
     cigar_chars = re.findall(rf'\d+([MDNSI])', cigar)
     MND_nums, MND_chars = [], []
@@ -428,7 +429,7 @@ def find_dist(gen_start, cigar, stops, strand, read_id, gene_id) -> np.ndarray:
         distance_list = [None] * len(stops)
         counter = 0
         counter_finished_at = len(stops)
-        
+
         for i, num in enumerate(MND_nums):
             if counter == counter_finished_at:
                 break
@@ -444,7 +445,7 @@ def find_dist(gen_start, cigar, stops, strand, read_id, gene_id) -> np.ndarray:
                     # of these reads should get matched to!!
                     distance += abs(pos - stop)
                     distance_list[stop_i] = distance
-                    counter +=1
+                    counter += 1
                 if counter == counter_finished_at:
                     break
     elif strand == "+":
@@ -460,11 +461,11 @@ def find_dist(gen_start, cigar, stops, strand, read_id, gene_id) -> np.ndarray:
             for stop_i, stop in enumerate(stops):
                 if pos >= stop and distance_list[stop_i] == None:
                     distance = sum([MND_nums[index] for index, char in enumerate(MND_chars[:i]) if char == "M"])
-                    distance += abs(pos - stop) # I am a little worried about this step?
+                    distance += abs(pos - stop)  # I am a little worried about this step?
                     distance_list[stop_i] = distance
                     if distance < 5:
                         print(f"Woah, near hit for {read_id} on {gene_id}")
-                    counter +=1
+                    counter += 1
                 if counter == counter_finished_at:
                     break
     # TODO: This has the large issue of missing out on reads that don't span the STOP codon!
@@ -473,9 +474,6 @@ def find_dist(gen_start, cigar, stops, strand, read_id, gene_id) -> np.ndarray:
 
 
 def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends, read_ids, gene_id) -> List[int]:
-    # TODO!!!: This
-    #       Focus on taking the negative or positive strand genes into account
-    #       Also try to figure out if you need to drop softclips or ignore them!
     dist_list = []
     if strand == "+":
         stops = stop_starts
@@ -484,7 +482,7 @@ def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends,
     else:
         raise NotImplementedError(f"Please provide strand information as \"+\" or \"-\", not: \"{strand}\"")
     for i, gen_start in enumerate(genomic_starts):
-        dist_list.append(find_dist(gen_start, cigars[i], stops, strand, read_ids[i], gene_id))
+        dist_list.append(find_dist_w_cigar(gen_start, cigars[i], stops, strand, read_ids[i], gene_id))
         # The above call is creating a list with the following structure:
         #   [[read1-stop1, read1-stop2], [read2-stop1, read2-stop2]]
         # For plotting it would likely be easier to have it as:
@@ -499,10 +497,42 @@ def calc_stop_dist_cigar(genomic_starts, cigars, strand, stop_starts, stop_ends,
     return dist_array
 
 
+def calc_stop_dist_genomic(genomic_starts, cigars, strand,
+                           stop_starts, stop_ends, gene_id) -> List[int]:
+    def find_gen_dist(genomic_start, stops, cigar, strand):
+        mnd_nums = list(map(int, re.findall(rf'(\d+)[MDN]', cigar)))
+        distances = []
+        if strand == "-":
+            genomic_start += sum(mnd_nums)
+        for stop in stops:
+            distance = stop - genomic_start
+            if strand == "-":
+                distance = distance * -1
+            distances.append(distance)
+        return distances
+
+    dist_list = []
+    if strand == "+":
+        stops = stop_starts
+    elif strand == "-":
+        stops = stop_ends
+    else:
+        raise NotImplementedError(f"Please provide strand information as \"+\" or \"-\", not: \"{strand}\"")
+    for i, gen_start in enumerate(genomic_starts):
+        dist_list.append(find_gen_dist(gen_start, stops, cigars[i], strand))
+    dist_array = np.array(dist_list)
+
+    dist_array = dist_array.transpose()
+    if None in dist_array:
+        print(f"Got some 'unreachable' stop codons for {gene_id}")
+    return dist_array
+
+
 def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
                              path_to_compressedOnGenes=None,
                              minify=False, dropSubHits=None,
-                             stranded=None, save_parquet_path=None) -> [pd.DataFrame, pd.DataFrame]:
+                             stranded=None, save_parquet_path=None,
+                             genomic_distances=False) -> [pd.DataFrame, pd.DataFrame]:
     if parquet_path:
         print(f"Loading parquet from: {parquet_path}")
         mega_df = pd.read_parquet(parquet_path)
@@ -526,16 +556,26 @@ def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
     if stranded and isinstance(stranded, str):
         mega_df = mega_df[mega_df["strand"] == stranded]
     mega_df.sort_values(by="stop_count", ascending=False, inplace=True)
+    if not genomic_distances:
+        mega_df["stop_distances"] = pd.DataFrame(mega_df.apply(lambda row: calc_stop_dist_cigar(row["genomic_starts"],
+                                                                                                row["cigars"],
+                                                                                                row["strand"],
+                                                                                                row["stop_starts"],
+                                                                                                row["stop_ends"],
+                                                                                                row["read_ids"],
+                                                                                                row["gene_id"]),
+                                                               axis=1),
+                                                 index=mega_df.index)
+    else:
+        mega_df["stop_distances"] = pd.DataFrame(mega_df.apply(lambda row: calc_stop_dist_genomic(row["genomic_starts"],
+                                                                                                  row["cigars"],
+                                                                                                  row["strand"],
+                                                                                                  row["stop_starts"],
+                                                                                                  row["stop_ends"],
+                                                                                                  row["gene_id"]),
+                                                               axis=1),
+                                                 index=mega_df.index)
 
-    mega_df["stop_distances"] = pd.DataFrame(mega_df.apply(lambda row: calc_stop_dist_cigar(row["genomic_starts"],
-                                                                                            row["cigars"],
-                                                                                            row["strand"],
-                                                                                            row["stop_starts"],
-                                                                                            row["stop_ends"],
-                                                                                            row["read_ids"],
-                                                                                            row["gene_id"]), axis=1),
-                                             index=mega_df.index)
-    
     return mega_df, mega_df[["gene_id",
                              "gene_name",
                              "read_hits",
@@ -545,7 +585,7 @@ def get_stop_distances_genes(parquet_path=None, path_to_parsed_gtf=None,
 
 
 def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-100, 500),
-                 title=None, extra_annotation=None):
+                 title=None, extra_annotation=None, output_name="cdfHeatmap"):
     def manual_cdf(stop_distances: list, min_x: int, max_x: int) -> np.array:
         man_cdf = [0]
         stop_distances.sort(reverse=False)
@@ -595,9 +635,9 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-100, 500),
     plotter_df["threequart_index"] = pd.DataFrame(plotter_df.apply(lambda x: np.where(x["norm_cdf"] >= 0.75)[0][0],
                                                                    axis=1), index=plotter_df.index)
     plotter_df.sort_values(by=[
-        "threequart_index",
         "quarter_index",
         "halfway_index",
+        "threequart_index",
     ], inplace=True)
     plotter_df["norm_cdf_lists"] = pd.DataFrame(plotter_df.apply(lambda x: x["norm_cdf"].tolist(),
                                                                  axis=1), index=plotter_df.index)
@@ -640,6 +680,7 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-100, 500),
                                               titleside="bottom"
                                               ),
                       hovermode="y")
+    fig.write_html(f"./{get_dt(for_output=True)}_{output_name}.html")
     fig.show()
 
 
@@ -686,10 +727,12 @@ def flair_main(working_dir, path_to_merge, parsed_gtf):
     print(smaller_df[["gene_name", "strand", "transcript_id"]])
 
 
-def cigar_main(working_dir, path_to_merge, parsed_gtf, sub_sample=False):
+def cigar_main(working_dir, path_to_merge, parsed_gtf, sub_sample=False, genomic_distances=False,
+               output_name=None):
     try:
         found_parquet_path = find_newest_matching_file(f"{path_to_merge}/*_superMerge-genes.parquet")
-        df, smaller_df = get_stop_distances_genes(parquet_path=found_parquet_path, minify=sub_sample)
+        df, smaller_df = get_stop_distances_genes(parquet_path=found_parquet_path, minify=sub_sample,
+                                                  genomic_distances=genomic_distances)
     except ValueError:
         try:
             path_to_new_merge_tsv = find_newest_matching_file(f"{path_to_merge}/*_compressedOnGenes.parquet")
@@ -700,14 +743,18 @@ def cigar_main(working_dir, path_to_merge, parsed_gtf, sub_sample=False):
         df, smaller_df = get_stop_distances_genes(path_to_parsed_gtf=parsed_gtf,
                                                   path_to_compressedOnGenes=path_to_new_merge_tsv,
                                                   save_parquet_path=parquet_path,
-                                                  minify=sub_sample)
+                                                  minify=sub_sample,
+                                                  genomic_distances=genomic_distances)
     # print(smaller_df)
     smaller_df = smaller_df.explode("stop_distances", ignore_index=True)
     smaller_df["stop_distances"] = smaller_df["stop_distances"].apply(lambda x: x[x != None])
     smaller_df = smaller_df[smaller_df["stop_distances"].str.len() != 0]
     smaller_df["stop_distances"] = smaller_df["stop_distances"].apply(lambda x: x.tolist())
+    
+    # Get rid of this next step!!
+    # smaller_df = smaller_df[smaller_df['gene_name'] == "smrc-1"]
     print(smaller_df)
-    plot_heatmap(smaller_df)
+    plot_heatmap(smaller_df, output_name=output_name)
 
 
 if __name__ == '__main__':
@@ -724,4 +771,5 @@ if __name__ == '__main__':
     path_to_parsed_gtf = "/data16/marcus/scripts/nanoporePipelineScripts/" \
                          "Caenorhabditis_elegans.WBcel235.100.gtf.dataframe_parse.tsv"
     # flair_main(working_dir_name, path_to_merge_dir, path_to_parsed_gtf)
-    cigar_main(working_dir_name, path_to_merge_dir, path_to_parsed_gtf)
+    cigar_main(working_dir_name, path_to_merge_dir, path_to_parsed_gtf,
+               genomic_distances=True, output_name="genomicDistancesToStopsHeatmap")
