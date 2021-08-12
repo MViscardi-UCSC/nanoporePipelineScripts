@@ -416,6 +416,7 @@ def merge_results(**other_kwargs):
                              sep="\t", names=range(23))
         # Drop any read_ids that have come up multiple times:
         #   TODO: I am assuming these are multiply mapping? Is this wrong?
+        # 08/11/21: Maybe this was wrong to do....
         sam_df = sam_df.drop_duplicates(subset=0, keep=False, ignore_index=True)
         # I have no idea what the additional tags from Minimap2 are, I'm dropping them for now:
         sam_df = sam_df[range(11)]
