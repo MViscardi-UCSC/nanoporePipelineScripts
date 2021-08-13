@@ -379,7 +379,7 @@ def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
             raise NotImplementedError(f"Currently this script only supports having genomeDirs "
                                       f"with one gtf files that ends with '.gtf'")
         call = f"featureCounts -L -T {threads} -R CORE -a {genome_gtf_file[0]} " \
-               f"-o {outputDir}/featureCounts/{get_dt()} {outputDir}/cat_files/cat.sorted.bam " \
+               f"-o {outputDir}/featureCounts/{get_dt(for_output=True)} {outputDir}/cat_files/cat.sorted.bam " \
                f"2>&1 | tee -a {outputDir}/logs/{get_dt()}.featureCounts.log"
         print(f"Starting featureCounts at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
         live_cmd_call(call)
@@ -416,12 +416,13 @@ def merge_results(**other_kwargs):
                              sep="\t", names=range(23))
         # Drop any read_ids that have come up multiple times:
         #   TODO: I am assuming these are multiply mapping? Is this wrong?
+        #         8/12/21: I am going to try to more accurately drop duplicates!
         # 08/11/21: Maybe this was wrong to do....
         #           Going to try and at least drop some of the supplementary reads
         # print("Before dropping: ", sam_df.shape)
-        sam_df = sam_df[sam_df[1] != 2048]
+        # sam_df = sam_df[sam_df[1] != 2048]
         # print("After dropping sups: ", sam_df.shape)
-        sam_df = sam_df.drop_duplicates(subset=0, keep=False, ignore_index=True)
+        # sam_df = sam_df.drop_duplicates(subset=0, keep=False, ignore_index=True)
         # print("After dropping dups: ", sam_df.shape)
         
         # I have no idea what the additional tags from Minimap2 are, I'm dropping them for now:
@@ -439,9 +440,15 @@ def merge_results(**other_kwargs):
                             "sequence",
                             "phred_qual"]
         sam_df = sam_df.rename(columns=dict(enumerate(sam_header_names)))
-        # Next lets pull in the featureCounts and nanopolish polyA results
+        # Pull the 16 bit flag to get strand information (important for merge w/ featC later)
+        sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-",
+                                                                      0: "+"})
+        # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
+        sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
+        # Next lets pull in the featureCounts results (there is a population of duplicates here)
         featc_df = pd.read_csv(f"{outputDir}/featureCounts/cat.sorted.bam.Assigned.featureCounts",
                                sep="\t", names=["read_id", "qc_tag_featc", "qc_pass", "gene_id"])
+        # Load up nanopolish polyA results (also a population of duplicates here!!)
         polya_df = pd.read_csv(f"{outputDir}/nanopolish/polya.passed.tsv", sep="\t")
         polya_df = polya_df.rename(columns={"readname": "read_id",
                                             "qc_tag": "qc_tag_polya",  # b/c featC also has a qc_tag!
