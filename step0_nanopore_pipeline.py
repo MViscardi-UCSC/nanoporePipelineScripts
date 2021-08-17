@@ -40,6 +40,8 @@ from glob import glob
 import pandas as pd
 import numpy as np
 
+pd.set_option("display.max_columns", None)
+
 
 def get_dt(for_print=False, for_output=False):
     now = datetime.now()
@@ -101,14 +103,15 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
         parser.add_argument('--dataDir', metavar='dataDir', type=str, default=None,
                             help="Path to sequencing data directory.")
         parser.add_argument('--threads', metavar='threads', type=int, default=None,
-                            help="Number of threads to be used by nanopolish and minimap2.")
+                            help="Number of threads to be used by nanopolish and minimap2. [20]")
         parser.add_argument('--guppyConfig', metavar='guppy_config', type=str,
                             default='rna_r9.4.1_70bps_hac.cfg',
                             help="Configuration preset passed to the guppy_basecaller "
                                  "based on flowcell and kit used for run. Helpful "
                                  "table for picking a config @ https://denbi-nanopore-"
                                  "training-course.readthedocs.io/en/latest/basecalling/"
-                                 "basecalling.html or just google 'guppy_basecalling'")
+                                 "basecalling.html or just google 'guppy_basecalling'"
+                                 "[rna_r9.4.1_70bps_hac.cfg]")
         parser.add_argument('--dropGeneWithHitsLessThan', metavar='dropGeneWithHitsLessThan',
                             type=int, default=None,
                             help="Number of threads to be used by guppy_basecaller, "
@@ -119,16 +122,20 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                                  "that map to them")
         parser.add_argument('--stepsToRun', metavar='stepsToRun',
                             type=str, default=None,
-                            help="Steps to run within the pipeline (Normal Run = GMNFCP): "
-                                 "(G)uppy basecalling, (M)inimap, (N)anopolish, "
-                                 "(F)eature counts, (C)oncat files, merge with (P)andas, "
-                                 "and/or use f(L)air to ID transcripts (not default behavior)")
+                            help="Steps to run within the pipeline: (G)uppy basecalling, "
+                                 "(M)inimap, (N)anopolish, (F)eature counts, (C)oncat files, "
+                                 "merge with (P)andas, and/or use f(L)air to ID transcripts "
+                                 "(not default behavior) [GMNFCP]")
         parser.add_argument('--sampleID', metavar='sampleID',
                             type=int, default=None,
-                            help="sampleID to pass to FLAIR")
+                            help="sampleID to pass to FLAIR [sample1]")
         parser.add_argument('--condition', metavar='condition',
                             type=int, default=None,
-                            help="condition to pass to FLAIR")
+                            help="condition to pass to FLAIR [conditionA]")
+        parser.add_argument('--minimapParam', metavar='minimapParam',
+                            type=str, default=None,
+                            help="Arguments to pass to minimap2. If used on the command line, "
+                                 "be sure to surround in double-quotes! [\"-x splice -uf -k14\"]")
         # Flag Arguments
         parser.add_argument('-p', '--printArgs', action='store_true',
                             help="Boolean flag to show how arguments are overwritten/accepted")
@@ -199,7 +206,8 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                        "threads": 20,
                        "stepsToRun": "GMNFCP",
                        "sampleID": "sample1",
-                       "condition": "conditionA"}
+                       "condition": "conditionA",
+                       "minimapParam": "-x splice -uf -k14"}
     if skip_cli_dict:
         argDict = skip_cli_dict
     else:
@@ -278,11 +286,18 @@ def guppy_basecall_w_docker(dataDir, outputDir, threads, guppyConfig, regenerate
 def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, **other_kwargs):
     prev_cat_fastq = path.exists(f"{outputDir}/cat_files/cat.fastq")
     if regenerate or not prev_cat_fastq:
+        guppy_log = f"{outputDir}/logs/{get_dt()}_guppy.log"
+        call = rf"""guppy_basecaller -x "cuda:0" --num_callers 12 --gpu_runners_per_device 8 """ \
+               rf"""-c {guppyConfig} -i {dataDir}/fast5 -s {outputDir}/fastqs """ \
+               rf"""2>&1 | tee {guppy_log}"""
+        print(f"Starting Guppy Basecalling with GPU @ {get_dt(for_print=True)}. . .\n"
+              f"(The loading bar below will not change until the calling is completely finished!\n"
+              f"if you want to watch progress run: \"watch less {guppy_log}\")\n\n"
+              f"Running with call: {call}\n")
         # TODO: optimize the num_callers and gpu_runners_per_caller params!!
-        live_cmd_call(rf"""guppy_basecaller -x "cuda:0" --num_callers 12 --gpu_runners_per_device 8 """
-                      rf"""-c {guppyConfig} -i {dataDir}/fast5 -s {outputDir}/fastqs """
-                      rf"""2>&1 | tee {outputDir}/logs/{get_dt()}_guppy.log""")
+        live_cmd_call(call)
         live_cmd_call(rf"cat {outputDir}/fastqs/pass/*.fastq > {outputDir}/cat_files/cat.fastq")
+        print(f"Finished Guppy Basecalling with GPU @ {get_dt(for_print=True)}. . .")
     else:
         print(f"\n\nCalling already occurred. Based on file at:\n\t{outputDir}/cat_files/cat.fastq\n"
               f"Use the regenerate tag if you want to rerun calling.\n")
@@ -296,7 +311,7 @@ def alternative_genome_filtering():
     pass
 
 
-def minimap_and_nanopolish(genomeDir, dataDir, outputDir, threads, regenerate, **other_kwargs):
+def minimap_and_nanopolish(genomeDir, dataDir, outputDir, threads, regenerate, minimapParam, **other_kwargs):
     if regenerate or not path.exists(f"{outputDir}/cat_files/cat.fastq.index.readdb"):
         seq_sum_matches = [i for i in listdir(dataDir) if
                            path.isfile(path.join(dataDir, i)) and 'sequencing_summary' in i]
@@ -316,8 +331,13 @@ def minimap_and_nanopolish(genomeDir, dataDir, outputDir, threads, regenerate, *
         print(f"\n\nNanopolish index already ran. Based on file at:"
               f"\n\t{outputDir}/cat_files/cat.fastq.index.readdb\n"
               f"Use the regenerate tag if you want to rerun.\n")
-
-    if regenerate or not path.exists(f"{outputDir}/cat_files/cat.bam"):
+    
+    minimap_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.bam")
+    if not minimap_flag:
+        bam_length = path.getsize(f"{outputDir}/cat_files/cat.bam")
+        if bam_length == 0:
+            minimap_flag = True  # This is all to catch screwed up runs that have empty bam files!!!
+    if minimap_flag:
         # TODO: Logging for the mapping call with minimap2
         genome_fa_file = glob(f"{genomeDir}/*allChrs.fa")
         if len(genome_fa_file) != 1:
@@ -327,7 +347,7 @@ def minimap_and_nanopolish(genomeDir, dataDir, outputDir, threads, regenerate, *
         if len(genome_bed_file) != 1:
             raise NotImplementedError(f"Currently this script only supports having genomeDirs "
                                       f"with one bed file that ends with '.bed'")
-        call = f"minimap2 -a -x map-ont {genome_fa_file[0]} {outputDir}/cat_files/cat.fastq " \
+        call = f"minimap2 -a {minimapParam} {genome_fa_file[0]} {outputDir}/cat_files/cat.fastq " \
                f"-t {threads} --junc-bed {genome_bed_file[0]} | samtools view -b - -o " \
                f"{outputDir}/cat_files/cat.bam"
         print(f"Starting minimap2 at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
@@ -445,6 +465,10 @@ def merge_results(**other_kwargs):
                                                                       0: "+"})
         # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
         sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
+        for bit_flag in [256, 2048]:
+            print(f"Number of rows from SAM w/ {bit_flag}: "
+                  f"{sam_df[(sam_df.bit_flag & bit_flag) == bit_flag].shape[0]}")
+        
         # Next lets pull in the featureCounts results (there is a population of duplicates here)
         featc_df = pd.read_csv(f"{outputDir}/featureCounts/cat.sorted.bam.Assigned.featureCounts",
                                sep="\t", names=["read_id", "qc_tag_featc", "qc_pass", "gene_id"])
