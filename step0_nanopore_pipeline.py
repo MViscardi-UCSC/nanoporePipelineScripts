@@ -75,9 +75,10 @@ def find_newest_matching_file(path_str):
         raise ValueError(f"Failed to find any files matching \"{path_str}\"")
 
 
-def gene_names_to_gene_ids(tsv_path: str = "/home/marcus/PycharmProjects/"
-                           "PersonalScripts/WBGene_to_geneName.tsv") -> pd.DataFrame:
-    df = pd.read_csv(tsv_path, sep="\t")
+def gene_names_to_gene_ids(tsv_path: str = "/data16/marcus/genomes/elegansRelease100"
+                                           "/Caenorhabditis_elegans.WBcel235.100.gtf"
+                                           ".dataframe_parse.tsv") -> pd.DataFrame:
+    df = pd.read_csv(tsv_path, sep="\t")[["gene_name", "gene_id"]].drop_duplicates(ignore_index=True)
     return df
 
 
@@ -433,7 +434,7 @@ def merge_results(**other_kwargs):
     def create_merge_df(outputDir, print_info=False, **kwargs) -> pd.DataFrame:
         # First lets get the biggest one out of the way, importing the concatenated sam file:
         sam_df = pd.read_csv(f"{outputDir}/cat_files/cat.sorted.sam",
-                             sep="\t", names=range(23))
+                             sep="\t", names=range(23), low_memory=False)
         # Drop any read_ids that have come up multiple times:
         #   TODO: I am assuming these are multiply mapping? Is this wrong?
         #         8/12/21: I am going to try to more accurately drop duplicates!
@@ -463,8 +464,18 @@ def merge_results(**other_kwargs):
         # Pull the 16 bit flag to get strand information (important for merge w/ featC later)
         sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-",
                                                                       0: "+"})
+        
+        # Use the 256 bit flag to pick out reads with secondary alignments
+        sam_df["multi"] = (sam_df.bit_flag & 256) == 256
+        # Make a list of these read_ids
+        read_ids_of_multis = sam_df[sam_df["multi"]]["read_id"]
+        # Drop all reads that were in this list (including the primary alignments of these reads)
+        sam_df = sam_df[~sam_df["read_id"].isin(read_ids_of_multis.to_list())]
+        
         # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
         sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
+        
+        # Read out of how many reads are multi and supp mapped
         for bit_flag in [256, 2048]:
             print(f"Number of rows from SAM w/ {bit_flag}: "
                   f"{sam_df[(sam_df.bit_flag & bit_flag) == bit_flag].shape[0]}")
@@ -478,6 +489,8 @@ def merge_results(**other_kwargs):
                                             "qc_tag": "qc_tag_polya",  # b/c featC also has a qc_tag!
                                             }
                                    )
+        names_df = gene_names_to_gene_ids()
+        featc_df = featc_df.merge(names_df, on="gene_id")
         if print_info:
             print("#" * 100)
             print(f"\n\nSAM Dataframe info:")
@@ -487,7 +500,7 @@ def merge_results(**other_kwargs):
             print(f"\n\nPolyA Dataframe info:")
             print(polya_df.info())
         # LETS SMOOSH THEM ALL TOGETHER!!!
-        sam_featc_df = sam_df.merge(featc_df, how="inner", on="read_id")
+        sam_featc_df = sam_df.merge(featc_df, how="left", on="read_id")
         merge_df = sam_featc_df.merge(polya_df, how="inner", on="read_id")
         merge_df.drop(["contig", "position", "r_next", "p_next", "len"], axis=1)
         merge_df = merge_df.drop_duplicates()
@@ -626,6 +639,28 @@ def flair(outputDir, **other_kwargs):
                                output_to_file=True)
 
 
+def extra_steps(outputDir, df=None, **other_kwargs):
+    import plotly.express as px
+    if not isinstance(df, pd.DataFrame):
+        path = find_newest_matching_file(f"{outputDir}/merge_files/*_mergedOnReads.tsv")
+        print(f"Dataframe not passed, loading file from: {path}")
+        df = pd.read_csv(path, sep="\t")
+        print("Loaded.")
+    sample_df = df.sample(n=10000)
+    sample_df["dup"] = sample_df.duplicated(subset="read_id", keep=False).map({True: 1, False: 0})
+    sample_df["multi"] = (sample_df.bit_flag & 256) == 256
+    read_ids_of_multis = sample_df[sample_df["multi"]]["read_id"]
+    sample_df = sample_df[~sample_df["read_id"].isin(read_ids_of_multis.to_list())]
+    # sample_df = sample_df[sample_df.dup == 1]
+    sample_df["len"] = sample_df["sequence"].apply(len)
+    # sample_df["bit_flag"] = sample_df["bit_flag"].apply(str)
+    # fig = px.box(sample_df, y="mapq", x="bit_flag", notched=True, points="all")
+    fig = px.parallel_coordinates(sample_df[["dup", "bit_flag", "mapq", "len"]],
+                                  )
+    fig.show()
+    print(sample_df.info())
+
+
 def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
     return_value = None
     buildOutputDirs(**args)
@@ -637,16 +672,22 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
                   "F": [feature_counts, "FeatureCounts"],
                   "C": [final_touches, "Concatenate Files"],
                   "P": [merge_results, "Merging Results w/ Pandas"],
-                  "L": [flair, "Calling Transcripts w/ Flair"]
+                  "L": [flair, "Calling Transcripts w/ Flair"],
+                  "X": [extra_steps, "Running random eXtra steps"]
                   }
     for code, (step_func, step_name) in steps_dict.items():
         if code in stepsToRun:
             step_print = f"Starting step: \"{step_name}\" . . ."
             print("\n\n", step_print, f"\n{'#' * len(step_print)}\n", sep="")
-            if code != "P":
-                step_func(**args)
-            else:
+            if code == "P":
                 return_value = step_func(**args)
+            elif code == "X":
+                if return_value:
+                    step_func(df=return_value[0], **args)
+                else:
+                    step_func(**args)
+            else:
+                step_func(**args)
         else:
             step_print = f"Skipping step: \"{step_name}\" . . ."
             print("\n", step_print, f"\n{'#' * len(step_print)}\n", sep="")
