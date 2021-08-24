@@ -431,7 +431,7 @@ def final_touches(outputDir, **other_kwargs):
 
 
 def merge_results(**other_kwargs):
-    def create_merge_df(outputDir, print_info=False, **kwargs) -> pd.DataFrame:
+    def create_merge_df(outputDir, keep_multimaps=False, print_info=False, **kwargs) -> pd.DataFrame:
         # First lets get the biggest one out of the way, importing the concatenated sam file:
         sam_df = pd.read_csv(f"{outputDir}/cat_files/cat.sorted.sam",
                              sep="\t", names=range(23), low_memory=False)
@@ -465,21 +465,23 @@ def merge_results(**other_kwargs):
         sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-",
                                                                       0: "+"})
         
-        # Use the 256 bit flag to pick out reads with secondary alignments
-        sam_df["multi"] = (sam_df.bit_flag & 256) == 256
-        # Make a list of these read_ids
-        read_ids_of_multis = sam_df[sam_df["multi"]]["read_id"]
-        # Drop all reads that were in this list (including the primary alignments of these reads)
-        sam_df = sam_df[~sam_df["read_id"].isin(read_ids_of_multis.to_list())]
-        
-        # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
-        sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
-        
-        # Read out of how many reads are multi and supp mapped
-        for bit_flag in [256, 2048]:
-            print(f"Number of rows from SAM w/ {bit_flag}: "
-                  f"{sam_df[(sam_df.bit_flag & bit_flag) == bit_flag].shape[0]}")
-        
+        if keep_multimaps:
+            # Use the 256 bit flag to pick out reads with secondary alignments
+            sam_df["multi"] = (sam_df.bit_flag & 256) == 256
+            # Make a list of these read_ids
+            read_ids_of_multis = sam_df[sam_df["multi"]]["read_id"]
+            # Drop all reads that were in this list (including the primary alignments of these reads)
+            sam_df = sam_df[~sam_df["read_id"].isin(read_ids_of_multis.to_list())]
+            
+            # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
+            sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
+            
+            # Read out of how many reads are multi and supp mapped
+            for bit_flag in [256, 2048]:
+                print(f"Number of rows from SAM w/ {bit_flag}: "
+                      f"{sam_df[(sam_df.bit_flag & bit_flag) == bit_flag].shape[0]}")
+        else:
+            sam_df = sam_df[~sam_df.duplicated(subset="read_id", keep=False)]
         # Next lets pull in the featureCounts results (there is a population of duplicates here)
         featc_df = pd.read_csv(f"{outputDir}/featureCounts/cat.sorted.bam.Assigned.featureCounts",
                                sep="\t", names=["read_id", "qc_tag_featc", "qc_pass", "gene_id"])
@@ -500,10 +502,20 @@ def merge_results(**other_kwargs):
             print(f"\n\nPolyA Dataframe info:")
             print(polya_df.info())
         # LETS SMOOSH THEM ALL TOGETHER!!!
-        sam_featc_df = sam_df.merge(featc_df, how="left", on="read_id")
-        merge_df = sam_featc_df.merge(polya_df, how="inner", on="read_id")
+        # TODO: This is severely broken in terms of the featureCounts merge:
+        #       B/c the featureCounts output only retains read_id, it doesn't
+        #       have enough information to merge uniquely for reads that map
+        #       more than once!! This means that read A that maps to gene X and Y
+        #       is eventually producing 4 lines of data....
+        # 8/24/2021: Sorta fixed this by just dropping all duplicate reads!
+        #            Back to square one... lol
+        sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
+        merge_df = sam_featc_df.merge(polya_df, how="inner", left_on=["read_id"],
+                                      right_on=["read_id"])
         merge_df.drop(["contig", "position", "r_next", "p_next", "len"], axis=1)
         merge_df = merge_df.drop_duplicates()
+        merge_df = merge_df[merge_df["sequence"] != "*"]
+        merge_df = merge_df[merge_df["mapq"] != 0]
         if print_info:
             print("\n\n")
             print("#" * 100)
