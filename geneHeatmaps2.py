@@ -35,7 +35,7 @@ Hype!
 
 import pandas as pd
 
-from step0_nanopore_pipeline import find_newest_matching_file
+from step0_nanopore_pipeline import find_newest_matching_file, get_dt
 
 
 def load_reads(read_tsv) -> pd.DataFrame:
@@ -91,9 +91,15 @@ def load_read_assignment_parquet(assignment_file_parquet, save_file=True) -> pd.
 def merge_on_chr_pos(read_assignment_df: pd.DataFrame, reads_df: pd.DataFrame,
                      subsample=None) -> pd.DataFrame:
     if isinstance(subsample, int):
+        print(f"Subsampling reads file and read assignment file to {subsample} rows each.")
         read_assignment_df = read_assignment_df.sample(subsample)
         reads_df = reads_df.sample(subsample)
-    merge_df = reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"])
+    print(f"Merging read assignments and reads at {get_dt(for_print=True)}")
+    merge_df = reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
+                              how="left", suffixes=["_fromReads",
+                                                    "_fromAssign"])
+    merge_df = merge_df[~(merge_df.gene_id_fromReads.isna() & merge_df.gene_id_fromAssign.isna())]
+    print(f"Done merging at {get_dt(for_print=True)}")
     return merge_df
 
 
@@ -115,8 +121,10 @@ def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100"):
     print("Finished loading files!")
     for df in [reads_df, read_assignment_df]:
         print(df.info())
-    merged_df = merge_on_chr_pos(read_assignment_df, reads_df, subsample=500000)
-    breakpoint()
+    merged_df = merge_on_chr_pos(read_assignment_df, reads_df,
+                                 # subsample=500000,
+                                 )
+    print(merged_df)
 
 
 if __name__ == '__main__':
