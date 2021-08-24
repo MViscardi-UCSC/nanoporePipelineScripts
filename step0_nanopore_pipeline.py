@@ -512,7 +512,7 @@ def merge_results(**other_kwargs):
         sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
         merge_df = sam_featc_df.merge(polya_df, how="inner", left_on=["read_id"],
                                       right_on=["read_id"])
-        merge_df.drop(["contig", "position", "r_next", "p_next", "len"], axis=1)
+        merge_df.drop(columns=["contig", "position", "r_next", "p_next", "len"], inplace=True)
         merge_df = merge_df.drop_duplicates()
         merge_df = merge_df[merge_df["sequence"] != "*"]
         merge_df = merge_df[merge_df["mapq"] != 0]
