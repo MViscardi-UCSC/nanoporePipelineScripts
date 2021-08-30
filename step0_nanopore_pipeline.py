@@ -507,7 +507,7 @@ def merge_results(**other_kwargs):
         #       have enough information to merge uniquely for reads that map
         #       more than once!! This means that read A that maps to gene X and Y
         #       is eventually producing 4 lines of data....
-        # 8/24/2021: Sorta fixed this by just dropping all duplicate reads!
+        # 8/24/2021: Sorta fixed this by just dropping all duplicate reads! (line 484)
         #            Back to square one... lol
         sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
         merge_df = sam_featc_df.merge(polya_df, how="inner", left_on=["read_id"],
