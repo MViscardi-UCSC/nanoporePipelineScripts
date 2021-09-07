@@ -134,6 +134,57 @@ def merge_on_chr_pos(read_assignment_df: pd.DataFrame, reads_df: pd.DataFrame,
     return merge_df
 
 
+def plotly_cdf(cdf_values, x_values):
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    fig.add_scatter(x=x_values, y=cdf_values, line_shape='hv')
+    fig.add_shape(type="line",
+                  x0=0, x1=0, xref='x',
+                  y0=0, y1=1, yref='paper',
+                  line_color='darkred')
+    fig.show()
+
+
+def plotly_imshow_heatmap(extra_annotation, output_name, plotter_df, title, x_axis_cdfs, x_labels):
+    import plotly.express as px
+    y_labels = plotter_df["gene_name"].to_list()
+    fig = px.imshow(x_axis_cdfs,
+                    x=x_labels,
+                    y=y_labels,
+                    aspect="free",
+                    color_continuous_scale='RdBu_r')
+    fig.add_shape(type="line",
+                  x0=0, x1=0, xref='x',
+                  y0=0, y1=1, yref='paper',
+                  line_color='darkred')
+    fig.add_annotation(x=0, y=-0.05, xref="x", yref="paper",
+                       text="<b>Stop Codon</b>", showarrow=False,
+                       font_size=15, )
+    fig.add_annotation(x=0, y=-0.05, xref="paper", yref="paper",
+                       text="<b>CDS</b>", showarrow=False,
+                       font_size=15)
+    fig.add_annotation(x=1, y=-0.05, xref="paper", yref="paper",
+                       text="<b>3' UTR</b>", showarrow=False,
+                       font_size=15)
+    if isinstance(title, str):
+        fig.update_layout(title=title)
+    if isinstance(extra_annotation, str):
+        fig.add_annotation(x=0, y=1.03, xref="paper", yref="paper",
+                           text=f"<b>Library Working Directory:</b> {extra_annotation}", showarrow=False,
+                           font_size=12)
+    fig.update_traces(hovertemplate="<b>Gene Name: %{y}</b><br>Dist from Stop: %{x:+}nt"
+                                    "<br>Cumulative Fraction of 5' Ends here: %{z:.3%}"
+                                    "<extra></extra>", )
+    fig.update_layout(coloraxis_colorbar=dict(tickformat=",.1%",
+                                              title="CDF<br>of 5' Ends,<br>per Isoform",
+                                              titleside="bottom"
+                                              ),
+                      hovermode="y")
+    fig.write_html(f"./{get_dt(for_output=True)}_{output_name}.html")
+    fig.show()
+
+
 def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-300, 300),
                  title=None, extra_annotation=None, output_name="cdfHeatmap"):
     def manual_cdf(stop_distances: list, min_x: int, max_x: int) -> np.array:
@@ -172,7 +223,7 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-300, 300),
     print("Max distance from stop codon:", total_max)
     print("Min distance from stop codon:", total_min)
     plotter_df = pd.DataFrame()
-    plotter_df["gene_name"] = smallish_df["gene_name"]
+    plotter_df["gene_name"] = smallish_df["identifier"]
     # Because of some massive outliers, this min-max setup doesn't really work!!
     plotter_df["norm_cdf"] = smallish_df.apply(lambda x: manual_cdf(x["stop_distances"],
                                                                     bounds[0],
@@ -191,55 +242,40 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-300, 300),
     ], inplace=True)
     plotter_df["norm_cdf_lists"] = pd.DataFrame(plotter_df.apply(lambda x: x["norm_cdf"].tolist(),
                                                                  axis=1), index=plotter_df.index)
+    
     x_axis_cdfs = plotter_df["norm_cdf"].to_list()
-
+    
     x_labels = list(range(bounds[0] - 1, bounds[1] + 1))
-    import plotly.express as px
-
-    y_labels = plotter_df["gene_name"].to_list()
-
-    fig = px.imshow(x_axis_cdfs,
-                    x=x_labels,
-                    y=y_labels,
-                    aspect="free",
-                    color_continuous_scale='RdBu_r')
-    fig.add_shape(type="line",
-                  x0=0, x1=0, xref='x',
-                  y0=0, y1=1, yref='paper',
-                  line_color='darkred')
-    fig.add_annotation(x=0, y=-0.05, xref="x", yref="paper",
-                       text="<b>Stop Codon</b>", showarrow=False,
-                       font_size=15, )
-    fig.add_annotation(x=0, y=-0.05, xref="paper", yref="paper",
-                       text="<b>CDS</b>", showarrow=False,
-                       font_size=15)
-    fig.add_annotation(x=1, y=-0.05, xref="paper", yref="paper",
-                       text="<b>3' UTR</b>", showarrow=False,
-                       font_size=15)
-    if isinstance(title, str):
-        fig.update_layout(title=title)
-    if isinstance(extra_annotation, str):
-        fig.add_annotation(x=0, y=1.03, xref="paper", yref="paper",
-                           text=f"<b>Library Working Directory:</b> {extra_annotation}", showarrow=False,
-                           font_size=12)
-    fig.update_traces(hovertemplate="<b>Gene Name: %{y}</b><br>Dist from Stop: %{x:+}nt"
-                                    "<br>Cumulative Fraction of 5' Ends here: %{z:.3%}"
-                                    "<extra></extra>", )
-    fig.update_layout(coloraxis_colorbar=dict(tickformat=",.1%",
-                                              title="CDF<br>of 5' Ends,<br>per Isoform",
-                                              titleside="bottom"
-                                              ),
-                      hovermode="y")
-    fig.write_html(f"./{get_dt(for_output=True)}_{output_name}.html")
-    fig.show()
+    
+    if plotter_df.shape[0] > 1:
+        plotly_imshow_heatmap(extra_annotation, output_name, plotter_df, title, x_axis_cdfs, x_labels)
+    elif plotter_df.shape[0] == 1:
+        plotly_cdf(x_axis_cdfs[0], x_labels)
+    else:
+        raise ValueError(f"The dataframe for plotting is empty!!")
 
 
-def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", drop_sub=10):
+def compress_on_transcripts(merged_df, drop_sub):
+    transcript_groupby = merged_df.groupby(["gene_id_fromAssign", "transcript_id"])
+    smaller_df = transcript_groupby["to_stop"].apply(list).to_frame(name="stop_distances")
+    smaller_df["transcript_hits"] = transcript_groupby["transcript_id"].apply(len).to_frame(name="transcript_hits")
+    smaller_df = smaller_df.reset_index().rename(columns={"gene_id_fromAssign": "gene_id"})
+    smaller_df = smaller_df[smaller_df["transcript_hits"] >= drop_sub]
+    gene_df = gene_names_to_gene_ids()
+    smaller_df = smaller_df.merge(gene_df, on="gene_id", how="inner")
+    smaller_df["identifier"] = smaller_df["gene_name"].astype(str) + " (" + smaller_df["transcript_id"].astype(str) \
+                              + ")" + " [" + smaller_df["transcript_hits"].astype(str) + "]"
+    return smaller_df
+
+
+def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", drop_sub=10,
+         target_list=[], target_column="gene_name"):
     working_dir_dict = {"polyA": "210528_NanoporeRun_0639_L3s",  # Best (overkill) depth
                         "riboD": "210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3",  # Gross
                         "totalRNA": "210709_NanoporeRun_totalRNA_0639_L3",  # Low depth
                         "polyA2": "210719_nanoporeRun_polyA_0639_L3_replicate",  # Good depth
                         "totalRNA2": "210720_nanoporeRun_totalRNA_0639_L3_replicate",  # Good depth
+                        "xrn-1": "210905_nanoporeRun_totalRNA_5108_xrn-1-KD",  # First XRN-1 Knockdown
                         }
     try:
         working_dir = f"/data16/marcus/working/{working_dir_dict[library_str]}"
@@ -254,24 +290,19 @@ def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", dro
         print(df.info())
     merged_df = merge_on_chr_pos(read_assignment_df, reads_df)
     smaller_df = compress_on_transcripts(merged_df, drop_sub)
+    if target_list:
+        selected_df = smaller_df[smaller_df[target_column].isin(target_list)]
+        if selected_df.shape[0] >= 1:
+            smaller_df = selected_df
+        else:
+            print(f"{target_list} has zero hits in the {target_column} column... No filtering run")
     print(merged_df, smaller_df)
     plot_heatmap(smaller_df)
-    # TODO: This kinda works, but not for neg strand genes, I still need to use cigars to get
-    #       the real position of the 5' end
-
-
-def compress_on_transcripts(merged_df, drop_sub):
-    transcript_groupby = merged_df.groupby(["gene_id_fromAssign", "transcript_id"])
-    smaller_df = transcript_groupby["to_stop"].apply(list).to_frame(name="stop_distances")
-    smaller_df["transcript_hits"] = transcript_groupby["transcript_id"].apply(len).to_frame(name="transcript_hits")
-    smaller_df = smaller_df.reset_index().rename(columns={"gene_id_fromAssign": "gene_id"})
-    smaller_df = smaller_df[smaller_df["transcript_hits"] >= drop_sub]
-    gene_df = gene_names_to_gene_ids()
-    smaller_df = smaller_df.merge(gene_df, on="gene_id", how="inner")
-    smaller_df["gene_name"] = smaller_df["gene_name"].astype(str) + " (" + smaller_df["transcript_id"].astype(str) \
-                              + ")" + " [" + smaller_df["transcript_hits"].astype(str) + "]"
-    return smaller_df
 
 
 if __name__ == '__main__':
-    main("totalRNA2", drop_sub=1000)
+    main("xrn-1",
+         drop_sub=100,
+         # target_list=["ets-4"],
+         # target_column="gene_name",
+         )
