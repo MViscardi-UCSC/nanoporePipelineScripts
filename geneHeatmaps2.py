@@ -268,6 +268,15 @@ def compress_on_transcripts(merged_df, drop_sub):
     return smaller_df
 
 
+def parse_annies_deseq(csv_path: str) -> list:
+    df = pd.read_csv(csv_path, names=["gene_id",
+                                      "wt_1", "smg-1_1", "smg-6_1",
+                                      "wt_2", "smg-1_2", "smg-6_2"],
+                     skiprows=1)
+    df[["gene_id", "strand"]] = df["gene_id"].str.split(":", expand=True)
+    return df["gene_id"].tolist()
+
+
 def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", drop_sub=10,
          target_list=[], target_column="gene_name"):
     working_dir_dict = {"polyA": "210528_NanoporeRun_0639_L3s",  # Best (overkill) depth
@@ -301,8 +310,12 @@ def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", dro
 
 
 if __name__ == '__main__':
+    annie_deseq_csv_path = "/data16/marcus/working/210204_smg-1and6_alteredGenes_fromAnnie/" \
+                           "210209_GenesUpInSMG1AndSMG6.csv"
+    targ_list = parse_annies_deseq(annie_deseq_csv_path)
+    
     main("xrn-1",
-         drop_sub=100,
-         # target_list=["ets-4"],
-         # target_column="gene_name",
+         drop_sub=50,
+         target_list=targ_list,
+         target_column="gene_id",
          )
