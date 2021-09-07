@@ -143,7 +143,7 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
     elif compare_column_prefix == "read_hits":
         fig.update_xaxes(type="log")
         fig.update_yaxes(type="log")
-        fig.add_trace(go.Scatter(x=[0, 1000], y=[0, 1000], line=dict(color="#4a4a4a", width=2, dash='dash'),
+        fig.add_trace(go.Scatter(x=[0, 10000], y=[0, 10000], line=dict(color="#4a4a4a", width=2, dash='dash'),
                                  showlegend=False, mode="lines"))
     elif compare_column_prefix == "hits_rank":
         fig.add_trace(go.Scatter(x=[0, 400], y=[0, 400], line=dict(color="#4a4a4a", width=1, dash='dash'),
@@ -398,15 +398,17 @@ if __name__ == '__main__':
                                                "merge_files/*_compressedOnGenes_simple.tsv"),
         # "polyA": find_newest_matching_file("/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/"
         #                                    "merge_files/*_compressedOnGenes_simple.tsv"),
-        "polyA2": find_newest_matching_file("/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
-                                            "output_dir/merge_files/*_compressedOnGenes_simple.tsv")
+        # "polyA2": find_newest_matching_file("/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
+        #                                     "output_dir/merge_files/*_compressedOnGenes_simple.tsv"),
+        "xrn-1": find_newest_matching_file("/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
+                                           "output_dir/merge_files/*_compressedOnGenes_simple.tsv")
     }
 
     cutoff = 20
-    # prefix = "hits_rank"
+    prefix = "hits_rank"
     # prefix = "read_hits"
     # prefix = "polya_mean"
-    prefix = "read_len_mean"
+    # prefix = "read_len_mean"
     if len(pathdict.keys()) == 3:
         for to_drop in pathdict.keys():
             plotter_helper(pathdict, prefix, cutoff, one_to_drop=to_drop)
