@@ -409,10 +409,13 @@ if __name__ == '__main__':
     pathdict = {name: find_newest_matching_file(pathdict[name]) for name in run_with}
 
     cutoff = 100
-    # prefix = "hits_rank"
-    # prefix = "read_hits"
-    # prefix = "polya_mean"
-    prefix = "read_len_mean"
+
+    prefix_dict = {1: "read_hits",
+                   2: "hits_rank",
+                   3: "read_len_mean",
+                   4: "polya_mean"}
+    prefix = prefix_dict[2]
+
     if len(pathdict.keys()) == 3:
         for to_drop in pathdict.keys():
             plotter_helper(pathdict, prefix, cutoff, one_to_drop=to_drop)
