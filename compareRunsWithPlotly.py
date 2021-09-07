@@ -5,7 +5,6 @@ Marcus Viscardi, 8/3/21
 
 """
 
-
 import pandas as pd
 import scipy.stats
 from step0_nanopore_pipeline import find_newest_matching_file
@@ -390,30 +389,32 @@ if __name__ == '__main__':
     # path1, path2 = sys.argv
 
     pathdict = {
-        # "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/"
-        #          "merge_files/210713_compressedOnGenes_simple.tsv",
-        # "totalRNA": find_newest_matching_file("/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
-        #                                       "output_dir/merge_files/*_compressedOnGenes_simple.tsv"),
-        "totalRNA2": find_newest_matching_file("/data16/marcus/working/"
-                                               "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir/"
-                                               "merge_files/*_compressedOnGenes_simple.tsv"),
-        # "polyA": find_newest_matching_file("/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/"
-        #                                    "merge_files/*_compressedOnGenes_simple.tsv"),
-        # "polyA2": find_newest_matching_file("/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
-        #                                     "output_dir/merge_files/*_compressedOnGenes_simple.tsv"),
-        "xrn-1": find_newest_matching_file("/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
-                                           "output_dir/merge_files/*_compressedOnGenes_simple.tsv")
+        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/"
+                 "merge_files/210713_compressedOnGenes_simple.tsv",
+        "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
+                    "output_dir/merge_files/*_compressedOnGenes_simple.tsv",
+        "totalRNA2": "/data16/marcus/working/"
+                     "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir/"
+                     "merge_files/*_compressedOnGenes_simple.tsv",
+        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/"
+                 "merge_files/*_compressedOnGenes_simple.tsv",
+        "polyA2": "/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
+                  "output_dir/merge_files/*_compressedOnGenes_simple.tsv",
+        "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
+                 "output_dir/merge_files/*_compressedOnGenes_simple.tsv"
     }
 
-    cutoff = 20
-    prefix = "hits_rank"
+    run_with = ["xrn-1", "totalRNA2"]
+
+    pathdict = {name: find_newest_matching_file(pathdict[name]) for name in run_with}
+
+    cutoff = 100
+    # prefix = "hits_rank"
     # prefix = "read_hits"
     # prefix = "polya_mean"
-    # prefix = "read_len_mean"
+    prefix = "read_len_mean"
     if len(pathdict.keys()) == 3:
         for to_drop in pathdict.keys():
             plotter_helper(pathdict, prefix, cutoff, one_to_drop=to_drop)
     else:
         plotter_helper(pathdict, prefix, cutoff)
-    
-    # plotly_click_to_clipboard()
