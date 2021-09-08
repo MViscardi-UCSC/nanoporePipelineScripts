@@ -312,10 +312,10 @@ def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", dro
 if __name__ == '__main__':
     annie_deseq_csv_path = "/data16/marcus/working/210204_smg-1and6_alteredGenes_fromAnnie/" \
                            "210209_GenesUpInSMG1AndSMG6.csv"
-    targ_list = parse_annies_deseq(annie_deseq_csv_path)
+    annies_deseq_genes = parse_annies_deseq(annie_deseq_csv_path)
     
     main("xrn-1",
-         drop_sub=50,
-         target_list=targ_list,
+         drop_sub=25,
+         target_list=annies_deseq_genes,
          target_column="gene_id",
          )
