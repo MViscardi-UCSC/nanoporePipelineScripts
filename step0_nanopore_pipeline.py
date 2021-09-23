@@ -77,7 +77,7 @@ def find_newest_matching_file(path_str):
 
 def gene_names_to_gene_ids(tsv_path: str = "/data16/marcus/genomes/elegansRelease100"
                                            "/Caenorhabditis_elegans.WBcel235.100.gtf"
-                                           ".dataframe_parse.tsv") -> pd.DataFrame:
+                                           ".tsv") -> pd.DataFrame:
     df = pd.read_csv(tsv_path, sep="\t")[["gene_name", "gene_id"]].drop_duplicates(ignore_index=True)
     return df
 
