@@ -16,6 +16,8 @@ import pandas as pd
 import numpy as np
 from nanoporePipelineCommon import find_newest_matching_file
 
+pd.set_option("display.max_columns", None)
+
 WORKING_DIR_DICT = {"polyA": "210528_NanoporeRun_0639_L3s",  # Best (overkill) depth
                     "riboD": "210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3",  # Gross
                     "totalRNA": "210709_NanoporeRun_totalRNA_0639_L3",  # Low depth
@@ -30,8 +32,6 @@ def load_reads_parquet(parquet_path) -> pd.DataFrame:
 
 
 def process_to_pdf(compressed_reads_df, min_max=(-300, 300)):
-    # This is going to be a SUPER hacky first pass at getting this working,
-    #   basically ignoring the stuff I note at the top of this file!
     def manual_pdf(_stop_distances: list, min_x: int, max_x: int) -> np.array:
         man_pdf = []
         _stop_distances.sort(reverse=False)
@@ -50,37 +50,81 @@ def process_to_pdf(compressed_reads_df, min_max=(-300, 300)):
         return man_pdf
 
     def transcripts_across_range(transcripts: list, min_x: int, max_x: int) -> np.array:
-        # So I am going to want to take transcript info from the list and use it to find
-        #   each transcript's length relative to its stop
+        """
+        So I am going to want to take transcript info from the list and use it to find
+        each transcript's length relative to its stop
+        :param transcripts: list of all transcript_ids, to filter the GTF annotations by
+        :param min_x: minimum range value of the window
+        :param max_x: maximum range value of the window
+        :return: a array containing the distribution of transcripts spanning each point of the window
+        """
+        
+        # First load the preprocessed (faster) GTF file:
         annot_df = pd.read_parquet("/data16/marcus/genomes/elegansRelease100/"
                                    "Caenorhabditis_elegans.WBcel235.100.gtf.parquet")
+        
+        # Filter the GTF file for only transcripts that I found in my sequencing:
         annot_df = annot_df[annot_df["transcript_id"].isin(transcripts)]
-
-        needed_columns = ["start", "end", "strand", "transcript_id"]
-
+        
+        # Filter for only stop_codon and transcript feature rows:
+        needed_columns = ["transcript_id", "strand", "start", "end"]
         stop_df = annot_df[annot_df.feature == "stop_codon"][needed_columns]
         transcript_df = annot_df[annot_df.feature == "transcript"][needed_columns]
+        
+        # Merge these two dataframes on the transcript ID
         annot_df = stop_df.merge(transcript_df, on=["transcript_id", "strand"],
                                  suffixes=["_stop", "_transcript"])
-
-        def calc_stop_to_tss(strand, start_stop, end_stop, start_trans, end_trans):
+        # Note: There seems to be a few transcript identities with 2 annotated stop codons.
+        #       For now, the solution to this is just going to be dropping these weird cases,
+        #       eventually I could use the annotated 3' UTR to pick the "real" stop.
+        #       Example:    Gene: WBGene00018161;   Transcript: F38A5.2b.2
+        print(f"Going to drop transcript_ids with multiple annotated stops or transcript regions"
+              f"\nThere are {annot_df.duplicated(subset='transcript_id').shape[0]} transcript_ids"
+              f"that match this case.")
+        annot_df = annot_df.drop_duplicates(subset="transcript_id").sort_values("transcript_id", ignore_index=True)
+        
+        def calc_stop_to_tss_and_tes(row) -> [int, int]:
+            # Split the row into variables:
+            strand = row["strand"]
+            start_stop = row["start_stop"]
+            end_stop = row["end_stop"]
+            start_trans = row["start_transcript"]
+            end_trans = row["end_transcript"]
+            
+            # Calculate the distances from the stop codon to either end of the transcript
             if strand == "-":
                 stop_to_tss = end_trans - end_stop
+                stop_to_tes = start_stop - start_trans
             elif strand == "+":
-                stop_to_tss = start_trans - start_stop
+                stop_to_tss = start_stop - start_trans
+                stop_to_tes = end_trans - end_stop
             else:
                 raise NotImplementedError(f"The strand for one gene was \"{strand}\"!?!?")
-            return stop_to_tss
+            return stop_to_tss, stop_to_tes
 
-        annot_df["stop_to_tss"] = pd.DataFrame(annot_df.apply(lambda x: calc_stop_to_tss(x["strand"],
-                                                                                         x["start_stop"],
-                                                                                         x["end_stop"],
-                                                                                         x["start_transcript"],
-                                                                                         x["end_transcript"]), axis=1),
-                                               index=annot_df.index)
+        annot_df[["stop_to_tss", "stop_to_tes"]] = pd.DataFrame(annot_df.apply(lambda x: calc_stop_to_tss_and_tes(row=x),
+                                                                               axis=1, result_type='expand'),
+                                                                index=annot_df.index)
+        # Note: Transcripts in the stop_to_tes column with "0" as their value could be tossed,
+        #       as they don't have annotated 3' UTRs!
         print(annot_df)
-        stop_to_tss_pdf = manual_pdf(annot_df["stop_to_tss"].to_list(), min_x, max_x)  # This is for sure the wrong way to go about this
-        return stop_to_tss_pdf
+        # Make a variable to hold the window range, and the index of zero:
+        window_list = list(range(min_x, max_x+1))
+        window_zero_index = window_list.index(0)
+        stop_to_tss_pdf = manual_pdf(annot_df["stop_to_tss"].to_list(), min_x, max_x)
+        stop_to_tes_pdf = manual_pdf(annot_df["stop_to_tes"].to_list(), min_x, max_x)
+        # Convert the pointwize pdf to a bell curve type thing(?):
+        # Showing how many genes span each nucleotide along the window:
+        spanning_transcript_count = []
+        for i, (to_tss, to_tes) in enumerate(zip(stop_to_tss_pdf, stop_to_tes_pdf)):
+            at_pos = to_tss - to_tes
+            if i == 0:
+                spanning_transcript_count.append(at_pos)
+            else:
+                sum_to_pos = spanning_transcript_count[-1]
+                spanning_transcript_count.append(at_pos + sum_to_pos)
+        print(list(zip(stop_to_tss_pdf, stop_to_tes_pdf)), spanning_transcript_count, sep="\n")
+        return spanning_transcript_count  # TODO: Something is going wrong here, and it is due to the pdf function!!
 
     print(compressed_reads_df.info())
 
@@ -102,7 +146,7 @@ def plotly_pdf(stop_distances_pdf, window_min, window_max):
 
 if __name__ == '__main__':
     working_dir = "/data16/marcus/working/" + WORKING_DIR_DICT["xrn-1"]
-    range_to_plot = (-300, 300)
+    range_to_plot = (-50, 50)
     stops_pdf = process_to_pdf(load_reads_parquet(find_newest_matching_file(f"{working_dir}/output_dir"
                                                                             f"/merge_files/*_compressedOnTranscripts_"
                                                                             f"fromJoshsSystem.parquet")),
