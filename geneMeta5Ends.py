@@ -31,7 +31,7 @@ def load_reads_parquet(parquet_path) -> pd.DataFrame:
     return pd.read_parquet(parquet_path)
 
 
-def process_to_pdf(compressed_reads_df, min_max=(-300, 300)):
+def process_to_pdf(compressed_reads_df, min_max=(-300, 300), smallest_allowed_utr=None):
     def manual_pdf(_stop_distances: list, min_x: int, max_x: int) -> np.array:
         man_pdf = []
         _stop_distances.sort(reverse=False)
@@ -49,7 +49,8 @@ def process_to_pdf(compressed_reads_df, min_max=(-300, 300)):
             man_pdf.append(hits_at_x)
         return man_pdf
 
-    def transcripts_across_range(transcripts: list, min_x: int, max_x: int) -> np.array:
+    def transcripts_across_range(transcripts: list, min_x: int, max_x: int,
+                                 smallest_allowed_utr=None) -> np.array:
         """
         So I am going to want to take transcript info from the list and use it to find
         each transcript's length relative to its stop
@@ -105,13 +106,12 @@ def process_to_pdf(compressed_reads_df, min_max=(-300, 300)):
         annot_df[["stop_to_tss", "stop_to_tes"]] = pd.DataFrame(annot_df.apply(lambda x: calc_stop_to_tss_and_tes(row=x),
                                                                                axis=1, result_type='expand'),
                                                                 index=annot_df.index)
+        if isinstance(smallest_allowed_utr, int):
+            annot_df = annot_df[annot_df["stop_to_tes"] >= smallest_allowed_utr]
         # Note: Transcripts in the stop_to_tes column with "0" as their value could be tossed,
         #       as they don't have annotated 3' UTRs!
         print(annot_df)
-        # Make a variable to hold the window range, and the index of zero:
-        window_list = list(range(min_x, max_x+1))
-        window_zero_index = window_list.index(0)
-        stop_to_tss_pdf = manual_pdf(annot_df["stop_to_tss"].to_list(), min_x, max_x)
+        stop_to_tss_pdf = manual_pdf([x * -1 for x in annot_df["stop_to_tss"].to_list()], min_x, max_x)
         stop_to_tes_pdf = manual_pdf(annot_df["stop_to_tes"].to_list(), min_x, max_x)
         # Convert the pointwize pdf to a bell curve type thing(?):
         # Showing how many genes span each nucleotide along the window:
@@ -124,12 +124,18 @@ def process_to_pdf(compressed_reads_df, min_max=(-300, 300)):
                 sum_to_pos = spanning_transcript_count[-1]
                 spanning_transcript_count.append(at_pos + sum_to_pos)
         print(list(zip(stop_to_tss_pdf, stop_to_tes_pdf)), spanning_transcript_count, sep="\n")
+        import seaborn as sea
+        import matplotlib.pyplot as plt
+        quick_fig = sea.lineplot(x=range(min_x, max_x+1), y=spanning_transcript_count)
+        # quick_fig.set(xlim=(-10, 200))
+        plt.show()
         return spanning_transcript_count  # TODO: Something is going wrong here, and it is due to the pdf function!!
 
     print(compressed_reads_df.info())
 
     stop_distances = np.concatenate(compressed_reads_df.stop_distances.to_list()).ravel().tolist()
-    stop_distances_pdf = manual_pdf(stop_distances, min_max[0], min_max[1])
+    stop_distances_pdf = manual_pdf(stop_distances, min_max[0], min_max[1],
+                                    smallest_allowed_utr=smallest_allowed_utr)
 
     # This will figure out how many potential genes there are at each location,
     #   which I can use to normalize the stop_distances PDF (Hopefully. . . ?)
@@ -146,9 +152,10 @@ def plotly_pdf(stop_distances_pdf, window_min, window_max):
 
 if __name__ == '__main__':
     working_dir = "/data16/marcus/working/" + WORKING_DIR_DICT["xrn-1"]
-    range_to_plot = (-50, 50)
+    range_to_plot = (-1000, 1000)
     stops_pdf = process_to_pdf(load_reads_parquet(find_newest_matching_file(f"{working_dir}/output_dir"
                                                                             f"/merge_files/*_compressedOnTranscripts_"
                                                                             f"fromJoshsSystem.parquet")),
-                               min_max=range_to_plot)
+                               min_max=range_to_plot,
+                               smallest_allowed_utr=50)
     plotly_pdf(stops_pdf, range_to_plot[0], range_to_plot[1])
