@@ -255,7 +255,7 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-300, 300),
         raise ValueError(f"The dataframe for plotting is empty!!")
 
 
-def compress_on_transcripts(merged_df, drop_sub):
+def compress_on_transcripts(merged_df, drop_sub, save_as=None):
     transcript_groupby = merged_df.groupby(["gene_id_fromAssign", "transcript_id"])
     smaller_df = transcript_groupby["to_stop"].apply(list).to_frame(name="stop_distances")
     smaller_df["transcript_hits"] = transcript_groupby["transcript_id"].apply(len).to_frame(name="transcript_hits")
@@ -265,6 +265,9 @@ def compress_on_transcripts(merged_df, drop_sub):
     smaller_df = smaller_df.merge(gene_df, on="gene_id", how="inner")
     smaller_df["identifier"] = smaller_df["gene_name"].astype(str) + " (" + smaller_df["transcript_id"].astype(str) \
                               + ")" + " [" + smaller_df["transcript_hits"].astype(str) + "]"
+    if isinstance(save_as, str):
+        smaller_df.to_parquet(save_as)
+        print(f"Saved file to {save_as}")
     return smaller_df
 
 
@@ -298,7 +301,10 @@ def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", dro
     for df in [reads_df, read_assignment_df]:
         print(df.info())
     merged_df = merge_on_chr_pos(read_assignment_df, reads_df)
-    smaller_df = compress_on_transcripts(merged_df, drop_sub)
+    smaller_df = compress_on_transcripts(merged_df, drop_sub,
+                                         save_as=f"{working_dir}/output_dir/merge_files/"
+                                                 f"{get_dt(for_output=True)}_compressedOnTranscripts_"
+                                                 f"fromJoshsSystem.parquet")
     if target_list:
         selected_df = smaller_df[smaller_df[target_column].isin(target_list)]
         if selected_df.shape[0] >= 1:
@@ -316,6 +322,6 @@ if __name__ == '__main__':
     
     main("xrn-1",
          drop_sub=25,
-         target_list=annies_deseq_genes,
-         target_column="gene_id",
+         # target_list=annies_deseq_genes,
+         # target_column="gene_id",
          )
