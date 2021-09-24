@@ -58,16 +58,17 @@ def manual_pdf(_stop_distances: list, min_x: int, max_x: int) -> np.array:
 
 def transcripts_across_range_by_annotations(transcripts: list, min_x: int, max_x: int,
                                             smallest_allowed_utr=None,
-                                            compressed_reads_df=None) -> list:
+                                            compressed_reads_df=None) -> [list, list]:
     """
     So I am going to want to take transcript info from the list and use it to find
     each transcript's length relative to its stop
+    
     :param transcripts: list of all transcript_ids, to filter the GTF annotations by
     :param min_x: minimum range value of the window
     :param max_x: maximum range value of the window
     :param smallest_allowed_utr: int value of the shorter UTR that is accepted
     :param compressed_reads_df: pass if you want to use reads, rather than annotations
-    for the CDS region of the normalization
+           for the CDS region of the normalization
     
     :return: an array containing the distribution of transcripts spanning each point of the window
     """
@@ -142,17 +143,35 @@ def transcripts_across_range_by_annotations(transcripts: list, min_x: int, max_x
     quick_fig = sea.lineplot(x=range(min_x, max_x + 1), y=spanning_transcript_count)
     # quick_fig.set(xlim=(-10, 200))
     plt.show()
-    return spanning_transcript_count
+    return spanning_transcript_count, annot_df.transcript_id.to_list()
 
 
-def transcriots_across_range_by_reads(compressed_reads_df, min_max) -> list:
-    pass
-
-
-def process_to_pdf(compressed_reads_df, min_max=(-300, 300), smallest_allowed_utr=None):
+def process_to_pdf(compressed_reads_df: pd.DataFrame, min_max: (int, int) = (-300, 300),
+                   smallest_allowed_utr: int = None) -> list:
+    """
+    This method takes the reads dataframe, and converts it to a normalized pdf over the min_max
+    window
+    
+    :param compressed_reads_df: dataframe that was produced by the compress_on_transcripts method
+           from geneHeatmaps2 (pass the save_as param!)
+    :param min_max: the range over which the pdf will be produced
+    :param smallest_allowed_utr: lower limit of annotated 3' UTR length that will be allowed through
+    :return: a pdf across the min_max window of normalized number of 5'ends per position relative
+             to the stop codon
+    """
     print(compressed_reads_df.info())
 
+    # This will figure out how many potential genes there are at each location,
+    #   which I can later use to normalize the stop_distances PDF (Hopefully. . . ?)
+    normalization_factor_list, passed_transcript_list = transcripts_across_range_by_annotations(
+        compressed_reads_df.transcript_id.to_list(),
+        min_max[0], min_max[1],
+        smallest_allowed_utr=smallest_allowed_utr)
+    if isinstance(smallest_allowed_utr, int):
+        compressed_reads_df = compressed_reads_df[compressed_reads_df.transcript_id.isin(passed_transcript_list)]
+
     stop_distances_list_of_lists = compressed_reads_df.stop_distances.to_list()
+
     # Turn each individual transcript into a pdf of "window size"
     stop_pdfs_list_of_lists = [manual_pdf(transcript,
                                           min_max[0],
@@ -165,19 +184,13 @@ def process_to_pdf(compressed_reads_df, min_max=(-300, 300), smallest_allowed_ut
         norm_factor = np.sum(transcript_stops)
         normalized_array = [transcript_stop * (1.0 / norm_factor) for transcript_stop in transcript_stops]
         normed_stop_distances_list_of_lists.append(normalized_array)
+
     # Compress all of these so that it's a single list of "window size"
     stop_distances = np.sum(normed_stop_distances_list_of_lists, axis=0)
     print(stop_distances)
-    # stop_distances_pdf = manual_pdf(stop_distances, min_max[0], min_max[1])
-    stop_distances_pdf = stop_distances
 
-    # This will figure out how many potential genes there are at each location,
-    #   which I can use to normalize the stop_distances PDF (Hopefully. . . ?)
-    normalization_factor_list = transcripts_across_range_by_annotations(compressed_reads_df.transcript_id.to_list(),
-                                                                        min_max[0], min_max[1],
-                                                                        smallest_allowed_utr=smallest_allowed_utr)
     normalized_stop_distance_pdf = []
-    for (pos, pos_txns) in zip(stop_distances_pdf, normalization_factor_list):
+    for (pos, pos_txns) in zip(stop_distances, normalization_factor_list):
         if pos_txns != 0:
             normalized_stop_distance_pdf.append(pos / pos_txns)
             print(f"{pos:>6} / {pos_txns} = {pos / pos_txns}")
