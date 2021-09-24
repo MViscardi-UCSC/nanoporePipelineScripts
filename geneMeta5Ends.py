@@ -57,7 +57,8 @@ def manual_pdf(_stop_distances: list, min_x: int, max_x: int) -> np.array:
 
 
 def transcripts_across_range_by_annotations(transcripts: list, min_x: int, max_x: int,
-                                            smallest_allowed_utr=None) -> list:
+                                            smallest_allowed_utr=None,
+                                            compressed_reads_df=None) -> list:
     """
     So I am going to want to take transcript info from the list and use it to find
     each transcript's length relative to its stop
@@ -65,6 +66,9 @@ def transcripts_across_range_by_annotations(transcripts: list, min_x: int, max_x
     :param min_x: minimum range value of the window
     :param max_x: maximum range value of the window
     :param smallest_allowed_utr: int value of the shorter UTR that is accepted
+    :param compressed_reads_df: pass if you want to use reads, rather than annotations
+    for the CDS region of the normalization
+    
     :return: an array containing the distribution of transcripts spanning each point of the window
     """
 
