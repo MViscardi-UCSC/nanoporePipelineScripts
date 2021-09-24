@@ -64,6 +64,7 @@ def transcripts_across_range_by_annotations(transcripts: list, min_x: int, max_x
     :param transcripts: list of all transcript_ids, to filter the GTF annotations by
     :param min_x: minimum range value of the window
     :param max_x: maximum range value of the window
+    :param smallest_allowed_utr: int value of the shorter UTR that is accepted
     :return: an array containing the distribution of transcripts spanning each point of the window
     """
 
@@ -138,6 +139,10 @@ def transcripts_across_range_by_annotations(transcripts: list, min_x: int, max_x
     # quick_fig.set(xlim=(-10, 200))
     plt.show()
     return spanning_transcript_count
+
+
+def transcriots_across_range_by_reads(compressed_reads_df, min_max) -> list:
+    pass
 
 
 def process_to_pdf(compressed_reads_df, min_max=(-300, 300), smallest_allowed_utr=None):
