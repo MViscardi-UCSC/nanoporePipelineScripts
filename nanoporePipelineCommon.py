@@ -28,6 +28,17 @@ def find_newest_matching_file(path_str):
         raise ValueError(f"Failed to find any files matching \"{path_str}\"")
 
 
+def load_ski_pelo_targets(as_df=False):
+    df = pd.read_csv("/data16/marcus/working/210119_SkiPeloTargets_fromStarDust/"
+                         "170723_MSandM.wtAndSkiPelo_Bounds_-12_-14_S.DESeqgeneCts_"
+                         "diffExpression_2.7319418642771283e-06Down.txt", names=["gene_id"])
+    if as_df:
+        return df
+    else:
+        return df.gene_id.to_list()
+
+
 if __name__ == '__main__':
-    parquet = tsv_to_parquet("./Caenorhabditis_elegans.WBcel235.100.gtf.dataframe_parse.tsv")
-    print(pd.read_parquet(parquet).info())
+    # parquet = tsv_to_parquet("./Caenorhabditis_elegans.WBcel235.100.gtf.dataframe_parse.tsv")
+    # print(pd.read_parquet(parquet).info())
+    print(load_ski_pelo_targets(as_df=True))
