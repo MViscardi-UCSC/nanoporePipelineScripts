@@ -56,8 +56,8 @@ def manual_pdf(_stop_distances: list, min_x: int, max_x: int) -> np.array:
     return man_pdf
 
 
-def transcripts_across_range(transcripts: list, min_x: int, max_x: int,
-                             smallest_allowed_utr=None) -> list:
+def transcripts_across_range_by_annotations(transcripts: list, min_x: int, max_x: int,
+                                            smallest_allowed_utr=None) -> list:
     """
     So I am going to want to take transcript info from the list and use it to find
     each transcript's length relative to its stop
@@ -164,9 +164,9 @@ def process_to_pdf(compressed_reads_df, min_max=(-300, 300), smallest_allowed_ut
 
     # This will figure out how many potential genes there are at each location,
     #   which I can use to normalize the stop_distances PDF (Hopefully. . . ?)
-    normalization_factor_list = transcripts_across_range(compressed_reads_df.transcript_id.to_list(),
-                                                         min_max[0], min_max[1],
-                                                         smallest_allowed_utr=smallest_allowed_utr)
+    normalization_factor_list = transcripts_across_range_by_annotations(compressed_reads_df.transcript_id.to_list(),
+                                                                        min_max[0], min_max[1],
+                                                                        smallest_allowed_utr=smallest_allowed_utr)
     normalized_stop_distance_pdf = []
     for (pos, pos_txns) in zip(stop_distances_pdf, normalization_factor_list):
         if pos_txns != 0:
