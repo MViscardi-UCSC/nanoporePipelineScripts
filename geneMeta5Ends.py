@@ -240,13 +240,9 @@ def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True):
     else:
         x = range(window_min, window_max + 1)
         y = stop_distances_pdf
-    
+
     fig = px.line(x=x, y=y)
-    
-    fig.add_shape(type="line",
-                  x0=0, x1=0, xref='x',
-                  y0=0, y1=1, yref='paper',
-                  line_color='darkred')
+
     fig.add_annotation(x=0, y=-0.05, xref="x", yref="paper",
                        text="<b>Stop Codon</b>", showarrow=False,
                        font_size=15, )
@@ -256,6 +252,11 @@ def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True):
     fig.add_annotation(x=1, y=-0.05, xref="paper", yref="paper",
                        text="<b>3' UTR</b>", showarrow=False,
                        font_size=15)
+    fig.add_shape(type="line",
+                  x0=0, x1=0, xref='x',
+                  y0=0, y1=1, yref='paper',
+                  line_color='darkred')
+
     title = "Meta Plot of 5' Ends of ONT dRNA-seq Reads"
     fig.update_layout(
         title=title,
