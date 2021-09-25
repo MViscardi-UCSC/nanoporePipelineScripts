@@ -57,8 +57,9 @@ def manual_pdf(_stop_distances: list, min_x: int, max_x: int) -> np.array:
     return man_pdf
 
 
-def merge_tss_and_tes_to_cdf(stop_to_tes_pdf: list, stop_to_tss_pdf: list,
-                             min_x: int, max_x: int, plot_it: bool = True) -> list:
+def merge_tss_and_tes_to_cdf(stop_to_tss_pdf: list, stop_to_tes_pdf: list,
+                             min_x: int, max_x: int, plot_it: bool = True,
+                             tss_source="annot", tes_source="annot") -> list:
     """
     So I am going to want to take transcript info from the list and use it to find
     each transcript's length relative to its stop
@@ -69,19 +70,26 @@ def merge_tss_and_tes_to_cdf(stop_to_tes_pdf: list, stop_to_tss_pdf: list,
     # Convert the pointwize pdf to a bell curve type thing(?),
     # Showing how many genes span each nucleotide along the window:
     spanning_transcript_count = []
+    stop_to_tss_cumu = []
+    stop_to_tes_cumu = []
     for i, (to_tss, to_tes) in enumerate(zip(stop_to_tss_pdf, stop_to_tes_pdf)):
         at_pos = to_tss - to_tes
         if i == 0:
             spanning_transcript_count.append(at_pos)
+            stop_to_tss_cumu.append(to_tss)
+            stop_to_tes_cumu.append(to_tes)
         else:
             sum_to_pos = spanning_transcript_count[-1]
             spanning_transcript_count.append(at_pos + sum_to_pos)
+            stop_to_tss_cumu.append(to_tss + stop_to_tss_cumu[-1])
+            stop_to_tes_cumu.append(to_tes + stop_to_tes_cumu[-1])
     print(list(zip(stop_to_tss_pdf, stop_to_tes_pdf)), spanning_transcript_count, sep="\n")
     if plot_it:
         import seaborn as sea
         import matplotlib.pyplot as plt
-        quick_fig = sea.lineplot(x=range(min_x, max_x + 1), y=spanning_transcript_count)
-        # quick_fig.set(xlim=(-10, 200))
+        sea.lineplot(x=range(min_x, max_x + 1), y=spanning_transcript_count, label="spanning transcripts")
+        sea.lineplot(x=range(min_x, max_x + 1), y=stop_to_tss_cumu, label=f"tss_{tss_source}")
+        sea.lineplot(x=range(min_x, max_x + 1), y=stop_to_tes_cumu, label=f"tes_{tes_source}")
         plt.show()
     return spanning_transcript_count
 
@@ -94,9 +102,11 @@ def annot_df_to_pdfs(annot_df: pd.DataFrame, max_x: int, min_x: int) -> [list, l
 
     :return: 
     """
-    stop_to_tss_pdf = manual_pdf([x * 1 for x in annot_df["stop_to_tss"].to_list()], min_x, max_x)
-    stop_to_tes_pdf = manual_pdf([x * -1 for x in annot_df["stop_to_tes"].to_list()], min_x, max_x)
-    return stop_to_tes_pdf, stop_to_tss_pdf
+    # Sign change below is not to make the items in the list negative numbers for the combining between
+    #   TSS and TES, but is rather needed so that TSSs are actually in the CDS in my system as it is now!!
+    stop_to_tss_pdf = manual_pdf([x * -1 for x in annot_df["stop_to_tss"].to_list()], min_x, max_x)  # Neg to be in CDS
+    stop_to_tes_pdf = manual_pdf(annot_df["stop_to_tes"].to_list(), min_x, max_x)
+    return stop_to_tss_pdf, stop_to_tes_pdf
 
 
 def process_gtf(transcripts: list, smallest_allowed_utr: int = None) -> pd.DataFrame:
@@ -112,15 +122,15 @@ def process_gtf(transcripts: list, smallest_allowed_utr: int = None) -> pd.DataF
     # First load the preprocessed (faster) GTF file:
     annot_df = pd.read_parquet("/data16/marcus/genomes/elegansRelease100/"
                                "Caenorhabditis_elegans.WBcel235.100.gtf.parquet")
-    
+
     # Filter the GTF file for only transcripts that I found in my sequencing:
     annot_df = annot_df[annot_df["transcript_id"].isin(transcripts)]
-    
+
     # Filter for only stop_codon and transcript feature rows:
     needed_columns = ["transcript_id", "strand", "start", "end"]
     stop_df = annot_df[annot_df.feature == "stop_codon"][needed_columns]
     transcript_df = annot_df[annot_df.feature == "transcript"][needed_columns]
-    
+
     # Merge these two dataframes on the transcript ID
     annot_df = stop_df.merge(transcript_df, on=["transcript_id", "strand"],
                              suffixes=["_stop", "_transcript"])
@@ -128,7 +138,7 @@ def process_gtf(transcripts: list, smallest_allowed_utr: int = None) -> pd.DataF
     #       For now, the solution to this is just going to be dropping these weird cases,
     #       eventually I could use the annotated 3' UTR to pick the "real" stop.
     #       Example:    Gene: WBGene00018161;   Transcript: F38A5.2b.2
-    
+
     print(f"Going to drop transcript_ids with multiple annotated stops or transcript regions"
           f"\nThere are {annot_df.duplicated(subset='transcript_id').shape[0]} transcript_ids"
           f" that match this case.")
@@ -177,8 +187,39 @@ def normalize_list_internally(un_normalized_list: list, norm_type="sum_to_max", 
     return normalized_array
 
 
+def calc_stop_to_tss_pdf_w_reads(compressed_reads_df, min_x, max_x) -> list:
+    """
+    
+    :param compressed_reads_df: 
+    :param min_x: 
+    :param max_x: 
+    :return: 
+    """
+
+    def find_index_of_first_value_greater_than_1(stops_pdf):
+        return next(i for i, v in enumerate(stops_pdf) if v > 0)
+
+    compressed_reads_df["first_read_edge_index"] = compressed_reads_df. \
+        apply(lambda x: find_index_of_first_value_greater_than_1(x["stop_distances_pdf"]),
+              axis=1)
+    window_size = max_x - min_x + 1
+
+    def make_array_with_1_at_first_hit(index_of_hit, breaker=False):
+        array = np.zeros(window_size)
+        array[index_of_hit] = 1
+        if index_of_hit != 0 and breaker:
+            print("cool!")
+        return array
+
+    compressed_reads_df["stop_to_longest_read"] = compressed_reads_df. \
+        apply(lambda x: make_array_with_1_at_first_hit(x["first_read_edge_index"]), axis=1)
+
+    stop_to_longest_reads_pdf = np.sum(compressed_reads_df["stop_to_longest_read"].to_list(), axis=0)
+    return stop_to_longest_reads_pdf
+
+
 def process_to_pdf(compressed_reads_df: pd.DataFrame, min_max: (int, int) = (-300, 300),
-                   smallest_allowed_utr: int = None) -> list:
+                   smallest_allowed_utr: int = None, normalize: bool = True, normalize_with_reads=True) -> list:
     """
     This method takes the reads dataframe, and converts it to a normalized pdf over the min_max
     window
@@ -187,6 +228,9 @@ def process_to_pdf(compressed_reads_df: pd.DataFrame, min_max: (int, int) = (-30
            from geneHeatmaps2 (pass the save_as param!)
     :param min_max: the range over which the pdf will be produced
     :param smallest_allowed_utr: lower limit of annotated 3' UTR length that will be allowed through
+    :param normalize: 
+    :param normalize_with_reads: 
+    
     :return: a pdf across the min_max window of normalized number of 5'ends per position relative
              to the stop codon
     """
@@ -209,39 +253,69 @@ def process_to_pdf(compressed_reads_df: pd.DataFrame, min_max: (int, int) = (-30
 
     # Normalize each pdf so that their all only relative to their own transcript
     compressed_reads_df["normed_stops_pdf"] = pd.DataFrame(
-        compressed_reads_df.apply(lambda x: normalize_list_internally(x["stop_distances_pdf"]),
+        compressed_reads_df.apply(lambda x: normalize_list_internally(x["stop_distances_pdf"],
+                                                                      # norm_type="max_value_is_max",
+                                                                      norm_type="sum_to_max",
+                                                                      ),
                                   axis=1), index=compressed_reads_df.index)
 
     # Convert to a list of lists and compress all of these so that it's a single list of "window size"
     stop_distances = np.sum(compressed_reads_df.normed_stops_pdf.to_list(), axis=0)
     print(stop_distances)
 
-    # Calculate normalization factor from annotations!
-    stop_to_tes_pdf, stop_to_tss_pdf = annot_df_to_pdfs(annotation_df, max_x, min_x)
-    normalization_factor_list = merge_tss_and_tes_to_cdf(stop_to_tss_pdf, stop_to_tes_pdf, min_x, max_x)
+    if normalize:
+        # Calculate normalization factor from annotations!
+        stop_to_tss_pdf, stop_to_tes_pdf = annot_df_to_pdfs(annotation_df, max_x, min_x)
 
-    # Normalize the stop_distances by the normalization factor list
-    normalized_stop_distance_pdf = []
-    for (pos, pos_txns) in zip(stop_distances, normalization_factor_list):
-        if pos_txns != 0:
-            normalized_stop_distance_pdf.append(pos / pos_txns)
-            print(f"{pos:>6} / {pos_txns} = {pos / pos_txns}")
+        if normalize_with_reads:
+            # Calculate CDS/tss normalization factor from reads:
+            stop_to_tss_pdf_from_reads = calc_stop_to_tss_pdf_w_reads(compressed_reads_df, min_x, max_x)
+            stop_to_tss_pdf = stop_to_tss_pdf_from_reads
+            tss_source = "reads"
         else:
-            normalized_stop_distance_pdf.append(pos / 1)
-    return normalized_stop_distance_pdf
+            tss_source = "annot"
+
+        normalization_factor_list = merge_tss_and_tes_to_cdf(stop_to_tss_pdf,
+                                                             stop_to_tes_pdf,
+                                                             min_x,
+                                                             max_x,
+                                                             tss_source=tss_source)
+
+        # Normalize the stop_distances by the normalization factor list
+        normalized_stop_distance_pdf = []
+        for (pos, pos_txts) in zip(stop_distances, normalization_factor_list):
+            if pos_txts != 0:
+                normalized_stop_distance_pdf.append(pos / pos_txts)
+                # print(f"{pos:>6} / {pos_txts} = {pos / pos_txts}")
+            else:
+                normalized_stop_distance_pdf.append(pos / 1)
+        return normalized_stop_distance_pdf
+    else:
+        return stop_distances.tolist()
 
 
-def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True):
+def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True, rolling_avg=True):
     import plotly.express as px
+    import plotly.graph_objects as go
     print(stop_distances_pdf)
     if mask_edges:
-        x = range(window_min, window_max + 1)[1:-1]
+        x = list(range(window_min, window_max + 1))[1:-1]
         y = stop_distances_pdf[1:-1]
     else:
-        x = range(window_min, window_max + 1)
+        x = list(range(window_min, window_max + 1))
         y = stop_distances_pdf
 
-    fig = px.line(x=x, y=y)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=x, y=y, mode="lines", name="5'ends pdf"))
+
+    if rolling_avg:
+        df = pd.DataFrame(list(zip(x, y)), columns=["txt_pos", "pdf"])
+        for size in range(50, 50 * 5, 50):
+            df[f'{size}nt'] = df.pdf.rolling(size, min_periods=1).mean()
+            fig.add_trace(go.Scatter(x=df["txt_pos"].to_list(),
+                                     y=df[f'{size}nt'].to_list(),
+                                     mode="lines",
+                                     name=f'{size}nt rolling avg'))
 
     fig.add_annotation(x=0, y=-0.05, xref="x", yref="paper",
                        text="<b>Stop Codon</b>", showarrow=False,
@@ -257,7 +331,7 @@ def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True):
                   y0=0, y1=1, yref='paper',
                   line_color='darkred')
 
-    title = "Meta Plot of 5' Ends of ONT dRNA-seq Reads"
+    title = f"Meta Plot of 5' Ends of ONT dRNA-seq Reads"
     fig.update_layout(
         title=title,
         xaxis_title="Position along meta-transcript relative to STOP",
@@ -269,16 +343,26 @@ def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True):
 
 
 if __name__ == '__main__':
+
     working_dir = "/data16/marcus/working/" + WORKING_DIR_DICT["xrn-1"]
-    range_to_plot = (-100, 100)
+
+    square_range = 2500  # None
+    if isinstance(square_range, int):
+        range_to_plot = (square_range * -1, square_range)
+    else:
+        range_to_plot = (-2500, 2500)
+
     stops_pdf = process_to_pdf(load_reads_parquet(find_newest_matching_file(f"{working_dir}/output_dir"
                                                                             f"/merge_files/*_compressedOnTranscripts_"
                                                                             f"fromJoshsSystem.parquet"
                                                                             ),
                                                   # target_list=["ets-4"],
                                                   # target_list=["E02C12.8"],
-                                                  # target_list=load_ski_pelo_targets(as_df=False),
+                                                  target_list=load_ski_pelo_targets(as_df=False),
                                                   target_column="gene_id",
                                                   ),
-                               min_max=range_to_plot, smallest_allowed_utr=50)
-    plotly_pdf(stops_pdf, range_to_plot[0], range_to_plot[1])
+                               min_max=range_to_plot, smallest_allowed_utr=50,
+                               normalize=True, normalize_with_reads=True)
+
+    plotly_pdf(stops_pdf, range_to_plot[0], range_to_plot[1],
+               mask_edges=True, rolling_avg=True)
