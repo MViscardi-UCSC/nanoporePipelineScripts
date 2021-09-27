@@ -17,7 +17,7 @@ import numpy as np
 from nanoporePipelineCommon import find_newest_matching_file, load_ski_pelo_targets
 
 pd.set_option("display.max_columns", None)
-pd.options.mode.chained_assignment = None
+pd.set_option("mode.chained_assignment", None)
 
 WORKING_DIR_DICT = {"polyA": "210528_NanoporeRun_0639_L3s",  # Best (overkill) depth
                     "riboD": "210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3",  # Gross
@@ -197,6 +197,10 @@ def calc_stop_to_tss_pdf_w_reads(compressed_reads_df, min_x, max_x) -> list:
     """
 
     def find_index_of_first_value_greater_than_1(stops_pdf):
+        # Below uses the next opperator to return the first value of
+        #   the iterator, because of the v > 0 step, next will return
+        #   the i (index) for the first value that passes the if state-
+        #   ment. Very fancy! Found it on stackOverflow
         return next(i for i, v in enumerate(stops_pdf) if v > 0)
 
     compressed_reads_df["first_read_edge_index"] = compressed_reads_df. \
@@ -294,8 +298,8 @@ def process_to_pdf(compressed_reads_df: pd.DataFrame, min_max: (int, int) = (-30
         return stop_distances.tolist()
 
 
-def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True, rolling_avg=True):
-    import plotly.express as px
+def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True,
+               rolling_avg=True, different_title=None):
     import plotly.graph_objects as go
     print(stop_distances_pdf)
     if mask_edges:
@@ -310,7 +314,7 @@ def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True, roll
 
     if rolling_avg:
         df = pd.DataFrame(list(zip(x, y)), columns=["txt_pos", "pdf"])
-        for size in range(50, 50 * 5, 50):
+        for size in [50, 100, 200, 500]:
             df[f'{size}nt'] = df.pdf.rolling(size, min_periods=1).mean()
             fig.add_trace(go.Scatter(x=df["txt_pos"].to_list(),
                                      y=df[f'{size}nt'].to_list(),
@@ -330,8 +334,10 @@ def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True, roll
                   x0=0, x1=0, xref='x',
                   y0=0, y1=1, yref='paper',
                   line_color='darkred')
-
-    title = f"Meta Plot of 5' Ends of ONT dRNA-seq Reads"
+    if isinstance(different_title, str):
+        title = different_title
+    else:
+        title = f"Meta Plot of 5' Ends of ONT dRNA-seq Reads"
     fig.update_layout(
         title=title,
         xaxis_title="Position along meta-transcript relative to STOP",
@@ -359,10 +365,13 @@ if __name__ == '__main__':
                                                   # target_list=["ets-4"],
                                                   # target_list=["E02C12.8"],
                                                   target_list=load_ski_pelo_targets(as_df=False),
+                                                  # target_column="gene_name",
                                                   target_column="gene_id",
                                                   ),
                                min_max=range_to_plot, smallest_allowed_utr=50,
                                normalize=True, normalize_with_reads=True)
 
     plotly_pdf(stops_pdf, range_to_plot[0], range_to_plot[1],
-               mask_edges=True, rolling_avg=True)
+               mask_edges=True, rolling_avg=True,
+               different_title=f"Meta Plot of 5' Ends of ONT dRNA-seq Reads (Ski/Pelo Targets)",
+               )
