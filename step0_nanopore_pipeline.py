@@ -106,7 +106,6 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
         parser.add_argument('--threads', metavar='threads', type=int, default=None,
                             help="Number of threads to be used by nanopolish and minimap2. [20]")
         parser.add_argument('--guppyConfig', metavar='guppyConfig', type=str,
-                            default='rna_r9.4.1_70bps_hac.cfg',
                             help="Configuration preset passed to the guppy_basecaller "
                                  "based on flowcell and kit used for run. Helpful "
                                  "table for picking a config @ https://denbi-nanopore-"
@@ -200,15 +199,16 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
         return settingsDict
 
     # Merge these dictionaries!
-    absoluteDefDict = {"printArgs": False,
-                       "nestedData": False,
-                       "regenerate": False,
-                       "altGenomeDirs": [],
-                       "threads": 20,
-                       "stepsToRun": "GMNFCP",
-                       "sampleID": "sample1",
-                       "condition": "conditionA",
-                       "minimapParam": "-x splice -uf -k14"}
+    absoluteDefDict = dict(printArgs=False,
+                           nestedData=False,
+                           regenerate=False,
+                           altGenomeDirs=[],
+                           threads=20,
+                           stepsToRun="GMNFCP",
+                           sampleID="sample1",
+                           condition="conditionA",
+                           minimapParam="-x splice -uf -k14",
+                           guppyConfig="rna_r9.4.1_70bps_hac.cfg")
     if skip_cli_dict:
         argDict = skip_cli_dict
     else:
