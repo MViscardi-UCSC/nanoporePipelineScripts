@@ -105,7 +105,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                             help="Path to sequencing data directory.")
         parser.add_argument('--threads', metavar='threads', type=int, default=None,
                             help="Number of threads to be used by nanopolish and minimap2. [20]")
-        parser.add_argument('--guppyConfig', metavar='guppy_config', type=str,
+        parser.add_argument('--guppyConfig', metavar='guppyConfig', type=str,
                             default='rna_r9.4.1_70bps_hac.cfg',
                             help="Configuration preset passed to the guppy_basecaller "
                                  "based on flowcell and kit used for run. Helpful "
