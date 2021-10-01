@@ -38,7 +38,17 @@ def load_ski_pelo_targets(as_df=False):
         return df.gene_id.to_list()
 
 
+def rev_compliment(seq: str, rna: bool = False) -> str:
+    from Bio.Seq import Seq
+    seq = Seq(seq)
+    if rna:
+        return seq.reverse_complement_rna()
+    else:
+        return seq.reverse_complement()
+
+
 if __name__ == '__main__':
     # parquet = tsv_to_parquet("./Caenorhabditis_elegans.WBcel235.100.gtf.dataframe_parse.tsv")
     # print(pd.read_parquet(parquet).info())
-    print(load_ski_pelo_targets(as_df=True))
+    # print(load_ski_pelo_targets(as_df=True))
+    print(rev_compliment("AAACCCGGGTTT"))
