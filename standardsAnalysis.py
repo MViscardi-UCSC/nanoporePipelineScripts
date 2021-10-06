@@ -196,7 +196,12 @@ def main(longer_match=False, errors: int = 3, head: int = None,
 
 if __name__ == '__main__':
     errors_allowed = 18
-    head_subset = 1000
-    main(longer_match=True, errors=errors_allowed, head=head_subset,
-         title=f"Allowing {errors_allowed} of 's' type errors (subset={head_subset}):",
-         print_matches=True)
+    head_subset = None  # 1000
+    if isinstance(head_subset, int):
+        main(longer_match=True, errors=errors_allowed, head=head_subset,
+             title=f"Allowing {errors_allowed} of 's' type errors (subset={head_subset}):",
+             print_matches=True)
+    else:
+        main(longer_match=True, errors=errors_allowed,
+             title=f"Allowing {errors_allowed} of 's' type errors",
+             print_matches=True)
