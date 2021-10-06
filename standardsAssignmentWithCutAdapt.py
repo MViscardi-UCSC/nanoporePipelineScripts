@@ -29,7 +29,7 @@ def cutadapt_call(adaptor_file, output_file, input_file):
                    f"--no-indels "
                    # f"--overlap 16 "
                    f"--action lowercase "
-                   "--rename '{header} adapter={adaptor_name}'"
+                   "--rename '{header} adapter={adapter_name}' "
                    f"{input_file}",
                    shell=True)
 
