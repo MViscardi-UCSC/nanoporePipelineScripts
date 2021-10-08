@@ -76,13 +76,13 @@ def fa_to_df(fa_file) -> pd.DataFrame:
 if __name__ == '__main__':
     path_to_fa = "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/" \
                    "output_dir/cat_files/cat.fastq"
-    subset_size = 10000
+    subset_size = 1000
     error_dict = {}
     heatmap_df = pd.DataFrame([])
     for error in range(30, 74, 2):
         error /= 100
-        for overlap in range(2, 42, 2):
-            cutadapt_call(adaptor_file="/data16/marcus/scripts/nanoporePipelineScripts/standardUMIs_plusUpstreamSeq.fa",
+        for overlap in range(2, 18, 2):
+            cutadapt_call(adaptor_file="/data16/marcus/scripts/nanoporePipelineScripts/standardUMIs.fa",
                           output_file="./deleteme.fa",
                           input_file=path_to_fa,
                           head=subset_size,
