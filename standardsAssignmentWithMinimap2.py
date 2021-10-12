@@ -125,10 +125,11 @@ def plot_value_counts(standards_df: pd.DataFrame, x: str = "adapter"):
     fig = sea.countplot(x=x, data=standards_df, order=x_labels)
     
     # Rotate x labels so they aren't overlapping
-    fig.set_xticklabels(fig.get_xticklabels(), rotation=40, ha="right")
+    fig.set_xticklabels(fig.get_xticklabels(),
+                        rotation=40, rotation_mode="anchor", ha='right')
     
     # Log y-scale, as the number of unmatched is wildly more than matches
-    fig.set(yscale="log")
+    fig.set(yscale='log')
     
     # Custom transform so that I can place number of observations w/
     # X based on data (so they're on the columns), and Y based on
