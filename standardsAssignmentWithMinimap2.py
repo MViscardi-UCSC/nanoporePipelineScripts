@@ -115,29 +115,42 @@ def plot_value_counts(standards_df: pd.DataFrame, x: str = "adapter"):
     import matplotlib.transforms as transforms
     
     sea.set_palette("colorblind")
-    # sea.set_style("darkgrid")
-    obs_names = standards_df[x].value_counts().keys()
-
-    fig = sea.countplot(x=x, data=standards_df, order=obs_names)
+    
+    # Set x_labels so that we can force order and pass that to the
+    # number of observations annotations
+    x_labels = standards_df[x].value_counts().keys()
+    
+    # Build the plot! The seaborn "countplot" is basically a bar plot
+    # with the dataframe_column.value_counts step built in!
+    fig = sea.countplot(x=x, data=standards_df, order=x_labels)
+    
+    # Rotate x labels so they aren't overlapping
     fig.set_xticklabels(fig.get_xticklabels(), rotation=40, ha="right")
+    
+    # Log y-scale, as the number of unmatched is wildly more than matches
     fig.set(yscale="log")
-    num_obs = standards_df[x].value_counts().values
-    num_obs = [str(x) for x in num_obs.tolist()]
-    num_obs = ["n: " + i for i in num_obs]
+    
+    # Custom transform so that I can place number of observations w/
+    # X based on data (so they're on the columns), and Y based on
+    # the paper/figure!
+    custom_transform = transforms.blended_transform_factory(fig.transData,
+                                                            fig.transAxes)
+    
+    # Below adapted from: https://www.python-graph-gallery.com/38-show-number-of-observation-on-boxplot
+    # Calculate number of obs per group, and throw them on the plot!
+    n_string_list = standards_df[x].value_counts().values
+    n_string_list = [str(x) for x in n_string_list.tolist()]
+    n_string_list = ["n: " + i for i in n_string_list]
 
-    # Custom transform so that I can set X based on data, and
-    # Y based on the paper
-    trans = transforms.blended_transform_factory(fig.transData,
-                                                 fig.transAxes)
     # Add it to the plot
-    pos = range(len(num_obs))
-    for tick, label in zip(pos, fig.get_xticklabels()):
+    pos = range(len(n_string_list))
+    for tick, x_label in zip(pos, fig.get_xticklabels()):
         fig.text(pos[tick],
                  0.01,
-                 num_obs[tick],
-                 transform=trans,
+                 n_string_list[tick],
+                 transform=custom_transform,
                  horizontalalignment='center',
-                 size='x-small',
+                 size='small',
                  color='k')
     plt.tight_layout()
     plt.show()

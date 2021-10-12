@@ -108,27 +108,31 @@ def multi_violin_seaborn(data, x="umi", y="polya_length", title: str = None):
     ax = sea.violinplot(data=data, x=x, y=y,
                         order=obs_names)
     
-    # Calculate number of obs per group
-    num_obs = data[x].value_counts().values
-    num_obs = [str(x) for x in num_obs.tolist()]
-    num_obs = ["n: " + i for i in num_obs]
+    if isinstance(title, str):
+        ax.set_title(title)
+
+    # Custom transform so that I can place number of observations w/
+    # X based on data (so they're on the columns), and Y based on
+    # the paper/figure!
+    custom_transform = transforms.blended_transform_factory(ax.transData,
+                                                            ax.transAxes)
     
-    # Custom transform so that I can set X based on data, and
-    # Y based on the paper
-    trans = transforms.blended_transform_factory(ax.transData,
-                                                 ax.transAxes)
+    # Below adapted from: https://www.python-graph-gallery.com/38-show-number-of-observation-on-boxplot
+    # Calculate number of obs per group
+    n_string_list = data[x].value_counts().values
+    n_string_list = [str(x) for x in n_string_list.tolist()]
+    n_string_list = ["n: " + i for i in n_string_list]
+    
     # Add it to the plot
-    pos = range(len(num_obs))
+    pos = range(len(n_string_list))
     for tick, label in zip(pos, ax.get_xticklabels()):
         ax.text(pos[tick],
                 0.01,
-                num_obs[tick],
-                transform=trans,
+                n_string_list[tick],
+                transform=custom_transform,
                 horizontalalignment='center',
                 size='x-small',
                 color='k')
-    if isinstance(title, str):
-        ax.set_title(title)
     plt.show()
 
 
