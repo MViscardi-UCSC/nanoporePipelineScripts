@@ -404,11 +404,11 @@ if __name__ == '__main__':
                  "output_dir/merge_files/*_compressedOnGenes_simple.tsv"
     }
 
-    run_with = ["xrn-1", "totalRNA2"]
+    run_with = ["polyA2", "totalRNA2"]
 
     pathdict = {name: find_newest_matching_file(pathdict[name]) for name in run_with}
 
-    cutoff = 100
+    cutoff = 25
 
     prefix_dict = {1: "read_hits",
                    2: "hits_rank",
