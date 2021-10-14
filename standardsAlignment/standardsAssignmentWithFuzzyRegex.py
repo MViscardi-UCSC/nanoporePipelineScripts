@@ -22,7 +22,7 @@ def load_standards_from_merged_on_reads(merged_on_reads_path: str, filter=True) 
     return df
 
 
-def parse_test_UMIs(path_to_csv="/data16/marcus/scripts/nanoporePipelineScripts/standardsUMIs.csv",
+def parse_test_UMIs(path_to_csv="/data16/marcus/scripts/nanoporePipelineScripts/standardsAlignment/standardsUMIs.csv",
                     keep_rev_comp=False) -> pd.DataFrame:
     df = pd.read_csv(path_to_csv)
     if keep_rev_comp:
@@ -158,9 +158,7 @@ def main(longer_match=False, errors: int = 3, head: int = None,
     if isinstance(head, int):
         reads_df = reads_df.head(head)
     if longer_match:
-        umi_df = parse_test_UMIs(path_to_csv="/data16/marcus/scripts/"
-                                             "nanoporePipelineScripts/"
-                                             "standardsUMIs_plusUpstreamSeq.csv")
+        umi_df = parse_test_UMIs(path_to_csv="/standardsAlignment/standardsUMIs_plusUpstreamSeq.csv")
     else:
         umi_df = parse_test_UMIs()
     # umi_df = umi_df[umi_df["identity"] == "30A"]

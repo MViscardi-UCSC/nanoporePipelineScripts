@@ -66,18 +66,28 @@ def align_standards(fastq_file=None, compressed_df=None) -> pd.DataFrame:
 def _loop_align_seq_to_adapters(aligner, name, seq, print_per_seq=False):
     if print_per_seq:
         print(f"Aligning read: {name}", end="\t")
+    # For each sequence, create empty dicts to store info about mapping hits
     hit_spans = {}
     hit_matches = {}
     hit_objs = {}
-    for hit in aligner.map(seq):  # Loop through the mapping hits generated
+    
+    # Loop through each of the mapping hits generated:
+    for hit in aligner.map(seq):
         hit_spans[hit.ctg] = [hit.r_st, hit.r_en]
-        hit_matches[hit.ctg] = hit.mlen
+        hit_matches[hit.ctg] = hit.mlen  # mlen is an actual count of matched map locations
         hit_objs[hit.ctg] = hit
-    if hit_matches:  # If there are any mapping hits:
-        if len(set(hit_matches.values())) > 1:  # If all the hits are not the same length!
+
+    # If1: there are any mapping hits:
+    if hit_matches:
+
+        # If2: all the hits are not the same length! (would be the same if they all
+        #     had mapped to non-unique areas <- ie. not the UMI)
+        if len(set(hit_matches.values())) > 1:
             max_match = max(hit_matches.values())
             max_match_keys = [k for k, v in hit_matches.items() if v == max_match]
-            if len(max_match_keys) == 1:  # If there is only one longest mapping hit:
+            
+            # If3: there is only one longest mapping hit:
+            if len(max_match_keys) == 1:
                 seq_assignment = {"read_id": name,
                                   "adapter": max_match_keys[0],
                                   "mapping_obj": hit_objs[max_match_keys[0]]}
@@ -86,13 +96,18 @@ def _loop_align_seq_to_adapters(aligner, name, seq, print_per_seq=False):
                     pprint(hit_matches)
                     pprint(hit_spans)
                     print()
-            else:  # There is more than 1 longer mapping hit (pretty weird situation?)
+                    
+            # Else3: there is more than 1 longer mapping hit (pretty weird situation?)
+            else:
                 seq_assignment = {"read_id": name,
                                   "adapter": "ambiguous_subset",
                                   "mapping_obj": None}
                 if print_per_seq:
                     print("Ambiguous, subset of adapters")
-        else:  # All the hits were the same match length (these could be unambiguous, b/c one might have no errors!)
+
+        # Else2: all the hits were the same match length (these could be unambiguous,
+        #       b/c one might have no errors!)
+        else:
             seq_assignment = {"read_id": name,
                               "adapter": "ambiguous_all",
                               "mapping_obj": None}
@@ -100,7 +115,9 @@ def _loop_align_seq_to_adapters(aligner, name, seq, print_per_seq=False):
                 print("Ambiguous, all adapters")
             # I think I am actually handling these situations b/c I am using the hit.mlen variable, which counts
             #   the number of Ms (matches) in the CIGAR!! Very cool.
-    else:  # There were not any mapping hits:
+    
+    # Else1: there were not any mapping hits:
+    else:
         seq_assignment = {"read_id": name,
                           "adapter": "no_match",
                           "mapping_obj": None}

@@ -82,13 +82,13 @@ if __name__ == '__main__':
     for error in range(30, 74, 2):
         error /= 100
         for overlap in range(2, 18, 2):
-            cutadapt_call(adaptor_file="/data16/marcus/scripts/nanoporePipelineScripts/standardUMIs.fa",
+            cutadapt_call(adaptor_file="./standardUMIs.fa",
                           output_file="./deleteme.fa",
                           input_file=path_to_fa,
                           head=subset_size,
                           error_fraction=error,
                           overlap=overlap)
-            df = fa_to_df("./deleteme.fa")
+            df = fa_to_df("deleteme.fa")
             # print("\n", error)
             # print(df["adapter"].value_counts())
             test_dict = df["adapter"].value_counts().to_dict()
