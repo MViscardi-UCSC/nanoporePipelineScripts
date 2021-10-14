@@ -40,22 +40,17 @@ def align_standards(fastq_file=None, compressed_df=None) -> pd.DataFrame:
     
     print(aligner.seq_names)  # Prints the contigs which in this case are the adapters in the fastq
     
-    seq_spans, seq_matches = {}, {}
     seq_assignments = []
     
     if isinstance(fastq_file, str):
         for name, seq, _ in mp.fastx_read(fastq_file):
-            seq_assignment, hit_spans, hit_matches = _loop_align_seq_to_adapters(aligner, name, seq)
+            seq_assignment = _loop_align_seq_to_adapters(aligner, name, seq)
             seq_assignments.append(seq_assignment)
-            seq_spans[name] = hit_spans
-            seq_matches[name] = hit_matches
     elif isinstance(compressed_df, pd.DataFrame):
         # There is definitely a better way to do this than converting both to lists, but it's easy!
         for name, seq in zip(compressed_df["read_id"].to_list(), compressed_df["sequence"].to_list()):
-            seq_assignment, hit_spans, hit_matches = _loop_align_seq_to_adapters(aligner, name, seq)
+            seq_assignment = _loop_align_seq_to_adapters(aligner, name, seq)
             seq_assignments.append(seq_assignment)
-            seq_spans[name] = hit_spans
-            seq_matches[name] = hit_matches
     else:
         raise NotImplementedError("Please provide either a fastq or a df")
     
@@ -123,7 +118,7 @@ def _loop_align_seq_to_adapters(aligner, name, seq, print_per_seq=False):
                           "mapping_obj": None}
         if print_per_seq:
             print("No match")
-    return seq_assignment, hit_spans, hit_matches
+    return seq_assignment
 
 
 def plot_value_counts(standards_df: pd.DataFrame, x: str = "adapter"):
