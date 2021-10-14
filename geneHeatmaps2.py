@@ -181,7 +181,7 @@ def plotly_imshow_heatmap(extra_annotation, output_name, plotter_df, title, x_ax
                                               titleside="bottom"
                                               ),
                       hovermode="y")
-    fig.write_html(f"./{get_dt(for_output=True)}_{output_name}.html")
+    fig.write_html(f"./testOutputs/{get_dt(for_output=True)}_{output_name}.html")
     fig.show()
 
 
