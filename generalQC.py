@@ -54,6 +54,7 @@ def get_read_lengths(lib_key: str) -> pd.Series:
 
 def plotly_read_lengths(lib_keys: [str, str]):
     import plotly.graph_objects as go
+    import plotly.express as px
     series1 = get_read_lengths(lib_keys[0])
     series2 = get_read_lengths(lib_keys[1])
     max1 = series1.max()
