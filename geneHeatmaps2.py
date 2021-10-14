@@ -41,10 +41,13 @@ import regex as re
 from step0_nanopore_pipeline import find_newest_matching_file, get_dt, gene_names_to_gene_ids
 
 
-def load_reads_tsv(read_tsv) -> pd.DataFrame:
+def load_reads_tsv(read_tsv, head=None) -> pd.DataFrame:
 
     print(f"Loading merged on reads file from: {read_tsv} ", end="")
-    df = pd.read_csv(read_tsv, sep="\t")
+    if isinstance(head, int):
+        df = pd.read_csv(read_tsv, sep="\t", nrows=head)
+    else:
+        df = pd.read_csv(read_tsv, sep="\t")
     print(". ", end="")
     if "original_chr_pos" not in df.columns.to_list():
         print(f"\nMaking adjustments for 5' ends")
@@ -59,7 +62,7 @@ def load_reads_tsv(read_tsv) -> pd.DataFrame:
     return df
 
 
-def _flip_neg_strand_genes(chr_position, cigar, strand) -> int:
+def _flip_neg_strand_genes(chr_position: int, cigar: str, strand: str) -> int:
     if strand == "+":
         read_end = chr_position
         return read_end
