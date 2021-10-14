@@ -54,6 +54,7 @@ def get_read_lengths(lib_key: str) -> pd.Series:
 
 def plotly_read_lengths(lib_keys: [str, str]):
     import plotly.graph_objects as go
+    import plotly.express as px
     series1 = get_read_lengths(lib_keys[0])
     series2 = get_read_lengths(lib_keys[1])
     max1 = series1.max()
@@ -68,6 +69,10 @@ def plotly_read_lengths(lib_keys: [str, str]):
                                histnorm="probability",
                                name=lib_keys[1],
                                nbinsx=int((max2+1) / bin_size)))
+    # TODO: get below working!!
+    # fig.add_trace(px.ecdf(series1))
+    # fig.add_trace(px.ecdf(series2))
+    
     # Overlay both histograms
     fig.update_layout(barmode='overlay')
     # Reduce opacity to see both histograms
