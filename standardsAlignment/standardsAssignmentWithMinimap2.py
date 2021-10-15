@@ -28,8 +28,10 @@ import mappy as mp
 from pprint import pprint
 import pandas as pd
 
+pd.set_option("display.max_columns", None)
 
-def align_standards(fastq_file=None, compressed_df=None) -> pd.DataFrame:
+
+def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False) -> pd.DataFrame:
     path_to_genome = "/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/intermediate_files/5A_standard.fa"
     aligner = mp.Aligner(path_to_genome,
                          preset="splice", k=14,
@@ -39,18 +41,19 @@ def align_standards(fastq_file=None, compressed_df=None) -> pd.DataFrame:
     if not aligner:
         raise Exception("ERROR: failed to load/build index")
 
-    print(aligner.seq_names)  # Prints the contigs which in this case are the adapters in the fastq
+    # Print the contigs which in this case are the adapters in the fastq
+    print(f"Mapping to adapters named: {aligner.seq_names}")
 
     seq_assignments = []
 
     if isinstance(fastq_file, str):
         for read_id, sequence, _ in mp.fastx_read(fastq_file):
-            seq_assignment = _loop_align_seq_to_adapters(aligner, read_id, sequence)
+            seq_assignment = _loop_align_seq_to_adapters(aligner, read_id,
+                                                         sequence, keep_read_id=keep_read_id)
             seq_assignments.append(seq_assignment)
     elif isinstance(compressed_df, pd.DataFrame):
-        # There is definitely a better way to do this than converting both to lists, but it's easy!
         for row_dict in compressed_df.to_dict(orient='records'):
-            seq_assignment = _loop_align_seq_to_adapters(aligner, **row_dict)
+            seq_assignment = _loop_align_seq_to_adapters(aligner, keep_read_id=keep_read_id, **row_dict)
             seq_assignments.append(seq_assignment)
     else:
         raise NotImplementedError("Please provide either a fastq or a df")
@@ -59,9 +62,19 @@ def align_standards(fastq_file=None, compressed_df=None) -> pd.DataFrame:
     return pd.DataFrame(seq_assignments)
 
 
-def _loop_align_seq_to_adapters(aligner, read_id, sequence, print_per_seq=False, **kwargs):
+def _loop_align_seq_to_adapters(aligner, read_id, sequence, chr_id,
+                                print_per_seq=False, keep_read_id=False,
+                                **kwargs):
+    # This will quickly filter out those reads that didn't initially map to the pTRI chr
+    if chr_id != "pTRI":
+        seq_assignment = {"adapter": "not_pTRI_standard", "mapping_obj": None}
+        if keep_read_id:
+            seq_assignment["read_id"] = read_id
+        return seq_assignment
+
     if print_per_seq:
         print(f"Aligning read: {read_id}", end="\t")
+
     # For each sequence, create empty dicts to store info about mapping hits
     hit_objs = {}
 
@@ -81,9 +94,10 @@ def _loop_align_seq_to_adapters(aligner, read_id, sequence, print_per_seq=False,
 
             # If3: there is only one longest mapping hit:
             if len(max_match_keys) == 1:
-                seq_assignment = {"read_id": read_id,
-                                  "adapter": max_match_keys[0],
+                seq_assignment = {"adapter": max_match_keys[0],
                                   "mapping_obj": hit_objs[max_match_keys[0]]}
+                if keep_read_id:
+                    seq_assignment["read_id"] = read_id
                 if print_per_seq:
                     print(seq_assignment)
                     read_end = seq_assignment["mapping_obj"].q_en
@@ -91,18 +105,20 @@ def _loop_align_seq_to_adapters(aligner, read_id, sequence, print_per_seq=False,
 
             # Else3: there is more than 1 longer mapping hit (pretty weird situation?)
             else:
-                seq_assignment = {"read_id": read_id,
-                                  "adapter": "ambiguous_subset",
+                seq_assignment = {"adapter": "ambiguous_subset",
                                   "mapping_obj": None}
+                if keep_read_id:
+                    seq_assignment["read_id"] = read_id
                 if print_per_seq:
                     print("Ambiguous, subset of adapters")
 
         # Else2: all the hits were the same match length (these could be unambiguous,
         #       b/c one might have no errors!)
         else:
-            seq_assignment = {"read_id": read_id,
-                              "adapter": "ambiguous_all",
+            seq_assignment = {"adapter": "ambiguous_all",
                               "mapping_obj": None}
+            if keep_read_id:
+                seq_assignment["read_id"] = read_id
             if print_per_seq:
                 print("Ambiguous, all adapters")
             # I think I am actually handling these situations b/c I am using the hit.mlen variable, which counts
@@ -110,9 +126,10 @@ def _loop_align_seq_to_adapters(aligner, read_id, sequence, print_per_seq=False,
 
     # Else1: there were not any mapping hits:
     else:
-        seq_assignment = {"read_id": read_id,
-                          "adapter": "no_match",
+        seq_assignment = {"adapter": "no_match",
                           "mapping_obj": None}
+        if keep_read_id:
+            seq_assignment["read_id"] = read_id
         if print_per_seq:
             print("No match")
     return seq_assignment
@@ -166,11 +183,38 @@ def plot_value_counts(standards_df: pd.DataFrame, x: str = "adapter"):
     plt.show()
 
 
-def mini_pull(map_obj):
-    if map_obj:
-        return map_obj.r_en
-    else:
-        return None
+def mini_pull_map_obj_info(mapping_obj, **df_row):
+    return_dict = {"adapter_start": None,
+                   "adapter_end": None,
+                   "ref_start": None,
+                   "ref_end": None,
+                   }
+    if mapping_obj:
+        return_dict["adapter_start"] = int(mapping_obj.q_st)
+        return_dict["adapter_end"] = int(mapping_obj.q_en)
+        return_dict["ref_start"] = int(mapping_obj.r_st)
+        return_dict["ref_end"] = int(mapping_obj.r_en)
+    return return_dict
+
+
+def print_alignments_wrapper(adapter_mapped_df,
+                             adapters_fasta="/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/"
+                                            "intermediate_files/5A_standard.fa"):
+    def _print_adapter_alignments(adapter_dict, read_id, adapter,
+                                  adapter_start, adapter_end, ref_start, ref_end,
+                                  sequence, **row):
+        if adapter in adapter_dict.keys():
+            adapter_start, adapter_end, ref_start, ref_end = map(int, [adapter_start, adapter_end, ref_start, ref_end])
+            print(f"\nRead: {read_id},\tMapped to: {adapter}")
+            print(f"adapter [{ref_start:>4}, {ref_end:>4}]: {adapter_dict[adapter][int(ref_start):int(ref_end)]}")
+            print(f"adapter [{adapter_start:>4}, {adapter_end:>4}]: {sequence[int(adapter_start):int(adapter_end)]}")
+
+    adapter_seq_dict = {}
+    for adapter_name, sequence, _ in mp.fastx_read(adapters_fasta):
+        adapter_seq_dict[adapter_name] = sequence
+    pprint(adapter_seq_dict)
+    for row_dict in adapter_mapped_df.to_dict(orient='records'):
+        _print_adapter_alignments(adapter_seq_dict, **row_dict)
 
 
 if __name__ == '__main__':
@@ -178,32 +222,29 @@ if __name__ == '__main__':
     #              "output_dir/cat_files/cat.fastq"
     # df = align_standards(fastq_file=path_to_fa)
     # print(df)
-    path_to_compressed = "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/merge_files/210929_mergedOnReads.tsv"
+    path_to_compressed = "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/" \
+                         "output_dir/merge_files/210929_mergedOnReads.tsv"
     df = pd.read_csv(path_to_compressed, sep="\t", low_memory=False)
-    df = df[df["chr_id"] == "pTRI"]
-    df = df.head(10000)
+    # df = df[df["chr_id"] == "pTRI"]
+    df = df.tail(10000)
 
-    # Originally I built this wrapper to do below work:
-    start1 = timeit.default_timer()
-    out_df = align_standards(compressed_df=df)
-    end1 = timeit.default_timer()
+    # I built this wrapper to do below work:
+    out_df = df.merge(align_standards(compressed_df=df, keep_read_id=True), on="read_id")
 
-    # But I realized that I could achive the same end by doing the following! >>>
-    start2= timeit.default_timer()
-    path_to_genome = "/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/intermediate_files/5A_standard.fa"
-    aligner = mp.Aligner(path_to_genome,
-                         preset="splice", k=14,
-                         extra_flags=0x100000,  # From: https://github.com/lh3/minimap2/blob/master/minimap.h
-                         n_threads=10)
-    out_df = pd.DataFrame(df.apply(lambda row_dict:
-                                   _loop_align_seq_to_adapters(aligner,
-                                                               **row_dict),
-                                   axis=1).to_list())
-    end2 = timeit.default_timer()
-    out_df["read_end"] = out_df.mapping_obj.apply(lambda map_obj: mini_pull(map_obj))
-    # <<< So I think this is how I will add it to the main pipeline!
+    # This step pulls information from the mapping_obj objects:
+    df = pd.concat([df,
+                    pd.DataFrame(df.apply(lambda row_dict:
+                                          mini_pull_map_obj_info(**row_dict),
+                                          axis=1).to_list(),
+                                 index=df.index)],
+                   axis=1)
 
-    plot_value_counts(out_df)
-    print(f"Method 1 elapsed: {end1 - start1}")  # 17.19 sec / 10,000 lines
-    print(f"Method 2 elapsed: {end2 - start2}")  # 18.62 sec / 10,000 lines
+    plot_value_counts(df)
+    # Method 1 (current):            17.19 sec / 10,000 lines
+    # Method 2 (using df.apply()):   18.62 sec / 10,000 lines
     # TODO: It would be good to have this merge back into the mergedOnReads dataframe!
+    #       Probably need to save as a parquet thou!
+
+    # Random Stuff:
+    print_alignments_wrapper(df)
+    print("Done!")
