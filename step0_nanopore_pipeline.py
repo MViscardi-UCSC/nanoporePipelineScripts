@@ -661,6 +661,10 @@ def extra_steps(outputDir, df=None, **other_kwargs):
     print(sample_df.info())
 
 
+def map_standards():
+    pass
+
+
 def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
     return_value = None
     buildOutputDirs(**args)
@@ -670,6 +674,7 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
                   # TODO: Add alternative genome filter mapping function here^^^
                   "M": [minimap_and_nanopolish, "Minimap2 & Nanopolish"],  # Also N until I split them up!
                   "F": [feature_counts, "FeatureCounts"],
+                  "S": [map_standards, "Mapping Standards (not yet implemented)"],
                   "C": [final_touches, "Concatenate Files"],
                   "P": [merge_results, "Merging Results w/ Pandas"],
                   "L": [flair, "Calling Transcripts w/ Flair"],
@@ -679,14 +684,14 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
         if code in stepsToRun:
             step_print = f"Starting step: \"{step_name}\" . . ."
             print("\n\n", step_print, f"\n{'#' * len(step_print)}\n", sep="")
-            if code == "P":
+            if code == "P":  # The pandas merge will both: save a file and return a tuple of dataframes
                 return_value = step_func(**args)
             elif code == "X":
-                if return_value:
+                if return_value:  # The extra steps function will accept a df, or load from the disk
                     step_func(df=return_value[0], **args)
                 else:
                     step_func(**args)
-            else:
+            else:  # The rest of the functions work by loading and saving to the disk
                 step_func(**args)
         else:
             step_print = f"Skipping step: \"{step_name}\" . . ."
