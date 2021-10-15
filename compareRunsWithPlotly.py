@@ -7,7 +7,7 @@ Marcus Viscardi, 8/3/21
 
 import pandas as pd
 import scipy.stats
-from step0_nanopore_pipeline import find_newest_matching_file
+from nanoporePipelineCommon import find_newest_matching_file
 
 import warnings
 from pandas.core.common import SettingWithCopyWarning
@@ -404,7 +404,7 @@ if __name__ == '__main__':
                  "output_dir/merge_files/*_compressedOnGenes_simple.tsv"
     }
 
-    run_with = ["xrn-1", "totalRNA2"]
+    run_with = ["polyA", "polyA2"]
 
     pathdict = {name: find_newest_matching_file(pathdict[name]) for name in run_with}
 
