@@ -22,10 +22,11 @@ Another potential option here that I spaced on before:
     much simpler manner!
 """
 # Mappy?! https://www.biostars.org/p/395092/
+import timeit
+
 import mappy as mp
 from pprint import pprint
 import pandas as pd
-from pprint import pprint
 
 
 def align_standards(fastq_file=None, compressed_df=None) -> pd.DataFrame:
@@ -86,7 +87,7 @@ def _loop_align_seq_to_adapters(aligner, read_id, sequence, print_per_seq=False,
                 if print_per_seq:
                     print(seq_assignment)
                     read_end = seq_assignment["mapping_obj"].q_en
-                    print(sequence[read_end-10:read_end+2], read_end)
+                    print(sequence[read_end - 10:read_end + 2], read_end)
 
             # Else3: there is more than 1 longer mapping hit (pretty weird situation?)
             else:
@@ -180,24 +181,29 @@ if __name__ == '__main__':
     path_to_compressed = "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/merge_files/210929_mergedOnReads.tsv"
     df = pd.read_csv(path_to_compressed, sep="\t", low_memory=False)
     df = df[df["chr_id"] == "pTRI"]
-    df = df.head(1000)
-    
+    df = df.head(10000)
+
     # Originally I built this wrapper to do below work:
-    # out_df = align_standards(compressed_df=df)
-    
+    start1 = timeit.default_timer()
+    out_df = align_standards(compressed_df=df)
+    end1 = timeit.default_timer()
+
     # But I realized that I could achive the same end by doing the following! >>>
+    start2= timeit.default_timer()
     path_to_genome = "/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/intermediate_files/5A_standard.fa"
     aligner = mp.Aligner(path_to_genome,
                          preset="splice", k=14,
                          extra_flags=0x100000,  # From: https://github.com/lh3/minimap2/blob/master/minimap.h
                          n_threads=10)
     out_df = pd.DataFrame(df.apply(lambda row_dict:
-                                                                  _loop_align_seq_to_adapters(aligner,
-                                                                                              **row_dict),
+                                   _loop_align_seq_to_adapters(aligner,
+                                                               **row_dict),
                                    axis=1).to_list())
+    end2 = timeit.default_timer()
     out_df["read_end"] = out_df.mapping_obj.apply(lambda map_obj: mini_pull(map_obj))
     # <<< So I think this is how I will add it to the main pipeline!
-    
+
     plot_value_counts(out_df)
-    print(out_df)
+    print(f"Method 1 elapsed: {end1 - start1}")  # 17.19 sec / 10000 lines
+    print(f"Method 2 elapsed: {end2 - start2}")  # 18.62 sec / 10000 lines
     # TODO: It would be good to have this merge back into the mergedOnReads dataframe!
