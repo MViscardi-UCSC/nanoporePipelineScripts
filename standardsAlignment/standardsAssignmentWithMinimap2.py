@@ -204,6 +204,6 @@ if __name__ == '__main__':
     # <<< So I think this is how I will add it to the main pipeline!
 
     plot_value_counts(out_df)
-    print(f"Method 1 elapsed: {end1 - start1}")  # 17.19 sec / 10000 lines
-    print(f"Method 2 elapsed: {end2 - start2}")  # 18.62 sec / 10000 lines
+    print(f"Method 1 elapsed: {end1 - start1}")  # 17.19 sec / 10,000 lines
+    print(f"Method 2 elapsed: {end2 - start2}")  # 18.62 sec / 10,000 lines
     # TODO: It would be good to have this merge back into the mergedOnReads dataframe!
