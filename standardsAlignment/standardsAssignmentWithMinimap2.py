@@ -22,8 +22,6 @@ Another potential option here that I spaced on before:
     much simpler manner!
 """
 # Mappy?! https://www.biostars.org/p/395092/
-import timeit
-
 import mappy as mp
 from pprint import pprint
 import pandas as pd
