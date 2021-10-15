@@ -27,12 +27,14 @@ import timeit
 import mappy as mp
 from pprint import pprint
 import pandas as pd
+from tqdm import tqdm
 
 pd.set_option("display.max_columns", None)
 
 
-def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False) -> pd.DataFrame:
-    path_to_genome = "/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/intermediate_files/5A_standard.fa"
+def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar_width=150) -> pd.DataFrame:
+    path_to_genome = "/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/" \
+                     "intermediate_files/standards_with_indexes.fa"
     aligner = mp.Aligner(path_to_genome,
                          preset="splice", k=14,
                          extra_flags=0x100000,  # From: https://github.com/lh3/minimap2/blob/master/minimap.h
@@ -47,14 +49,22 @@ def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False) -> 
     seq_assignments = []
 
     if isinstance(fastq_file, str):
-        for read_id, sequence, _ in mp.fastx_read(fastq_file):
+        row_iterator = tqdm(mp.fastx_read(fastq_file),
+                            total=sum(1 for line in open(fastq_file))//4,
+                            ncols=bar_width)
+        for read_id, sequence, _ in row_iterator:
             seq_assignment = _loop_align_seq_to_adapters(aligner, read_id,
-                                                         sequence, keep_read_id=keep_read_id)
+                                                         sequence, keep_read_id=keep_read_id,
+                                                         was_fastq=True)
             seq_assignments.append(seq_assignment)
+            row_iterator.set_description(f"Processing {read_id}")
     elif isinstance(compressed_df, pd.DataFrame):
-        for row_dict in compressed_df.to_dict(orient='records'):
+        row_iterator = tqdm(compressed_df.to_dict(orient='records'),
+                            ncols=bar_width)
+        for row_dict in row_iterator:
             seq_assignment = _loop_align_seq_to_adapters(aligner, keep_read_id=keep_read_id, **row_dict)
             seq_assignments.append(seq_assignment)
+            row_iterator.set_description(f"Chr: {row_dict['chr_id']:>5}; Read: {row_dict['read_id']}")
     else:
         raise NotImplementedError("Please provide either a fastq or a df")
 
@@ -62,11 +72,11 @@ def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False) -> 
     return pd.DataFrame(seq_assignments)
 
 
-def _loop_align_seq_to_adapters(aligner, read_id, sequence, chr_id,
-                                print_per_seq=False, keep_read_id=False,
+def _loop_align_seq_to_adapters(aligner, read_id, sequence, chr_id=None,
+                                print_per_seq=False, keep_read_id=False, was_fastq=False,
                                 **kwargs):
     # This will quickly filter out those reads that didn't initially map to the pTRI chr
-    if chr_id != "pTRI":
+    if not was_fastq and chr_id != "pTRI":
         seq_assignment = {"adapter": "not_pTRI_standard", "mapping_obj": None}
         if keep_read_id:
             seq_assignment["read_id"] = read_id
@@ -199,7 +209,7 @@ def mini_pull_map_obj_info(mapping_obj, **df_row):
 
 def print_alignments_wrapper(adapter_mapped_df,
                              adapters_fasta="/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/"
-                                            "intermediate_files/5A_standard.fa"):
+                                            "intermediate_files/standards_with_indexes.fa"):
     def _print_adapter_alignments(adapter_dict, read_id, adapter,
                                   adapter_start, adapter_end, ref_start, ref_end,
                                   sequence, **row):
@@ -221,17 +231,16 @@ if __name__ == '__main__':
     # path_to_fa = "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/" \
     #              "output_dir/cat_files/cat.fastq"
     # df = align_standards(fastq_file=path_to_fa)
-    # print(df)
     path_to_compressed = "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/" \
                          "output_dir/merge_files/210929_mergedOnReads.tsv"
     df = pd.read_csv(path_to_compressed, sep="\t", low_memory=False)
-    # df = df[df["chr_id"] == "pTRI"]
-    df = df.tail(10000)
 
     # I built this wrapper to do below work:
-    out_df = df.merge(align_standards(compressed_df=df, keep_read_id=True), on="read_id")
+    df = df.merge(align_standards(compressed_df=df, keep_read_id=True), on="read_id")
 
     # This step pulls information from the mapping_obj objects:
+    # TODO: This step should probably overwrite information from minimap2 regarding the standards.
+    #       Or at least rename the gene_id and all that!
     df = pd.concat([df,
                     pd.DataFrame(df.apply(lambda row_dict:
                                           mini_pull_map_obj_info(**row_dict),
@@ -246,5 +255,5 @@ if __name__ == '__main__':
     #       Probably need to save as a parquet thou!
 
     # Random Stuff:
-    print_alignments_wrapper(df)
+    # print_alignments_wrapper(df)
     print("Done!")
