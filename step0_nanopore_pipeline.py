@@ -36,6 +36,7 @@ from subprocess import Popen, CalledProcessError, PIPE
 from datetime import datetime
 from typing import List
 from glob import glob
+from nanoporePipelineCommon import find_newest_matching_file
 
 import pandas as pd
 import numpy as np
@@ -60,19 +61,6 @@ def live_cmd_call(command):
             print(line, end="")
     if p.returncode != 0:
         raise CalledProcessError(p.returncode, p.args)
-
-
-def find_newest_matching_file(path_str):
-    # A tool that I'll want to use to grab the most recent file
-    from glob import glob
-    import os
-
-    list_of_files = glob(path_str)
-    try:
-        latest_file = max(list_of_files, key=path.getctime)
-        return latest_file
-    except ValueError:
-        raise ValueError(f"Failed to find any files matching \"{path_str}\"")
 
 
 def gene_names_to_gene_ids(tsv_path: str = "/data16/marcus/genomes/elegansRelease100"
