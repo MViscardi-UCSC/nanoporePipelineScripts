@@ -16,9 +16,6 @@ from step0_nanopore_pipeline import find_newest_matching_file, gene_names_to_gen
 
 
 def make_split_violins2(dfs, replicate_names, gene_list):
-    # df1, df2 = load_comp_on_genes(f"{OUTDIR1}/210124_compressed_on_genes.tsv"), \
-    #            load_comp_on_genes("/data16/marcus/prefix/210709_NanoporeRun_totalRNA_0639_L3/output_dir/merge_files/210709_01:38:18PM_compressedOnGenes.tsv")
-    #            # load_comp_on_genes(f"{OUTDIR2}/210128_compressed_on_genes.tsv")
     print(">> Dataframes loaded into memory.")
     new_dfs = []
     for i, df in enumerate(dfs):
@@ -48,13 +45,16 @@ def make_split_violins2(dfs, replicate_names, gene_list):
     # # PLOT IT:
     # top_2 = super_df[super_df["hits_rank"] <= 2]
     sea.set_theme(style="whitegrid")
-    ax = sea.swarmplot(x="tail_length", y="gene_name", hue="replicate",
-                       data=super_df, dodge=True, alpha=.01, zorder=1)
+    # The swarm plot is CRAZY SLOW
+    # ax = sea.swarmplot(x="tail_length", y="gene_name", hue="replicate",
+    #                    data=super_df, dodge=True, alpha=.01, zorder=1)
+    print(f"Plotting . . .")
     # Below works!:
-    # ax = sea.violinplot(x="gene_name", y="tail_length", hue="replicate",
-    #                     data=super_df, split=True, bw=0.2,  # inner="quartiles",
-    #                     order=gene_list)
-    plt.ylim(0, 220)
+    ax = sea.violinplot(x="gene_name", y="tail_length", hue="replicate",
+                        data=super_df, split=True, bw=0.2,  # inner="quartiles",
+                        order=gene_list)
+    plt.ylim(15, 180)
+    # plt.yscale('log')
     plt.show()
     # import plotly.express as px
     # fig = px.violin(super_df, x="gene_name", y="tail_length", color="replicate")
@@ -70,7 +70,7 @@ if __name__ == '__main__':
                         "polyA2": "210719_nanoporeRun_polyA_0639_L3_replicate",  # Good depth
                         "totalRNA2": "210720_nanoporeRun_totalRNA_0639_L3_replicate",  # Good depth
                         }
-    choices = ["polyA", "polyA2"]
+    choices = ["totalRNA2", "polyA2"]
     suffix = "output_dir/merge_files/*_compressedOnGenes.tsv"
     # Paths to compressedOnGenes.tsv:
     file1 = find_newest_matching_file(f"{prefix}/{working_dir_dict[choices[0]]}/{suffix}")
@@ -81,12 +81,23 @@ if __name__ == '__main__':
     df = gene_names_to_gene_ids()
     df_list = [load_comp_on_genes(file1), load_comp_on_genes(file2)]
     df_list = [df_i.merge(df, on="gene_id") for df_i in df_list]
+    genes_from_paper = ["rpl-21",
+                        "daf-21", "hsp-90",  # I think this has another name
+                        "col-104",
+                        "dpy-7",
+                        "rde-12",
+                        # "egl-15",
+                        # "svh-1",
+                        ]
+    genes_from_gene_count_plot = ["nduo-1",
+                                  "nduo-5",
+                                  "nduo-6",
+                                  "ndfl-4",
+                                  "ctc-1",
+                                  "ctb-1",
+                                  "rpl-20",
+                                  # "rps-7A",
+                                  # "vha-3",
+                                  ]
     make_split_violins2(df_list, choices,
-                        ["rpl-21",
-                         "daf-21", "hsp-90",  # I think this has another name
-                         "col-104",
-                         "dpy-7",
-                         "rde-12",
-                         #"egl-15",
-                         #"svh-1",
-                         ])
+                        genes_from_gene_count_plot)
