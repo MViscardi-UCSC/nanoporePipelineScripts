@@ -40,7 +40,7 @@ def load_and_merge(file_paths: (str, str), min_hit_cutoff: int = None) -> pd.Dat
 
 
 def load_and_merge_from_dict(path_dict: dict, min_hit_cutoff: int = None,
-                             add_names: bool = True) -> (pd.DataFrame, list):
+                             add_names: bool = True, add_gc_frac: bool = True) -> (pd.DataFrame, list):
     df_dict = {key: load_df(path) for (key, path) in path_dict.items()}
     df_key_list = list(df_dict.keys())
     print(f"\nCreating dataframes for: {df_key_list}...")
@@ -58,10 +58,19 @@ def load_and_merge_from_dict(path_dict: dict, min_hit_cutoff: int = None,
         merge_df = midmerge_df
     print(f"{'merge_df':>10} dataframe length: {merge_df.shape[0]:>6}")
     if add_names:
-        path_to_names = "/home/marcus/PycharmProjects/PersonalScripts/WBGene_to_geneName.tsv"
-        names_df = pd.read_csv(path_to_names, sep="\t")
+        path_to_names = "/data16/marcus/genomes/elegansRelease100/" \
+                        "Caenorhabditis_elegans.WBcel235.100.gtf.parquet"
+        names_df = pd.read_parquet(path_to_names)
+        names_df = names_df[["gene_id", "gene_name", "chr"]].drop_duplicates()
+
         merge_df = merge_df.merge(names_df, on="gene_id", how="left")
         merge_df['ident'] = merge_df["gene_name"] + " (" + merge_df["gene_id"] + ")"
+    if add_gc_frac:
+        path_to_gc = "/data16/marcus/genomes/elegansRelease100/" \
+                        "Caenorhabditis_elegans.WBcel235.cdna.all.fa.GCcontent.parquet"
+        gc_df = pd.read_parquet(path_to_gc).drop(columns=["chr_id"])
+
+        merge_df = merge_df.merge(gc_df, on=["gene_id", "gene_name"], how="left")
     else:
         merge_df['ident'] = merge_df["gene_id"]
     if min_hit_cutoff:
@@ -80,7 +89,8 @@ def load_and_merge_from_dict(path_dict: dict, min_hit_cutoff: int = None,
 
 
 def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
-                             x=0, y=1, compare_column_prefix="polya_mean"):
+                             x=0, y=1, compare_column_prefix="polya_mean",
+                             color_by: str = None):
     import plotly.express as px
     import plotly.graph_objects as go
     if isinstance(x, int) and isinstance(y, int):
@@ -93,40 +103,44 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
     if compare_column_prefix == "polya_mean":
         title = f"PolyA Mean Lengths per Gene between RNA Selection Methods"
     elif compare_column_prefix == "read_hits":
-        title = f"Number of Reads per Gene between RNA Selection Methods"
+        title = f"Number of Reads per Gene between RNA Selection Methods ({x_key} & {y_key})"
     else:
         title = f"Comparing: {compare_column_prefix} between {x_key} and {y_key}"
 
-    if compare_column_prefix == "polya_mean":
-        # merged_df["read_rank_diff"] = merged_df[f'hits_rank_{x_key}']. \
-        #     sub(merged_df[f'hits_rank_{y_key}'], axis=0).abs()
-        # color_column = "read_rank_diff"
-        merged_df["tail_avg_stdev"] = merged_df[f'polya_stdev_{x_key}']. \
-            add(merged_df[f'polya_stdev_{y_key}'], axis=0).abs().div(2)
-        color_column = "tail_avg_stdev"
-    elif compare_column_prefix == "read_len_mean":
-        merged_df["read_len_std_mean"] = merged_df[f'read_len_std_{x_key}']. \
-            add(merged_df[f'read_len_std_{y_key}'], axis=0).abs().div(2)
-        color_column = "read_len_std_mean"
+
+    merged_df["tail_avg_stdev"] = merged_df[f'polya_stdev_{x_key}']. \
+        add(merged_df[f'polya_stdev_{y_key}'], axis=0).abs().div(2)
+    merged_df["read_len_std_mean"] = merged_df[f'read_len_std_{x_key}']. \
+        add(merged_df[f'read_len_std_{y_key}'], axis=0).abs().div(2)
+    merged_df["tail_length_diff"] = merged_df[f'polya_mean_{x_key}']. \
+        sub(merged_df[f'polya_mean_{y_key}'], axis=0).abs()
+    merged_df["read_len_mean_mean"] = merged_df[f'read_len_mean_{x_key}']. \
+        add(merged_df[f'read_len_mean_{y_key}'], axis=0).abs().div(2)
+    if isinstance(color_by, str):
+        color_column = color_by
     else:
-        merged_df["tail_length_diff"] = merged_df[f'polya_mean_{x_key}']. \
-            sub(merged_df[f'polya_mean_{y_key}'], axis=0).abs()
-        color_column = "tail_length_diff"
+        color_column = None
     labels_dict = {"gene_id": "WBGene ID",
                    "ident": "Identity",
                    "tail_length_diff": "Mean Tail Length Diff (nts)",
-                   "read_rank_diff": "Difference in Read Rank"}
+                   "read_rank_diff": "Difference in Read Rank",
+                   "chr": "Chromosome",
+                   "gene_gc": "GC Fraction from Annot's"}
     for key in [x_key, y_key]:
         labels_dict[f"polya_mean_{key}"] = f"{key} - Mean Tail Length (nts)"
         labels_dict[f"read_hits_{key}"] = f"{key} - Reads/Gene"
         labels_dict[f"hits_rank_{key}"] = f"{key} - Rank of Reads/Gene"
         labels_dict[f"read_len_mean_{key}"] = f"{key} - Mean Read Length/Gene"
+    # Filter for only MtDNA genes?
+    # merged_df = merged_df[merged_df["chr_id"] == "MtDNA"]
     fig = px.scatter(merged_df, x=f"{compare_column_prefix}_{x_key}", y=f"{compare_column_prefix}_{y_key}",
                      color=color_column,
                      opacity=.8,
                      hover_name='ident',
                      hover_data=[f"polya_mean_{x_key}", f"polya_mean_{y_key}",
-                                 f'read_hits_{x_key}', f'read_hits_{y_key}'],
+                                 f'read_hits_{x_key}', f'read_hits_{y_key}',
+                                 f"read_len_mean_{x_key}", f"read_len_mean_{y_key}",
+                                 f"chr", f"gene_gc"],
                      title=title,
                      labels=labels_dict,
                      trendline="ols",
@@ -257,7 +271,8 @@ def plotly_w_slider(data, max_cutoff=50):
     fig.show()
 
 
-def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str = ""):
+def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str = "",
+                   color_by: str = None, drop_mt_dna: bool = False):
     key_list = list(path_dict.keys())
     if one_to_drop:
         subset_list = [i for i in key_list if i != one_to_drop]
@@ -265,12 +280,15 @@ def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str 
     else:
         subset_dict = path_dict
     merge_df, keys = load_and_merge_from_dict(subset_dict, min_hit_cutoff=cutoff)
+    if drop_mt_dna:
+        merge_df = merge_df[merge_df["chr"] != "MtDNA"]
     print(merge_df.columns)
     plotly_from_triple_merge(merge_df, keys,
                              cutoff=cut_off,
                              x=0,
                              y=1,
                              compare_column_prefix=prefix,
+                             color_by=color_by,
                              )
 
 
@@ -404,20 +422,38 @@ if __name__ == '__main__':
                  "output_dir/merge_files/*_compressedOnGenes_simple.tsv"
     }
 
-    run_with = ["polyA", "polyA2"]
+    run_with = ["polyA2", "totalRNA2"]
 
     pathdict = {name: find_newest_matching_file(pathdict[name]) for name in run_with}
 
-    cutoff = 100
+    cutoff = 20
 
     prefix_dict = {1: "read_hits",
                    2: "hits_rank",
                    3: "read_len_mean",
                    4: "polya_mean"}
-    prefix = prefix_dict[2]
-
+    prefix = prefix_dict[1]
+    
+    color_by_dict = {1: "read_len_mean_mean",
+                     2: "tail_length_diff",
+                     3: "read_len_std_mean",
+                     4: "tail_avg_stdev",
+                     5: "chr_id",
+                     6: "gene_gc",
+                     }
+    
+    color_by = color_by_dict[2]
+    
+    drop_mtDNA = False
+    
     if len(pathdict.keys()) == 3:
         for to_drop in pathdict.keys():
-            plotter_helper(pathdict, prefix, cutoff, one_to_drop=to_drop)
+            plotter_helper(pathdict, prefix, cutoff, one_to_drop=to_drop,
+                           color_by=color_by,
+                           drop_mt_dna=drop_mtDNA,
+                           )
     else:
-        plotter_helper(pathdict, prefix, cutoff)
+        plotter_helper(pathdict, prefix, cutoff,
+                       color_by=color_by,
+                       drop_mt_dna=drop_mtDNA,
+                       )
