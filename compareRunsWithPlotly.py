@@ -45,6 +45,8 @@ def load_and_merge_from_dict(path_dict: dict, min_hit_cutoff: int = None,
                         "Caenorhabditis_elegans.WBcel235.100.gtf.parquet"
         names_df = pd.read_parquet(path_to_names)
         names_df = names_df[["gene_id", "gene_name", "chr"]].drop_duplicates()
+        names_df["is_MtDNA"] = names_df["chr"] == "MtDNA"
+        names_df["is_MtDNA"] = names_df["is_MtDNA"].replace([True, False], ["MtDNA", "Not_MtDNA"])
 
         merge_df = merge_df.merge(names_df, on="gene_id", how="left")
         merge_df['ident'] = merge_df["gene_name"] + " (" + merge_df["gene_id"] + ")"
@@ -255,7 +257,7 @@ def plotly_w_slider(data, max_cutoff=50):
 
 
 def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str = "",
-                   color_by: str = None, drop_mt_dna: bool = False):
+                   color_by: str = None, drop_mt_dna: bool = False, drop_gc_less: bool = True):
     key_list = list(path_dict.keys())
     if one_to_drop:
         subset_list = [i for i in key_list if i != one_to_drop]
@@ -265,7 +267,9 @@ def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str 
     merge_df, keys = load_and_merge_from_dict(subset_dict, min_hit_cutoff=cutoff)
     if drop_mt_dna:
         merge_df = merge_df[merge_df["chr"] != "MtDNA"]
-    print(merge_df.columns)
+    if drop_gc_less:
+        merge_df = merge_df[~merge_df["gene_gc"].isna()]
+    # print(merge_df.columns)
     plotly_from_triple_merge(merge_df, keys,
                              cutoff=cut_off,
                              x=0,
@@ -405,7 +409,7 @@ if __name__ == '__main__':
                  "output_dir/merge_files/*_compressedOnGenes_simple.tsv"
     }
 
-    run_with = ["polyA2", "totalRNA2"]
+    run_with = ["polyA", "polyA2", "totalRNA2"]
 
     pathdict = {name: find_newest_matching_file(pathdict[name]) for name in run_with}
 
@@ -421,22 +425,27 @@ if __name__ == '__main__':
                      2: "tail_length_diff",
                      3: "read_len_std_mean",
                      4: "tail_avg_stdev",
-                     5: "chr_id",
+                     5: "chr",
                      6: "gene_gc",
+                     7: "is_MtDNA",
+                     8: "a_fraction",
                      }
     
-    color_by = color_by_dict[2]
+    color_by = color_by_dict[8]
     
     drop_mtDNA = False
+    drop_gc_less = True
     
     if len(pathdict.keys()) == 3:
         for to_drop in pathdict.keys():
             plotter_helper(pathdict, prefix, cutoff, one_to_drop=to_drop,
                            color_by=color_by,
                            drop_mt_dna=drop_mtDNA,
+                           drop_gc_less=drop_gc_less,
                            )
     else:
         plotter_helper(pathdict, prefix, cutoff,
                        color_by=color_by,
                        drop_mt_dna=drop_mtDNA,
+                       drop_gc_less=drop_gc_less,
                        )
