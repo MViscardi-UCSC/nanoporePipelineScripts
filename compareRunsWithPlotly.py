@@ -22,23 +22,6 @@ def load_df(path_to_file) -> pd.DataFrame:
     return df
 
 
-def load_and_merge(file_paths: (str, str), min_hit_cutoff: int = None) -> pd.DataFrame:
-    df1, df2 = [load_df(path) for path in file_paths]
-    for df in (df1, df2):
-        df["hits_rank"] = df['read_hits'].rank(ascending=False)
-    print(f"df1 length: {df1.shape[0]}\ndf2 length: {df2.shape[0]}")
-    merge_df = df1.merge(df2, how="inner", on="gene_id", suffixes=["_totalRNA", "_polyA"])
-    merge_df["mean_tail_diff"] = merge_df['polya_mean_totalRNA'].sub(merge_df['polya_mean_polyA'], axis=0).abs()
-    print(f"merge df length: {merge_df.shape[0]}")
-    if min_hit_cutoff:
-        cutoff_merge = merge_df[merge_df["read_hits_totalRNA"] >= min_hit_cutoff]
-        cutoff_merge = cutoff_merge[cutoff_merge["read_hits_polyA"] >= min_hit_cutoff]
-        print(f"after dropping genes w/ <{min_hit_cutoff} hits: {cutoff_merge.shape[0]}")
-        return cutoff_merge
-    else:
-        return merge_df
-
-
 def load_and_merge_from_dict(path_dict: dict, min_hit_cutoff: int = None,
                              add_names: bool = True, add_gc_frac: bool = True) -> (pd.DataFrame, list):
     df_dict = {key: load_df(path) for (key, path) in path_dict.items()}
