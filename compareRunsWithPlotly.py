@@ -125,7 +125,9 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
                      hover_data=[f"polya_mean_{x_key}", f"polya_mean_{y_key}",
                                  f'read_hits_{x_key}', f'read_hits_{y_key}',
                                  f"read_len_mean_{x_key}", f"read_len_mean_{y_key}",
-                                 f"chr", f"gene_gc"],
+                                 f"chr", f"gene_gc",
+                                 "a_fraction", "t_fraction",
+                                 "c_fraction", "g_fraction"],
                      title=title,
                      labels=labels_dict,
                      trendline="ols",
@@ -429,6 +431,7 @@ if __name__ == '__main__':
                      6: "gene_gc",
                      7: "is_MtDNA",
                      8: "a_fraction",
+                     9: "t_fraction",
                      }
     
     color_by = color_by_dict[8]
