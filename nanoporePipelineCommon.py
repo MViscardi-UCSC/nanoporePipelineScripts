@@ -5,6 +5,16 @@ Marcus Viscardi,    September 22, 2021
 A common location for some often used methods.
 """
 
+def get_dt(for_print=False, for_file=False):
+    from datetime import datetime
+    now = datetime.now()
+    if for_print:
+        return str(now.strftime("%m/%d/%y @ %I:%M:%S %p"))
+    elif for_file:
+        return str(now.strftime("%y%m%d"))
+    else:
+        return str(now.strftime("%y%m%d_%I:%M:%S%p"))
+
 
 def tsv_to_parquet(tsv_path) -> str:
     import pandas as pd
