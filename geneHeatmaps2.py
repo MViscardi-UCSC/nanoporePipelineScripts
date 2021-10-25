@@ -287,7 +287,7 @@ def parse_annies_deseq(csv_path: str) -> list:
 
 def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", drop_sub=10,
          target_list=[], target_column="gene_name"):
-    merged_df, working_dir = load_tsv_and_assign_w_josh_method(genome_dir, library_str)
+    merged_df, working_dir = load_tsv_and_assign_w_josh_method(library_str, genome_dir=genome_dir)
     smaller_df = compress_on_transcripts(merged_df, drop_sub,
                                          save_as=f"{working_dir}/output_dir/merge_files/"
                                                  f"{get_dt(for_output=True)}_compressedOnTranscripts_"
@@ -302,14 +302,15 @@ def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", dro
     plot_heatmap(smaller_df)
 
 
-def load_tsv_and_assign_w_josh_method(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100")\
-        -> (pd.DataFrame, str):
+def load_tsv_and_assign_w_josh_method(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100",
+                                      nrows=None) -> (pd.DataFrame, str):
     """
     A method to load files and merge based on the chromosome position to find matching genes
     
-    
     :param library_str: Must be one of the following: polyA, riboD, totalRNA, polyA2, totalRNA2, xrn-1
     :param genome_dir: Path to genome dir w/ processed parquet file
+    :param nrows: Numder of rows to parse from the tsv file
+    
     :return: A dataframe of passed genes & the path to the working directory
     """
     working_dir_dict = {"polyA": "210528_NanoporeRun_0639_L3s",  # Best (overkill) depth
@@ -323,7 +324,8 @@ def load_tsv_and_assign_w_josh_method(library_str, genome_dir="/data16/marcus/ge
         working_dir = f"/data16/marcus/working/{working_dir_dict[library_str]}"
     except KeyError:
         raise KeyError(f"Key: {library_str} isn't in the working directory dictionary keys : {working_dir_dict.keys()}")
-    reads_df = load_reads_tsv(find_newest_matching_file(f"{working_dir}/output_dir/merge_files/*_mergedOnReads.tsv"))
+    reads_df = load_reads_tsv(find_newest_matching_file(f"{working_dir}/output_dir/merge_files/*_mergedOnReads.tsv"),
+                              head=nrows)
     read_assignment_df = load_read_assignment_parquet(f"{genome_dir}/"
                                                       f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
     print("Finished loading files!")
