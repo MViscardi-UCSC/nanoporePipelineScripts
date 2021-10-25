@@ -6,7 +6,7 @@ This would be a nice metric to try and see if different mRNA selection methods a
 """
 import pandas as pd
 import numpy as np
-
+from nanoporePipelineCommon import find_newest_matching_file
 
 def load_merge_file(path):
     merge_df = pd.read_csv(path, sep="\t")
@@ -31,7 +31,7 @@ def load_merge_file(path):
 if __name__ == '__main__':
     print("Hi")
     pathdict = {
-        "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/output_dir/merge_files/210709_01:38:16PM_mergedOnReads.tsv",
-        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/merge_files/210709_02:57:03PM__mergedOnReads.tsv",
-        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/merge_files/210601_05:05:27PM__mergedOnReads.tsv"}
-    load_merge_file(pathdict["totalRNA"])
+        "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/output_dir/merge_files/*_mergedOnReads.tsv",
+        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/merge_files/*_mergedOnReads.tsv",
+        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/merge_files/*_mergedOnReads.tsv"}
+    load_merge_file(find_newest_matching_file(pathdict["riboD"]))
