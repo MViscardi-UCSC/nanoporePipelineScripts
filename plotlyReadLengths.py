@@ -10,9 +10,61 @@ pd.set_option('display.max_columns', None)
 
 import plotly.express as px
 from nanoporePipelineCommon import find_newest_matching_file
+from geneHeatmaps2 import load_tsv_and_assign_w_josh_method
 
-def load_df():
-    pass
+def load_merged_on_reads(path_to_merged, lib_name: str = None):
+    merged_on_reads_df = pd.read_csv(path_to_merged, sep="\t")
+    merged_on_reads_df["read_len"] = merged_on_reads_df["sequence"].str.len()
+    if lib_name:
+        print(f"Finish loading library dataframe for: {lib_name}")
+    return merged_on_reads_df
+
+
+def concat_reads_df(df_dict: dict):
+    super_df = pd.DataFrame()
+    for name, df in df_dict.items():
+        df["lib"] = name
+        super_df = pd.concat([super_df, df], ignore_index=True)
+        print(f"Dataframe concatenated for library: {name}")
+    return super_df
+
+
+def plotly_lib_ecdfs(concatenated_df):
+    """
+    This creates a really beatiful plot that you can zoom into, but it is SOOOOO laggy
+    I am going to try seaborn to make this a little easier to export
+    :param concatenated_df: 
+    :return: 
+    """
+    fig = px.ecdf(concatenated_df, x="read_len", color="lib", marginal="histogram")
+    fig.update_xaxes(range=[0, 3000])
+    fig.show()
+
+
+def seaborn_lib_ecdfs(concatenated_df):
+    import seaborn as sea
+    import matplotlib.pyplot as plt
+    sea.ecdfplot(data=concatenated_df, x="read_len", hue="lib")
+    plt.xlim(0, 3500)
+    # plt.legend(loc='lower right')
+    plt.show()
+
+
+def load_for_cds_based_plotting(lib_list):
+    
+    # Loop through each library name in the list and for each:
+    #   1. Load the TSV
+    #   2. Merge this w/ Josh's assign reads based on chr_pos
+    #   3. Create a column to retain the library identity
+    #   3. Concatenate these dataframe into one large dataframe
+    #       NOTE: This structure can be seperated again based on
+    #       the "lib" column added in the previous step
+    super_df = pd.DataFrame
+    for library_name in lib_list:
+        lib_df = load_tsv_and_assign_w_josh_method(library_name)
+        lib_df["lib"] = library_name
+        super_df = pd.concat([super_df, lib_df], ignore_index=True)
+    return super_df
 
 
 if __name__ == '__main__':
@@ -32,21 +84,14 @@ if __name__ == '__main__':
                  "output_dir/merge_files/*_mergedOnReads.tsv"
     }
     
-    run_with = ["polyA2"]
+    run_with = ["polyA", "polyA2", "totalRNA2"]
     
-    pathdict = {name: find_newest_matching_file(pathdict[name]) for name in run_with}
-    
-    for name, lib in pathdict.items():
-        df = pd.read_csv(lib, sep="\t")
-        df["read_len"] = df["sequence"].str.len()
-        print(df)
-        mt_genes = df[df["chr_id"] == "MtDNA"]
-        mt_genes["gene_name"] = mt_genes["gene_name"].fillna("Unmapped")
-        fig = px.histogram(mt_genes, x="read_len",
-                           color="gene_name",
-                           )
-        fig.show()
-        
-        fig = px.box(mt_genes, y="read_len", x="gene_name")
-        fig.show()
-        print("Done..")
+    lonest_df = load_for_cds_based_plotting(run_with)
+    # pathdict = {name: find_newest_matching_file(pathdict[name]) for name in run_with}
+    # 
+    # lib_df_dict = {name: load_merged_on_reads(path, lib_name=name) for name, path in pathdict.items()}
+    # 
+    # long_df = concat_reads_df(lib_df_dict)
+    # # plotly_lib_ecdfs(long_df)
+    # seaborn_lib_ecdfs(long_df)
+    print("Done..")
