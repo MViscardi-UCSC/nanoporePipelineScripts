@@ -421,7 +421,7 @@ if __name__ == '__main__':
                    2: "hits_rank",
                    3: "read_len_mean",
                    4: "polya_mean"}
-    prefix = prefix_dict[1]
+    prefix = prefix_dict[3]
     
     color_by_dict = {1: "read_len_mean_mean",
                      2: "tail_length_diff",
@@ -434,7 +434,7 @@ if __name__ == '__main__':
                      9: "t_fraction",
                      }
     
-    color_by = color_by_dict[8]
+    color_by = color_by_dict[6]
     
     drop_mtDNA = False
     drop_gc_less = True
