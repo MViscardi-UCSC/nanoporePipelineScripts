@@ -287,25 +287,7 @@ def parse_annies_deseq(csv_path: str) -> list:
 
 def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", drop_sub=10,
          target_list=[], target_column="gene_name"):
-    working_dir_dict = {"polyA": "210528_NanoporeRun_0639_L3s",  # Best (overkill) depth
-                        "riboD": "210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3",  # Gross
-                        "totalRNA": "210709_NanoporeRun_totalRNA_0639_L3",  # Low depth
-                        "polyA2": "210719_nanoporeRun_polyA_0639_L3_replicate",  # Good depth
-                        "totalRNA2": "210720_nanoporeRun_totalRNA_0639_L3_replicate",  # Good depth
-                        "xrn-1": "210905_nanoporeRun_totalRNA_5108_xrn-1-KD",  # First XRN-1 Knockdown
-                        }
-    try:
-        working_dir = f"/data16/marcus/working/{working_dir_dict[library_str]}"
-    except KeyError:
-        raise KeyError(f"Key: {library_str} isn't in the working directory dictionary keys : {working_dir_dict.keys()}")
-
-    reads_df = load_reads_tsv(find_newest_matching_file(f"{working_dir}/output_dir/merge_files/*_mergedOnReads.tsv"))
-    read_assignment_df = load_read_assignment_parquet(f"{genome_dir}/"
-                                                      f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
-    print("Finished loading files!")
-    for df in [reads_df, read_assignment_df]:
-        print(df.info())
-    merged_df = merge_on_chr_pos(read_assignment_df, reads_df)
+    merged_df, working_dir = load_tsv_and_assign_w_josh_method(genome_dir, library_str)
     smaller_df = compress_on_transcripts(merged_df, drop_sub,
                                          save_as=f"{working_dir}/output_dir/merge_files/"
                                                  f"{get_dt(for_output=True)}_compressedOnTranscripts_"
@@ -320,6 +302,37 @@ def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", dro
     plot_heatmap(smaller_df)
 
 
+def load_tsv_and_assign_w_josh_method(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100")\
+        -> (pd.DataFrame, str):
+    """
+    A method to load files and merge based on the chromosome position to find matching genes
+    
+    
+    :param library_str: Must be one of the following: polyA, riboD, totalRNA, polyA2, totalRNA2, xrn-1
+    :param genome_dir: Path to genome dir w/ processed parquet file
+    :return: A dataframe of passed genes & the path to the working directory
+    """
+    working_dir_dict = {"polyA": "210528_NanoporeRun_0639_L3s",  # Best (overkill) depth
+                        "riboD": "210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3",  # Gross
+                        "totalRNA": "210709_NanoporeRun_totalRNA_0639_L3",  # Low depth
+                        "polyA2": "210719_nanoporeRun_polyA_0639_L3_replicate",  # Good depth
+                        "totalRNA2": "210720_nanoporeRun_totalRNA_0639_L3_replicate",  # Good depth
+                        "xrn-1": "210905_nanoporeRun_totalRNA_5108_xrn-1-KD",  # First XRN-1 Knockdown
+                        }
+    try:
+        working_dir = f"/data16/marcus/working/{working_dir_dict[library_str]}"
+    except KeyError:
+        raise KeyError(f"Key: {library_str} isn't in the working directory dictionary keys : {working_dir_dict.keys()}")
+    reads_df = load_reads_tsv(find_newest_matching_file(f"{working_dir}/output_dir/merge_files/*_mergedOnReads.tsv"))
+    read_assignment_df = load_read_assignment_parquet(f"{genome_dir}/"
+                                                      f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
+    print("Finished loading files!")
+    for df in [reads_df, read_assignment_df]:
+        print(df.info())
+    merged_df = merge_on_chr_pos(read_assignment_df, reads_df)
+    return merged_df, working_dir
+
+
 if __name__ == '__main__':
     annie_deseq_csv_path = "/data16/marcus/working/210204_smg-1and6_alteredGenes_fromAnnie/" \
                            "210209_GenesUpInSMG1AndSMG6.csv"
@@ -329,4 +342,9 @@ if __name__ == '__main__':
          drop_sub=25,
          # target_list=annies_deseq_genes,
          # target_column="gene_id",
+         target_list=['tbb-2',
+                      'tbb-1',
+                      'mec-7',
+                      'mec-12'],
+         target_column='gene_name'
          )
