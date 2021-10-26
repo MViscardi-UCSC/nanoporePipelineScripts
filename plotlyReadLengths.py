@@ -5,22 +5,25 @@ Marcus Viscardi,    October 19, 2021
 Plotting read lengths, specifically genes from MtDNA
 """
 import pandas as pd
-
+import numpy as np
 pd.set_option('display.width', 400)
 pd.set_option('display.max_columns', None)
 
 import plotly.express as px
-from nanoporePipelineCommon import find_newest_matching_file
+import seaborn as sea
+import matplotlib.pyplot as plt
+
+from nanoporePipelineCommon import find_newest_matching_file, get_dt
 from geneHeatmaps2 import load_tsv_and_assign_w_josh_method, load_read_assignment_parquet
 
 
-def load_merged_on_reads(path_to_merged, lib_name: str = None):
+def load_merged_on_reads(path_to_merged, lib_name: str = None, head=None):
     if lib_name:
         print(f"Starting to load library dataframe for: {lib_name} . . .", end="")
-    merged_on_reads_df = pd.read_csv(path_to_merged, sep="\t")
+    merged_on_reads_df = pd.read_csv(path_to_merged, sep="\t", nrows=head)
     merged_on_reads_df["read_len"] = merged_on_reads_df["sequence"].str.len()
     if lib_name:
-        print(f"\bFinish loading library dataframe for: {lib_name}!")
+        print(f"\rFinish loading library dataframe for: {lib_name}!")
     return merged_on_reads_df
 
 
@@ -37,8 +40,6 @@ def plotly_lib_ecdfs(concatenated_df):
     """
     This creates a really beatiful plot that you can zoom into, but it is SOOOOO laggy
     I am going to try seaborn to make this a little easier to export
-    :param concatenated_df: 
-    :return: 
     """
     fig = px.ecdf(concatenated_df, x="read_len", color="lib", marginal="histogram")
     fig.update_xaxes(range=[0, 3000])
@@ -46,15 +47,15 @@ def plotly_lib_ecdfs(concatenated_df):
 
 
 def seaborn_lib_ecdfs(concatenated_df):
-    import seaborn as sea
-    import matplotlib.pyplot as plt
-    sea.ecdfplot(data=concatenated_df, x="read_len", hue="lib")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sea.ecdfplot(data=concatenated_df, x="read_len", hue="lib", ax=ax)
     plt.xlim(0, 3500)
     # plt.legend(loc='lower right')
+    plt.savefig(f"./testOutputs/{get_dt(for_file=True)}_readLen_ecdfs.svg")
     plt.show()
 
 
-def load_for_cds_based_plotting(path_dict, drop_unassigned=True):
+def load_for_cds_based_plotting(path_dict, drop_unassigned=True, subset=None):
     read_assignment_df = load_read_assignment_parquet(f"/data16/marcus/genomes/elegansRelease100/"
                                                       f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
     # Loop through each library name in the list and for each:
@@ -66,7 +67,7 @@ def load_for_cds_based_plotting(path_dict, drop_unassigned=True):
     #       the "lib" column added in the previous step
     df_dict = {}
     for library_name, tsv_path in path_dict.items():
-        lib_df = load_merged_on_reads(tsv_path, lib_name=library_name)
+        lib_df = load_merged_on_reads(tsv_path, lib_name=library_name, head=subset)
         # lib_df["lib"] = library_name
         # super_df = pd.concat([super_df, lib_df], ignore_index=True)
         df_dict[library_name] = lib_df
@@ -81,11 +82,141 @@ def load_for_cds_based_plotting(path_dict, drop_unassigned=True):
     super_df = super_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
                               how="left", suffixes=["_fromReads",
                                                     "_fromAssign"])
-    print(f"\bFinished merge!")
+    print(f"\rFinished merge!")
     if drop_unassigned:
+        print(f"Read counts post gene assignment:  {super_df.shape[0]}")
         super_df = super_df[~super_df["gene_id_fromAssign"].isna()].reset_index(drop=True)
+        print(f"Read counts post unassigned drop:  {super_df.shape[0]}")
         super_df = super_df[super_df["strand_fromReads"] == super_df["strand_fromAssign"]].reset_index(drop=True)
+        print(f"Read counts post assignment check: {super_df.shape[0]}")
     return super_df
+
+
+def handle_long_df_and_plot(super_df: pd.DataFrame, distance_from_start_cutoff=0, plotly_or_seaborn=None):
+    # First lets add a column to hold the past_start information
+    super_df["past_start"] = super_df.apply(lambda row: _reads_past_start(row["to_start"],
+                                                                          cut_off=distance_from_start_cutoff),
+                                            axis=1)
+    super_df["cds_len"] = super_df.apply(lambda row: abs(row["to_start"]-row["to_stop"]+4),
+                                         axis=1)
+    print("Finished calculating read lengths")
+    group_by_txs = super_df.groupby(by=["gene_id_fromAssign",
+                                        "lib",
+                                        "transcript_id",
+                                        ])
+    grouped_df = pd.DataFrame(group_by_txs["past_start"].apply(np.mean))
+    grouped_df["transcript_hits"] = group_by_txs["past_start"].apply(len)
+    grouped_df["cds_len"] = group_by_txs["cds_len"].apply(_test_if_cds_len_consistent)
+    cds_bins = [0, 250, 500, 750, 1000, 1250, 1500, 2000, 2500, 3000, 3500, 4000, 5000, 10000]
+    cds_bin_names = [f"{bin_start} to {cds_bins[i+1]}" for i, bin_start in enumerate(cds_bins[:-1])]
+    grouped_df["binned_cds_len"] = pd.cut(grouped_df["cds_len"], bins=cds_bins, labels=cds_bin_names)
+    print("stopping point 1")
+    if plotly_or_seaborn == "plotly":
+        fig = px.box(grouped_df.reset_index(), x="binned_cds_len", y="past_start", points="all",
+                     hover_data=["gene_id_fromAssign", "transcript_id", "transcript_hits"],
+                     category_orders=dict(zip(cds_bin_names, cds_bin_names)))
+        fig.show()
+    elif plotly_or_seaborn == "seaborn":
+        # first plot the strip plot, showing all the raw data
+        fig = sea.stripplot(x="binned_cds_len",
+                            y="past_start",
+                            data=grouped_df,
+                            size=4, color=".7",
+                            order=cds_bin_names)
+        
+        # rotate the x labels so their easier to read!
+        fig.set_xticklabels(fig.get_xticklabels(),
+                            rotation=40, rotation_mode="anchor", ha='right')
+        
+        # plot the mean and median lines (mean in black, median in red!)
+        sea.boxplot(showmeans=True,
+                    meanline=True,
+                    meanprops={'color': 'k',
+                               'ls': '-',
+                               'lw': 2},
+                    medianprops={'visible': True,
+                                 'color': 'r',
+                                 'lw': 2},
+                    whiskerprops={'visible': False},
+                    zorder=10,
+                    x="binned_cds_len",
+                    y="past_start",
+                    data=grouped_df,
+                    showfliers=False,
+                    showbox=False,
+                    showcaps=False,
+                    order=cds_bin_names,
+                    ax=fig)
+        # tight layout so everything is visible
+        plt.tight_layout()
+        plt.savefig(f"./testOutputs/{get_dt(for_file=True)}_readLen_binned.svg")
+        plt.show()
+    elif plotly_or_seaborn == "seaborn_cat":
+        g = sea.catplot(data=grouped_df.reset_index(),
+                        x="binned_cds_len",
+                        y="past_start",
+                        row="lib",
+                        kind="strip",
+                        order=cds_bin_names,
+                        aspect=1.5, height=5,
+                        color='gray',
+                        jitter=0.25,
+                        alpha=0.5,
+                        )
+        g.data = grouped_df.reset_index()
+        g.map(sea.boxplot, x="binned_cds_len", y="past_start",
+              showmeans=True,
+              meanline=True,
+              meanprops={'color': 'k',
+                         'ls': '-',
+                         'lw': 2},
+              medianprops={'visible': True,
+                           'color': 'r',
+                           'lw': 2},
+              whiskerprops={'visible': False},
+              zorder=10,
+              data=grouped_df,
+              order=cds_bin_names,
+              showfliers=False,
+              showbox=False,
+              showcaps=False)
+        # This bit is untested!! >>>
+        from matplotlib.lines import Line2D
+        custom_lines = [Line2D([0], [0], color='k', lw=2),
+                        Line2D([0], [0], color='r', lw=2)]
+        plt.legend(custom_lines, ["Mean", "Median"])
+        # <<<
+        plt.xticks(rotation=45, ha="right")
+        plt.tight_layout()
+        plt.savefig(f"./testOutputs/{get_dt(for_file=True)}_readLen_binned_catplot.svg")
+        plt.show()
+    
+    print("stopping point 2")
+# TODO: From here I will want to calculate what percentage of reads span their start codon
+#       (probably based on the to_start column), then group by transcript_ids so that I can
+#       and potentially pull in CDS length for each transcript! <- I can prob do this by
+#       subtracting to_start from t0_stop?? Then binning transcripts based on CDS_len.
+#       Should I try to further group by to compress on genes? It would also be even better
+#       to have each transcripts pull on the gene's average weighted by the number of reads
+#       the transcript got in the libraries!
+
+
+def _reads_past_start(to_start, cut_off: int = 0, is_past=100, is_not_past=0) -> int:
+    if to_start <= cut_off:
+        return_val = is_past
+    elif to_start > cut_off:
+        return_val = is_not_past
+    else:
+        return_val = is_not_past
+    return return_val
+
+
+def _test_if_cds_len_consistent(cds_lengths) -> int:
+    cds_set = set(cds_lengths.to_list())
+    if len(cds_set) > 1:
+        raise NotImplementedError(f"Multiple CDS lengths?: {cds_set}")
+    else:
+        return int(next(iter(cds_set)))
 
 
 def main_plot_ecdfs(path_dict: dict, plotly_or_seaborn: str):
@@ -123,9 +254,11 @@ def pick_libs_return_paths_dict(lib_list: list):
 
 
 if __name__ == '__main__':
-    run_with = ["polyA", "polyA2", "totalRNA2"]
+    run_with = ["polyA2", "totalRNA2", "polyA", "xrn-1"]
     lib_path_dict = pick_libs_return_paths_dict(run_with)
 
-    lonest_df = load_for_cds_based_plotting(lib_path_dict)
-    # main_plot_ecdfs()
+    longest_df = load_for_cds_based_plotting(lib_path_dict, subset=None)
+    handle_long_df_and_plot(longest_df, distance_from_start_cutoff=50,
+                            plotly_or_seaborn="seaborn_cat")
+    # main_plot_ecdfs(lib_path_dict, plotly_or_seaborn="seaborn")
     print("Done..")
