@@ -92,7 +92,8 @@ def load_for_cds_based_plotting(path_dict, drop_unassigned=True, subset=None):
     return super_df
 
 
-def handle_long_df_and_plot(super_df: pd.DataFrame, distance_from_start_cutoff=0, plotly_or_seaborn=None):
+def handle_long_df_and_plot(super_df: pd.DataFrame, distance_from_start_cutoff=0, plotly_or_seaborn=None,
+                            genes_or_txns="txns", filter_hits_less_than: int = 1):
     # First lets add a column to hold the past_start information
     super_df["past_start"] = super_df.apply(lambda row: _reads_past_start(row["to_start"],
                                                                           cut_off=distance_from_start_cutoff),
@@ -100,17 +101,25 @@ def handle_long_df_and_plot(super_df: pd.DataFrame, distance_from_start_cutoff=0
     super_df["cds_len"] = super_df.apply(lambda row: abs(row["to_start"]-row["to_stop"]+4),
                                          axis=1)
     print("Finished calculating read lengths")
-    group_by_txs = super_df.groupby(by=["gene_id_fromAssign",
-                                        "lib",
-                                        "transcript_id",
-                                        ])
+    compress_list = ["lib", "gene_id_fromAssign"]
+    if genes_or_txns == "txns":
+        compress_list.append("transcript_id")
+    group_by_txs = super_df.groupby(by=compress_list)
     grouped_df = pd.DataFrame(group_by_txs["past_start"].apply(np.mean))
     grouped_df["transcript_hits"] = group_by_txs["past_start"].apply(len)
-    grouped_df["cds_len"] = group_by_txs["cds_len"].apply(_test_if_cds_len_consistent)
+    grouped_df = grouped_df[grouped_df["transcript_hits"] > filter_hits_less_than]
+    grouped_df["cds_len"] = group_by_txs["cds_len"].apply(lambda cds_lens:
+                                                          _test_if_cds_len_consistent(cds_lens,
+                                                                                      genes_or_txns=genes_or_txns))
+    
+    # Binning data with the pandas cut function:
     cds_bins = [0, 250, 500, 750, 1000, 1250, 1500, 2000, 2500, 3000, 3500, 4000, 5000, 10000]
     cds_bin_names = [f"{bin_start} to {cds_bins[i+1]}" for i, bin_start in enumerate(cds_bins[:-1])]
     grouped_df["binned_cds_len"] = pd.cut(grouped_df["cds_len"], bins=cds_bins, labels=cds_bin_names)
+    
     print("stopping point 1")
+    
+    # Plot it!
     if plotly_or_seaborn == "plotly":
         fig = px.box(grouped_df.reset_index(), x="binned_cds_len", y="past_start", points="all",
                      hover_data=["gene_id_fromAssign", "transcript_id", "transcript_hits"],
@@ -180,15 +189,17 @@ def handle_long_df_and_plot(super_df: pd.DataFrame, distance_from_start_cutoff=0
               showfliers=False,
               showbox=False,
               showcaps=False)
-        # This bit is untested!! >>>
+        
+        # Add a custom legend:
         from matplotlib.lines import Line2D
         custom_lines = [Line2D([0], [0], color='k', lw=2),
                         Line2D([0], [0], color='r', lw=2)]
         plt.legend(custom_lines, ["Mean", "Median"])
-        # <<<
+        
         plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
-        plt.savefig(f"./testOutputs/{get_dt(for_file=True)}_readLen_binned_catplot.svg")
+        save_fig_path = f"./testOutputs/{get_dt(for_file=True)}_readLen_binned_catplot.{genes_or_txns}.svg"
+        plt.savefig(save_fig_path)
         plt.show()
     
     print("stopping point 2")
@@ -211,10 +222,13 @@ def _reads_past_start(to_start, cut_off: int = 0, is_past=100, is_not_past=0) ->
     return return_val
 
 
-def _test_if_cds_len_consistent(cds_lengths) -> int:
+def _test_if_cds_len_consistent(cds_lengths, genes_or_txns=None) -> int:
     cds_set = set(cds_lengths.to_list())
-    if len(cds_set) > 1:
+    cds_set_len = len(cds_set)
+    if genes_or_txns == "txns" and cds_set_len > 1:
         raise NotImplementedError(f"Multiple CDS lengths?: {cds_set}")
+    elif genes_or_txns == "genes" and cds_set_len > 1:
+        return int(np.mean(list(cds_set)))
     else:
         return int(next(iter(cds_set)))
 
@@ -259,6 +273,8 @@ if __name__ == '__main__':
 
     longest_df = load_for_cds_based_plotting(lib_path_dict, subset=None)
     handle_long_df_and_plot(longest_df, distance_from_start_cutoff=50,
-                            plotly_or_seaborn="seaborn_cat")
+                            plotly_or_seaborn="seaborn_cat",
+                            genes_or_txns="txns",
+                            filter_hits_less_than=5)
     # main_plot_ecdfs(lib_path_dict, plotly_or_seaborn="seaborn")
     print("Done..")
