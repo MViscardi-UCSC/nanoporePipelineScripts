@@ -203,13 +203,6 @@ def handle_long_df_and_plot(super_df: pd.DataFrame, distance_from_start_cutoff=0
         plt.show()
     
     print("stopping point 2")
-# TODO: From here I will want to calculate what percentage of reads span their start codon
-#       (probably based on the to_start column), then group by transcript_ids so that I can
-#       and potentially pull in CDS length for each transcript! <- I can prob do this by
-#       subtracting to_start from t0_stop?? Then binning transcripts based on CDS_len.
-#       Should I try to further group by to compress on genes? It would also be even better
-#       to have each transcripts pull on the gene's average weighted by the number of reads
-#       the transcript got in the libraries!
 
 
 def _reads_past_start(to_start, cut_off: int = 0, is_past=100, is_not_past=0) -> int:
