@@ -33,25 +33,14 @@ New GPU based calling is WAY better. . . Why did I ever run with CPU?!
 from os import path, listdir, mkdir
 from argparse import ArgumentParser
 from subprocess import Popen, CalledProcessError, PIPE
-from datetime import datetime
 from typing import List
 from glob import glob
-from nanoporePipelineCommon import find_newest_matching_file
+from nanoporePipelineCommon import find_newest_matching_file, get_dt
 
 import pandas as pd
 import numpy as np
 
 pd.set_option("display.max_columns", None)
-
-
-def get_dt(for_print=False, for_output=False):
-    now = datetime.now()
-    if for_print:
-        return str(now.strftime("%m/%d/%y @ %I:%M:%S %p"))
-    elif for_output:
-        return str(now.strftime("%y%m%d"))
-    else:
-        return str(now.strftime("%y%m%d_%I:%M:%S%p"))
 
 
 def live_cmd_call(command):
