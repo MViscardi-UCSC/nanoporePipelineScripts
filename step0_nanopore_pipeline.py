@@ -522,7 +522,7 @@ def merge_results(**other_kwargs):
             merge_df.to_csv(merge_out_f, sep="\t", index=False)
         return merge_df
 
-    def compress_on_genes(merged_df, outputDir, dropGeneWithHitsLessThan=None,  # dip_test=False,
+    def compress_on_genes(merged_df, outputDir, dropGeneWithHitsLessThan=None,
                           output_to_file=True, **kwargs) -> pd.DataFrame:
         # This creates a pandas "groupby" object that can be used to extract info compressed on gene_ids
         print("\nMerging information from Minimap2, featureCounts and Nanopolish-PolyA:")
