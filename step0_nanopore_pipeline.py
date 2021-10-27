@@ -215,26 +215,28 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
     return finalArgDict
 
 
-def buildOutputDirs(outputDir, **kwargs) -> None:
-    dirs_list = [outputDir,
-                 "fastqs",
-                 "cat_files",
-                 "nanopolish",
-                 "featureCounts",
-                 "logs",
-                 "merge_files",
-                 "flair"
-                 ]
+def buildOutputDirs(outputDir, stepsToRun, **kwargs) -> None:
+    dirs_list = (("Z", outputDir),  # I am just going to use Z to mean always
+                 ("G", "fastqs"),
+                 ("M", "cat_files"),
+                 ("N", "nanopolish"),  # TODO: split nanopolish from minimap2
+                 ("F", "featureCounts"),
+                 ("Z", "logs"),  # Z again
+                 ("P", "merge_files"),
+                 ("L", "flair"),
+                 )
     print('\n')
-    for dir_to_make in dirs_list:
-        if dir_to_make is outputDir:
-            new_dir_path = outputDir
-        else:
-            new_dir_path = f"{outputDir}/{dir_to_make}"
-        if not path.exists(new_dir_path):
-            mkdir(new_dir_path)
-        else:
-            print(f"Directory @ {new_dir_path} already exists, skipping.")
+    stepsToRun += "Z"
+    for (steps_to_run_code, dir_to_make) in dirs_list:
+        if steps_to_run_code in stepsToRun:
+            if dir_to_make is outputDir:
+                new_dir_path = outputDir
+            else:
+                new_dir_path = f"{outputDir}/{dir_to_make}"
+            if not path.exists(new_dir_path):
+                mkdir(new_dir_path)
+            else:
+                print(f"Directory @ {new_dir_path} already exists, skipping.")
     print("\n")
 
 
