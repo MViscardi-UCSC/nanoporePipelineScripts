@@ -494,6 +494,16 @@ def merge_results(**other_kwargs):
         #       have enough information to merge uniquely for reads that map
         #       more than once!! This means that read A that maps to gene X and Y
         #       is eventually producing 4 lines of data....
+        # TODO: Revisiting on 10/26/2021: This is still broken. B/c the multiple
+        #       hits (meaning multiple identical read_ids) in the bam/sam file are passed to
+        #       feature counts, it propigates any multimappers. Currently I avoid this by
+        #       dropping ANY read that hits more than once, meaning that propigation of
+        #       multiple reads is avoided entirely. But it seems like I have a lot of good
+        #       primary maps w/ trash secondaries! It would be really nice to retain those
+        #       reads. . . Should I just switch to Josh's assignment method?
+        #           OR: I could try to rename reads in the bam file w/ their map location,
+        #           as this could help to uniquely identify primaries, and that info would
+        #           get passed though featureCounts!
         # 8/24/2021: Sorta fixed this by just dropping all duplicate reads! (line 484)
         #            Back to square one... lol
         sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
