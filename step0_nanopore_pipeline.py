@@ -291,27 +291,7 @@ def alternative_genome_filtering():
     pass
 
 
-def minimap_and_nanopolish(genomeDir, dataDir, outputDir, threads, regenerate, minimapParam, **other_kwargs):
-    if regenerate or not path.exists(f"{outputDir}/cat_files/cat.fastq.index.readdb"):
-        seq_sum_matches = [i for i in listdir(dataDir) if
-                           path.isfile(path.join(dataDir, i)) and 'sequencing_summary' in i]
-        if len(seq_sum_matches) != 1:
-            raise IndexError(f"Too many/few matches for 'sequencing_summary' in sequencing directory!!\n"
-                             f"{seq_sum_matches}")
-        else:
-            seq_sum_name = seq_sum_matches[0]
-        call = f"nanopolish index --directory={dataDir}/fast5 " \
-               f"--sequencing-summary={dataDir}/{seq_sum_name} " \
-               f"{outputDir}/cat_files/cat.fastq"  # This still needs testing!
-        print(f"Starting nanopolish index at {get_dt(for_print=True)}\nUsing call:\t{call}\n"
-              f"(There are limited outputs from this script, and it runs very slow)")
-        live_cmd_call(call)
-        print(f"Nanopolish index completed at {get_dt(for_print=True)}")
-    else:
-        print(f"\n\nNanopolish index already ran. Based on file at:"
-              f"\n\t{outputDir}/cat_files/cat.fastq.index.readdb\n"
-              f"Use the regenerate tag if you want to rerun.\n")
-    
+def minimap2_and_samtools(genomeDir, outputDir, threads, regenerate, minimapParam, **other_kwargs):
     minimap_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.bam")
     if not minimap_flag:
         bam_length = path.getsize(f"{outputDir}/cat_files/cat.bam")
@@ -338,7 +318,8 @@ def minimap_and_nanopolish(genomeDir, dataDir, outputDir, threads, regenerate, m
               f"\n\t{outputDir}/cat_files/cat.bam\n"
               f"Use the regenerate tag if you want to rerun.\n")
 
-    if regenerate or not path.exists(f"{outputDir}/cat_files/cat.sorted.bam"):
+    samtools_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.sorted.bam")
+    if samtools_flag:
         call = f"samtools sort -T tmp -o {outputDir}/cat_files/cat.sorted.bam " \
                f"{outputDir}/cat_files/cat.bam && samtools index " \
                f"{outputDir}/cat_files/cat.sorted.bam"
@@ -350,7 +331,34 @@ def minimap_and_nanopolish(genomeDir, dataDir, outputDir, threads, regenerate, m
               f"\n\t{outputDir}/cat_files/cat.sorted.bam\n"
               f"Use the regenerate tag if you want to rerun.\n")
 
-    if regenerate or not path.exists(f"{outputDir}/nanopolish/polya.tsv"):
+
+def nanopolish_index_and_polya(genomeDir, dataDir, outputDir, threads, regenerate, **other_kwargs):
+    # First we have to index the fastq_files!
+    nanopolish_index_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.fastq.index.readdb")
+    if nanopolish_index_flag:
+        seq_sum_matches = [i for i in listdir(dataDir) if
+                           path.isfile(path.join(dataDir, i)) and 'sequencing_summary' in i]
+        if len(seq_sum_matches) != 1:
+            raise IndexError(f"Too many/few matches for 'sequencing_summary' in sequencing directory!!\n"
+                             f"{seq_sum_matches}")
+        else:
+            seq_sum_name = seq_sum_matches[0]
+        call = f"nanopolish index --directory={dataDir}/fast5 " \
+               f"--sequencing-summary={dataDir}/{seq_sum_name} " \
+               f"{outputDir}/cat_files/cat.fastq"
+        print(f"Starting nanopolish index at {get_dt(for_print=True)}\nUsing call:\t{call}\n"
+              f"(There are limited outputs from this script, and it runs very slow)")
+        live_cmd_call(call)
+        print(f"Nanopolish index completed at {get_dt(for_print=True)}")
+    else:
+        print(f"\n\nNanopolish index already ran. Based on file at:"
+              f"\n\t{outputDir}/cat_files/cat.fastq.index.readdb\n"
+              f"Use the regenerate tag if you want to rerun.\n")
+
+    # Now we are able to run the nanopolish polya script, this will throw an error if minimap2
+    #   has not ran yet!!!!
+    nanopolish_polya_flag = regenerate or not path.exists(f"{outputDir}/nanopolish/polya.tsv")
+    if nanopolish_polya_flag:
         genome_fa_file = glob(f"{genomeDir}/*allChrs.fa")
         if len(genome_fa_file) != 1:
             raise NotImplementedError(f"Currently this script only supports having genomeDirs "
