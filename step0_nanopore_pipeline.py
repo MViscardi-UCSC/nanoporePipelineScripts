@@ -676,12 +676,13 @@ def map_standards():
 
 def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
     return_value = None
-    buildOutputDirs(**args)
+    buildOutputDirs(stepsToRun=stepsToRun, **args)
 
     steps_dict = {"G": [guppy_basecall_w_gpu, "Guppy Basecalling"],
                   "A": [alternative_genome_filtering, "Filtering Alt. Genomes (not implemented)"],
                   # TODO: Add alternative genome filter mapping function here^^^
-                  "M": [minimap_and_nanopolish, "Minimap2 & Nanopolish"],  # Also N until I split them up!
+                  "M": [minimap2_and_samtools, "Minimap2 and SamTools"],  # Also N until I split them up!
+                  "N": [nanopolish_index_and_polya, "Nanopolish Index and polyA Calling"],
                   "F": [feature_counts, "FeatureCounts"],
                   "S": [map_standards, "Mapping Standards (not yet implemented)"],
                   "C": [final_touches, "Concatenate Files"],
