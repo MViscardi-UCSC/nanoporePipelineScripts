@@ -387,7 +387,7 @@ def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
             raise NotImplementedError(f"Currently this script only supports having genomeDirs "
                                       f"with one gtf files that ends with '.gtf'")
         call = f"featureCounts -L -T {threads} -R CORE -a {genome_gtf_file[0]} " \
-               f"-o {outputDir}/featureCounts/{get_dt(for_output=True)} {outputDir}/cat_files/cat.sorted.bam " \
+               f"-o {outputDir}/featureCounts/{get_dt(for_file=True)} {outputDir}/cat_files/cat.sorted.bam " \
                f"2>&1 | tee -a {outputDir}/logs/{get_dt()}.featureCounts.log"
         print(f"Starting featureCounts at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
         live_cmd_call(call)
