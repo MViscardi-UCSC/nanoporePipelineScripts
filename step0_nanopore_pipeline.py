@@ -469,7 +469,7 @@ def merge_results(**other_kwargs):
         for col_to_keep in ["type_of_alignment", "transcript_strand", "num_mismatches"]:
             extra_columns_to_drop.remove(col_to_keep)
         # Drop the unsaved columns!
-        sam_df.drop(extra_columns_to_drop, axis=1)
+        sam_df = sam_df.drop(extra_columns_to_drop, axis=1)
         
         if keep_multimaps:
             # Use the 256 bit flag to pick out reads with secondary alignments
