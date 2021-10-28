@@ -700,7 +700,7 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
     steps_dict = {"G": [guppy_basecall_w_gpu, "Guppy Basecalling"],
                   "A": [alternative_genome_filtering, "Filtering Alt. Genomes (not implemented)"],
                   # TODO: Add alternative genome filter mapping function here^^^
-                  "M": [minimap2_and_samtools, "Minimap2 and SamTools"],  # Also N until I split them up!
+                  "M": [minimap2_and_samtools, "Minimap2 and SamTools"],
                   "N": [nanopolish_index_and_polya, "Nanopolish Index and polyA Calling"],
                   "F": [feature_counts, "FeatureCounts"],
                   "S": [map_standards, "Mapping Standards (not yet implemented)"],
