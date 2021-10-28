@@ -676,7 +676,7 @@ def map_standards():
 
 def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
     return_value = None
-    buildOutputDirs(stepsToRun=stepsToRun, **args)
+    buildOutputDirs(**args)
 
     steps_dict = {"G": [guppy_basecall_w_gpu, "Guppy Basecalling"],
                   "A": [alternative_genome_filtering, "Filtering Alt. Genomes (not implemented)"],
