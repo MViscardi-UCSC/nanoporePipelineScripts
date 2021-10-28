@@ -518,7 +518,7 @@ def merge_results(**other_kwargs):
             print("#" * 100)
             print(f"\n\nMerged Dataframe info:")
             print(merge_df.info())
-        with open(f"{outputDir}/merge_files/{get_dt(for_output=True)}_mergedOnReads.tsv", "w") as merge_out_f:
+        with open(f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.tsv", "w") as merge_out_f:
             merge_df.to_csv(merge_out_f, sep="\t", index=False)
         return merge_df
 
@@ -549,7 +549,7 @@ def merge_results(**other_kwargs):
             gene_df = gene_df[gene_df["read_hits"] >= dropGeneWithHitsLessThan]
         gene_df.sort_values("read_hits", ascending=False, inplace=True)
         print(f"Mean PolyA Length: {gene_df['polya_mean'].mean():.3f}")
-        filename = f"{get_dt(for_output=True)}_compressedOnGenes"
+        filename = f"{get_dt(for_file=True)}_compressedOnGenes"
         if output_to_file:
             gene_df.to_parquet(f"{outputDir}/merge_files/{filename}.parquet")
             with open(f"{outputDir}/merge_files/{filename}.tsv", "w") as out_f:
@@ -590,7 +590,7 @@ def flair(outputDir, **other_kwargs):
 
     def merge_some_more(flair_df: pd.DataFrame, outputDir, dropGeneWithHitsLessThan: int = None,
                         output_to_file=True) -> pd.DataFrame:
-        merge_tsv_path = f"{outputDir}/merge_files/{get_dt(for_output=True)}_mergedOnReads.tsv"
+        merge_tsv_path = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.tsv"
         if not path.exists(merge_tsv_path):
             older_merge_tsv = find_newest_matching_file(f"{outputDir}/merge_files/*_mergedOnReads.tsv")
             print(f"Could not find file @ {merge_tsv_path}\n"
@@ -600,7 +600,7 @@ def flair(outputDir, **other_kwargs):
         print(f"\nLoaded my merge file. . .\n")
         print(merge_df.info())
         super_df = merge_df.merge(flair_df, how="inner", on="read_id")
-        super_df.to_csv(f"{outputDir}/merge_files/{get_dt(for_output=True)}_mergedWithTranscripts.tsv",
+        super_df.to_csv(f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedWithTranscripts.tsv",
                         sep="\t", index=False)
 
         super_df["read_length"] = super_df["sequence"].str.len()
@@ -632,7 +632,7 @@ def flair(outputDir, **other_kwargs):
             transcript_df = transcript_df[transcript_df["transcript_hits"] >= dropGeneWithHitsLessThan]
         transcript_df.sort_values("transcript_hits", ascending=False, inplace=True)
         print(f"Mean PolyA Length: {transcript_df['polya_mean'].mean():.3f}")
-        filename = f"{get_dt(for_output=True)}_compressedOnTranscripts"
+        filename = f"{get_dt(for_file=True)}_compressedOnTranscripts"
         if output_to_file:
             with open(f"{outputDir}/merge_files/{filename}.tsv", "w") as out_f:
                 transcript_df.to_csv(out_f, sep="\t")
