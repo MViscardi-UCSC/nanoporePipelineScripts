@@ -690,8 +690,19 @@ def extra_steps(outputDir, df=None, **other_kwargs):
     print(sample_df.info())
 
 
-def map_standards():
-    pass
+def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
+    from standardsAlignment.standardsAssignmentWithMinimap2 import align_standards, plot_value_counts
+    if not isinstance(df, pd.DataFrame):
+        merge_dir = f"{outputDir}/merge_files"
+        try:
+            merge_on_reads_path = find_newest_matching_file(f"{merge_dir}/*mergedOnReads.parquet")
+            df = pd.read_parquet(merge_on_reads_path)
+        except ValueError:
+            print(f"Could not find a mergedOnReads parquet file in directory:\n\t{merge_dir}")
+            merge_on_reads_path = find_newest_matching_file(f"{merge_dir}/*mergedOnReads.tsv")
+            df = pd.read_csv(merge_on_reads_path, sep="\t", low_memory=False)
+    df = df.merge(align_standards(compressed_df=df, keep_read_id=True, **other_kwargs), on="read_id")
+    df.to_parquet(f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet")
 
 
 def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
@@ -704,9 +715,9 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
                   "M": [minimap2_and_samtools, "Minimap2 and SamTools"],
                   "N": [nanopolish_index_and_polya, "Nanopolish Index and polyA Calling"],
                   "F": [feature_counts, "FeatureCounts"],
-                  "S": [map_standards, "Mapping Standards (not yet implemented)"],
                   "C": [final_touches, "Concatenate Files"],
                   "P": [merge_results, "Merging Results w/ Pandas"],
+                  "S": [map_standards, "Mapping Standards (still experimental!!)"],
                   "L": [flair, "Calling Transcripts w/ Flair"],
                   "X": [extra_steps, "Running random eXtra steps"]
                   }
@@ -716,7 +727,7 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
             print("\n\n", step_print, f"\n{'#' * len(step_print)}\n", sep="")
             if code == "P":  # The pandas merge will both: save a file and return a tuple of dataframes
                 return_value = step_func(**args)
-            elif code == "X":
+            elif code == "X" or code == "S":
                 if return_value:  # The extra steps function will accept a df, or load from the disk
                     step_func(df=return_value[0], **args)
                 else:
