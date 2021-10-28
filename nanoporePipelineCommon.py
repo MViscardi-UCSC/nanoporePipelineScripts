@@ -4,6 +4,8 @@ Marcus Viscardi,    September 22, 2021
 
 A common location for some often used methods.
 """
+import pandas as pd
+
 
 def get_dt(for_print=False, for_file=False):
     from datetime import datetime
@@ -17,7 +19,6 @@ def get_dt(for_print=False, for_file=False):
 
 
 def tsv_to_parquet(tsv_path) -> str:
-    import pandas as pd
     parquet_path = tsv_path.rstrip("tsv") + "parquet"
     df = pd.read_csv(tsv_path, sep="\t")
     print(f"Saving new parquet to: {parquet_path}")
@@ -39,7 +40,6 @@ def find_newest_matching_file(path_str):
 
 
 def load_ski_pelo_targets(as_df=False):
-    import pandas as pd
     df = pd.read_csv("/data16/marcus/working/210119_SkiPeloTargets_fromStarDust/"
                          "170723_MSandM.wtAndSkiPelo_Bounds_-12_-14_S.DESeqgeneCts_"
                          "diffExpression_2.7319418642771283e-06Down.txt", names=["gene_id"])
