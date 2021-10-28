@@ -552,15 +552,17 @@ def merge_results(**other_kwargs):
         filename = f"{get_dt(for_file=True)}_compressedOnGenes"
         if output_to_file:
             gene_df.to_parquet(f"{outputDir}/merge_files/{filename}.parquet")
-            with open(f"{outputDir}/merge_files/{filename}.tsv", "w") as out_f:
-                gene_df.to_csv(out_f, sep="\t")
-            with open(f"{outputDir}/merge_files/{filename}_simple.tsv", "w") as out_f:
-                gene_df.drop(["read_ids", "polya_lengths", 'read_lengths'], axis=1).to_csv(out_f, sep="\t")
+            gene_df.to_csv(f"{outputDir}/merge_files/{filename}.tsv", sep="\t")
+            gene_df.drop(['read_ids',
+                          'polya_lengths',
+                          'read_lengths',
+                          'genomic_starts',
+                          'cigars'],
+                         axis=1).to_csv(f"{outputDir}/merge_files/{filename}_simple.tsv", sep="\t")
         return gene_df
 
     print(f"Starting to merge all data at {get_dt(for_print=True)}\n")
-    merge_df = create_merge_df(  # print_info=True,
-                               **other_kwargs)
+    merge_df = create_merge_df(**other_kwargs)
     print(f"\n\nFinished merging all data at {get_dt(for_print=True)}")
     print(f"Starting to compress data on genes at {get_dt(for_print=True)}\n")
     gene_df = compress_on_genes(merge_df, **other_kwargs)
