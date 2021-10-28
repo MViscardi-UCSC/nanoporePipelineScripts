@@ -432,9 +432,7 @@ def merge_results(**other_kwargs):
         # print("After dropping sups: ", sam_df.shape)
         # sam_df = sam_df.drop_duplicates(subset=0, keep=False, ignore_index=True)
         # print("After dropping dups: ", sam_df.shape)
-        
-        # I have no idea what the additional tags from Minimap2 are, I'm dropping them for now:
-        sam_df = sam_df[range(11)]
+
         # And lets rename columns while we are at it!
         sam_header_names = ["read_id",
                             "bit_flag",
@@ -446,12 +444,25 @@ def merge_results(**other_kwargs):
                             "p_next",
                             "len",
                             "sequence",
-                            "phred_qual"]
+                            "phred_qual",
+                            ]
+        extra_columns = ["num_mismatches",
+                         "best_dp_score",
+                         "dp_score",
+                         "num_ambiguous_bases",
+                         "transcript_strand",
+                         "type_of_alignment",
+                         "num_minimizes",
+                         "chain_score",
+                         "chain_score_top_secondary",
+                         "gap_compressed_divergence",
+                         "len_of_query_w_repeats"]
+        sam_header_names += extra_columns
         sam_df = sam_df.rename(columns=dict(enumerate(sam_header_names)))
         # Pull the 16 bit flag to get strand information (important for merge w/ featC later)
         sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-",
                                                                       0: "+"})
-        
+
         if keep_multimaps:
             # Use the 256 bit flag to pick out reads with secondary alignments
             sam_df["multi"] = (sam_df.bit_flag & 256) == 256
@@ -459,10 +470,10 @@ def merge_results(**other_kwargs):
             read_ids_of_multis = sam_df[sam_df["multi"]]["read_id"]
             # Drop all reads that were in this list (including the primary alignments of these reads)
             sam_df = sam_df[~sam_df["read_id"].isin(read_ids_of_multis.to_list())]
-            
+
             # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
             sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
-            
+
             # Read out of how many reads are multi and supp mapped
             for bit_flag in [256, 2048]:
                 print(f"Number of rows from SAM w/ {bit_flag}: "
