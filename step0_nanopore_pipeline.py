@@ -446,12 +446,12 @@ def merge_results(**other_kwargs):
                             "sequence",
                             "phred_qual",
                             ]
-        extra_columns = ["num_mismatches",
+        extra_columns = ["num_mismatches",  # Keep
                          "best_dp_score",
                          "dp_score",
                          "num_ambiguous_bases",
-                         "transcript_strand",
-                         "type_of_alignment",
+                         "transcript_strand",  # Keep
+                         "type_of_alignment",  # Keep
                          "num_minimizes",
                          "chain_score",
                          "chain_score_top_secondary",
@@ -462,7 +462,15 @@ def merge_results(**other_kwargs):
         # Pull the 16 bit flag to get strand information (important for merge w/ featC later)
         sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-",
                                                                       0: "+"})
-
+        
+        # Make a list of columns to drop:
+        extra_columns_to_drop = extra_columns
+        # Remove the columns I want to keep from this "drop list"
+        for col_to_keep in ["type_of_alignment", "transcript_strand", "num_mismatches"]:
+            extra_columns_to_drop.remove(col_to_keep)
+        # Drop the unsaved columns!
+        sam_df.drop(extra_columns_to_drop, axis=1)
+        
         if keep_multimaps:
             # Use the 256 bit flag to pick out reads with secondary alignments
             sam_df["multi"] = (sam_df.bit_flag & 256) == 256
