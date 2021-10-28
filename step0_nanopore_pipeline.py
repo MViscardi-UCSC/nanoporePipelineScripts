@@ -496,8 +496,8 @@ def merge_results(**other_kwargs):
         #       is eventually producing 4 lines of data....
         # TODO: Revisiting on 10/26/2021: This is still broken. B/c the multiple
         #       hits (meaning multiple identical read_ids) in the bam/sam file are passed to
-        #       feature counts, it propigates any multimappers. Currently I avoid this by
-        #       dropping ANY read that hits more than once, meaning that propigation of
+        #       feature counts, it propagates any multi-mappers. Currently I avoid this by
+        #       dropping ANY read that hits more than once, meaning that propagation of
         #       multiple reads is avoided entirely. But it seems like I have a lot of good
         #       primary maps w/ trash secondaries! It would be really nice to retain those
         #       reads. . . Should I just switch to Josh's assignment method?
