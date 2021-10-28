@@ -58,6 +58,78 @@ def rev_compliment(seq: str, rna: bool = False) -> str:
         return seq.reverse_complement()
 
 
+# Below class and methods are for loading BAM files directly to pandas dataframes
+from typing import NamedTuple
+
+
+class BamHeadersAndDf(NamedTuple):
+    """
+    This is a dataclass object to hold the a sam DF and
+    the correct sam/bam headers
+    """
+    headers: str
+    df: pd.DataFrame
+
+
+def minimap_bam_to_df(bam_path) -> BamHeadersAndDf:
+    from subprocess import check_output
+    from io import BytesIO
+
+    # First read the bam file into a tab-seperated string object:
+    output = check_output(f"samtools view {bam_path}", shell=True)
+
+    # Use pandas to load this string object into a dataframe
+    df = pd.read_csv(BytesIO(output),
+                     encoding='utf8',
+                     sep="\t",
+                     names=range(23),
+                     low_memory=False
+                     )
+
+    # Column names will make handling the dataframe easier,
+    #   but they are not going to end up in the new sam/bam
+    minimap_bam_header_names = ["read_id",
+                                "bit_flag",
+                                "chr_id",
+                                "chr_pos",
+                                "mapq",
+                                "cigar",
+                                "r_next",
+                                "p_next",
+                                "len",
+                                "sequence",
+                                "phred_qual",
+                                "num_mismatches",
+                                "best_dp_score",
+                                "dp_score",
+                                "num_ambiguous_bases",
+                                "transcript_strand",
+                                "type_of_alignment",
+                                "num_minimizes",
+                                "chain_score",
+                                "chain_score_top_secondary",
+                                "gap_compressed_divergence",
+                                "len_of_query_w_repeats"]
+    df = df.rename(columns=dict(zip(range(23), minimap_bam_header_names)))
+
+    header = check_output(f"samtools view -H {bam_path}", shell=True).decode("utf-8")
+    output = BamHeadersAndDf(header, df)
+    return output
+
+
+def save_sorted_bam_obj(bam_obj: BamHeadersAndDf, output_path: str,
+                        index: bool = False) -> None:
+    from subprocess import run
+    header, df = bam_obj
+    buffer = header + df.to_csv(sep="\t",
+                                header=False,
+                                index=False)
+    # subprocess.run accepts the input param to pass to the bash call!
+    run(f"samtools view -S -b - | samtools sort -o {output_path}.sorted.bam",
+        input=buffer.encode('utf-8'), shell=True)
+    run(f'samtools index {output_path}.sorted.bam', shell=True)
+
+
 if __name__ == '__main__':
     # parquet = tsv_to_parquet("./Caenorhabditis_elegans.WBcel235.100.gtf.dataframe_parse.tsv")
     # print(pd.read_parquet(parquet).info())

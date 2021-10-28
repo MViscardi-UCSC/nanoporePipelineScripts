@@ -35,7 +35,8 @@ from argparse import ArgumentParser
 from subprocess import Popen, CalledProcessError, PIPE
 from typing import List
 from glob import glob
-from nanoporePipelineCommon import find_newest_matching_file, get_dt
+from nanoporePipelineCommon import find_newest_matching_file, get_dt, \
+    save_sorted_bam_obj, minimap_bam_to_df, BamHeadersAndDf
 
 import pandas as pd
 import numpy as np
