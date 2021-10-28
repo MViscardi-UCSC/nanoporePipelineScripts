@@ -475,9 +475,7 @@ def merge_results(**other_kwargs):
         # Load up nanopolish polyA results (also a population of duplicates here!!)
         polya_df = pd.read_csv(f"{outputDir}/nanopolish/polya.passed.tsv", sep="\t")
         polya_df = polya_df.rename(columns={"readname": "read_id",
-                                            "qc_tag": "qc_tag_polya",  # b/c featC also has a qc_tag!
-                                            }
-                                   )
+                                            "qc_tag": "qc_tag_polya"})  # b/c featC also has a qc_tag!
         names_df = gene_names_to_gene_ids()
         featc_df = featc_df.merge(names_df, on="gene_id")
         if print_info:
