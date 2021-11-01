@@ -783,8 +783,8 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
                   # TODO: Add alternative genome filter mapping function here^^^
                   "M": [minimap2_and_samtools, "Minimap2 and SamTools"],
                   "N": [nanopolish_index_and_polya, "Nanopolish Index and polyA Calling"],
-                  "F": [feature_counts, "FeatureCounts"],
                   "C": [concat_files, "Concatenate Files"],
+                  "F": [feature_counts, "FeatureCounts"],
                   "P": [merge_results, "Merging Results w/ Pandas"],
                   "S": [map_standards, "Mapping Standards (still experimental!!)"],
                   "L": [flair, "Calling Transcripts w/ Flair"],
