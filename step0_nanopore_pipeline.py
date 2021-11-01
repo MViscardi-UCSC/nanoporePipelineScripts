@@ -385,6 +385,30 @@ def nanopolish_index_and_polya(genomeDir, dataDir, outputDir, threads, regenerat
 
 
 #################################################################################
+# Step4: Concatenate files (less important for single MinIon runs), and create
+#        a single file that contains information from all the tools I am using
+#################################################################################
+def concat_files(outputDir, **other_kwargs):
+    original_bam_file = f"{outputDir}/cat_files/cat.sorted.bam"
+    bam_file_for_feature_counts = f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam"
+
+    # Most of this is much less necessary as we are not getting the nested files that came out of Roach's gridION!
+    calls = [f"samtools view  -b -F UNMAP,SECONDARY,SUPPLEMENTARY {original_bam_file} > {bam_file_for_feature_counts}",
+             # The above command will build a new bam file w/out reads w/ bit_flags:
+             #    0x004, UNMAP           =   reads who's sequence didn't align to the genome
+             #    0x100, SECONDARY       =   reads that are secondary alignments
+             #    0x800, SUPPLEMENTARY   =   reads that are supplemental alignments
+             f"samtools view {outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam "
+             f"> {outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam",
+             ]
+    print(f"Starting final cleanup at {get_dt(for_print=True)}\n")
+    for num, call in enumerate(calls):
+        print(f"\nStarting call ({num + 1} of {len(calls)}):\t{call}")
+        live_cmd_call(call)
+    print(f"\n\nFinished final cleanup at {get_dt(for_print=True)}")
+
+
+#################################################################################
 # Step3: featureCounts to identify the genes that reads map to, and how many hits
 #        we have per gene
 #################################################################################
@@ -723,7 +747,7 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
                   "M": [minimap2_and_samtools, "Minimap2 and SamTools"],
                   "N": [nanopolish_index_and_polya, "Nanopolish Index and polyA Calling"],
                   "F": [feature_counts, "FeatureCounts"],
-                  "C": [final_touches, "Concatenate Files"],
+                  "C": [concat_files, "Concatenate Files"],
                   "P": [merge_results, "Merging Results w/ Pandas"],
                   "S": [map_standards, "Mapping Standards (still experimental!!)"],
                   "L": [flair, "Calling Transcripts w/ Flair"],
