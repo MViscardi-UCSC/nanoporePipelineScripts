@@ -468,8 +468,8 @@ def merge_results(**other_kwargs):
                             "r_next",
                             "p_next",
                             "len",
-                            "sequence",
-                            "phred_qual",
+                            "sequence",  # string
+                            "phred_qual",  # string
                             ]
         extra_columns = ["num_mismatches",  # Keep, string
                          "best_dp_score",
