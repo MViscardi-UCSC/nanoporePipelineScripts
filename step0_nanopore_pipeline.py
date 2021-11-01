@@ -445,15 +445,19 @@ def merge_results(**other_kwargs):
     def create_merge_df(outputDir, keep_multimaps=False, print_info=False, **kwargs) -> pd.DataFrame:
         # First lets get the biggest one out of the way, importing the concatenated sam file:
         if not keep_multimaps:  # Pull the sam file that already had missed or secondaries dropped
+            print(f"Starting to load SAM file from: {outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam . . .",
+                  end="")
             sam_df = pd.read_csv(f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam",
                                  sep="\t", names=range(22), low_memory=False, index_col=False)
         else:  # Otherwise: load the bam file that did not have those other reads dropped
             # Loading the bam with my function is slightly slower, but at least hides
             #   a good amount of the complicated bits!
+            print(f"Starting to load BAM file from: {outputDir}/cat_files/cat.sorted.bam . . .",
+                  end="")
             sam_df = minimap_bam_to_df(f"{outputDir}/cat_files/cat.sorted.bam",
                                        name_columns=False,
                                        drop_secondaries_and_unmapped=False).df
-
+        print(f" Done!")
         # And lets rename columns!
         sam_header_names = ["read_id",
                             "bit_flag",
