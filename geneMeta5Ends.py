@@ -188,13 +188,6 @@ def normalize_list_internally(un_normalized_list: list, norm_type="sum_to_max", 
 
 
 def calc_stop_to_tss_pdf_w_reads(compressed_reads_df, min_x, max_x) -> list:
-    """
-    
-    :param compressed_reads_df: 
-    :param min_x: 
-    :param max_x: 
-    :return: 
-    """
 
     def find_index_of_first_value_greater_than_1(stops_pdf):
         # Below uses the next opperator to return the first value of
