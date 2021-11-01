@@ -576,6 +576,9 @@ def merge_results(**other_kwargs):
         #           get passed though featureCounts!
         # 10/28/2021: We'll call this provisionally solved, b/c I used some samtools features above
         #             to exclusively pass mapped, primary reads to featureCounts
+        
+        # These steps now retain reads w/out gene assignments or polyA tail calls,
+        #   this filtering should be easy to do in later scripts.
         sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
         merge_df = sam_featc_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
         merge_df = merge_df.drop_duplicates()
