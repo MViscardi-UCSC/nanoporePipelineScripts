@@ -443,20 +443,17 @@ def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
 def merge_results(**other_kwargs):
     def create_merge_df(outputDir, keep_multimaps=False, print_info=False, **kwargs) -> pd.DataFrame:
         # First lets get the biggest one out of the way, importing the concatenated sam file:
-        sam_df = pd.read_csv(f"{outputDir}/cat_files/cat.sorted.sam",
-                             sep="\t", names=range(23), low_memory=False)
-        # Drop any read_ids that have come up multiple times:
-        #   TODO: I am assuming these are multiply mapping? Is this wrong?
-        #         8/12/21: I am going to try to more accurately drop duplicates!
-        # 08/11/21: Maybe this was wrong to do....
-        #           Going to try and at least drop some of the supplementary reads
-        # print("Before dropping: ", sam_df.shape)
-        # sam_df = sam_df[sam_df[1] != 2048]
-        # print("After dropping sups: ", sam_df.shape)
-        # sam_df = sam_df.drop_duplicates(subset=0, keep=False, ignore_index=True)
-        # print("After dropping dups: ", sam_df.shape)
+        if not keep_multimaps:  # Pull the sam file that already had missed or secondaries dropped
+            sam_df = pd.read_csv(f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam",
+                                 sep="\t", names=range(22), low_memory=False, index_col=False)
+        else:  # Otherwise: load the bam file that did not have those other reads dropped
+            # Loading the bam with my function is slightly slower, but at least hides
+            #   a good amount of the complicated bits!
+            sam_df = minimap_bam_to_df(f"{outputDir}/cat_files/cat.sorted.bam",
+                                       name_columns=False,
+                                       drop_secondaries_and_unmapped=False).df
 
-        # And lets rename columns while we are at it!
+        # And lets rename columns!
         sam_header_names = ["read_id",
                             "bit_flag",
                             "chr_id",
@@ -476,8 +473,8 @@ def merge_results(**other_kwargs):
                          "transcript_strand",  # Keep
                          "type_of_alignment",  # Keep
                          "num_minimizes",
-                         "chain_score",
-                         "chain_score_top_secondary",
+                         "chain_score",  # This column onwards is inconsistent,
+                         "chain_score_top_secondary",  # b/c these are optional flags!
                          "gap_compressed_divergence",
                          "len_of_query_w_repeats"]
         sam_header_names += extra_columns
