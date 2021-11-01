@@ -321,7 +321,7 @@ def minimap2_and_samtools(genomeDir, outputDir, threads, regenerate, minimapPara
 
     samtools_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.sorted.bam")
     if samtools_flag:
-        call = f"samtools sort -T tmp -o {outputDir}/cat_files/cat.sorted.bam " \
+        call = f"samtools sort -m 16G -T tmp -o {outputDir}/cat_files/cat.sorted.bam " \
                f"{outputDir}/cat_files/cat.bam && samtools index " \
                f"{outputDir}/cat_files/cat.sorted.bam"
         print(f"Starting samtools sort & index at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
