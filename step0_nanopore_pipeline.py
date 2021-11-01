@@ -577,9 +577,7 @@ def merge_results(**other_kwargs):
         # 10/28/2021: We'll call this provisionally solved, b/c I used some samtools features above
         #             to exclusively pass mapped, primary reads to featureCounts
         sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
-        merge_df = sam_featc_df.merge(polya_df, how="inner", left_on=["read_id"],
-                                      right_on=["read_id"])
-        merge_df.drop(columns=["contig", "position", "r_next", "p_next", "len"], inplace=True)
+        merge_df = sam_featc_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
         merge_df = merge_df.drop_duplicates()
         merge_df = merge_df[merge_df["sequence"] != "*"]
         merge_df = merge_df[merge_df["mapq"] != 0]
@@ -588,8 +586,11 @@ def merge_results(**other_kwargs):
             print("#" * 100)
             print(f"\n\nMerged Dataframe info:")
             print(merge_df.info())
-        with open(f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.tsv", "w") as merge_out_f:
-            merge_df.to_csv(merge_out_f, sep="\t", index=False)
+        merge_out_file = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads"
+        print(f"Saving compressed on reads files to:\n\t{merge_out_file} + .parquet/.tsv")
+        merge_df.to_csv(merge_out_file + ".tsv", sep="\t", index=False)
+        # Added 10/28/2021: Parquet files are SOOOOOO much lighter and faster
+        merge_df.to_parquet(merge_out_file + ".parquet")
         return merge_df
 
     def compress_on_genes(merged_df, outputDir, dropGeneWithHitsLessThan=None,
