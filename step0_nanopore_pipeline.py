@@ -764,8 +764,14 @@ def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
             print(f"Could not find a mergedOnReads parquet file in directory:\n\t{merge_dir}")
             merge_on_reads_path = find_newest_matching_file(f"{merge_dir}/*mergedOnReads.tsv")
             df = pd.read_csv(merge_on_reads_path, sep="\t", low_memory=False)
-    df = df.merge(align_standards(compressed_df=df, keep_read_id=True, **other_kwargs), on="read_id")
-    df.to_parquet(f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet")
+    stds_mini_df = align_standards(compressed_df=df, keep_read_id=True, **other_kwargs)
+    if isinstance(stds_mini_df, pd.DataFrame):
+        df = df.merge(stds_mini_df, on="read_id")
+        out_file = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet"
+        print(f"Saving parquet file to:\n\t{out_file}")
+        df.to_parquet(out_file)
+    else:
+        print(stds_mini_df)
 
 
 def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
