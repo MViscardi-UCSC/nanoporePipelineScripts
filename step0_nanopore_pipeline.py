@@ -524,20 +524,8 @@ def merge_results(**other_kwargs):
         sam_df = sam_df.astype({"strand": c})
 
         if keep_multimaps:
-            # Use the 256 bit flag to pick out reads with secondary alignments
-            sam_df["multi"] = (sam_df.bit_flag & 256) == 256
-            # Make a list of these read_ids
-            read_ids_of_multis = sam_df[sam_df["multi"]]["read_id"]
-            # Drop all reads that were in this list (including the primary alignments of these reads)
-            sam_df = sam_df[~sam_df["read_id"].isin(read_ids_of_multis.to_list())]
-
             # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
             sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
-
-            # Read out of how many reads are multi and supp mapped
-            for bit_flag in [256, 2048]:
-                print(f"Number of rows from SAM w/ {bit_flag}: "
-                      f"{sam_df[(sam_df.bit_flag & bit_flag) == bit_flag].shape[0]}")
         else:
             sam_df = sam_df[~sam_df.duplicated(subset="read_id", keep=False)]
         # Next lets pull in the featureCounts results (there is a population of duplicates here)
