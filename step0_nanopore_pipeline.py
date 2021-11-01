@@ -656,9 +656,11 @@ def flair(outputDir, **other_kwargs):
             manifest_path = f"{outputDir}/flair/read_manifest.tsv"
             with open(manifest_path, "w") as f:
                 f.write(f"{sampleID}\t{condition}\tbatch1\t{outputDir}/cat_files/cat.fastq")
+
             call = f"cd {outputDir}/flair ; python3 /data16/marcus/scripts/brooksLabUCSC_flair/flair.py " \
                    f"quantify -t {threads} --generate_map -r {manifest_path} " \
                    f"-i {genomeDir}/Caenorhabditis_elegans.WBcel235.cdna.all.fa ; cd -"
+
             live_cmd_call(call)
         fl_df = pd.read_csv(flair_map_path, sep="\t", header=None)
         fl_df[1] = fl_df[1].str.split(",")
