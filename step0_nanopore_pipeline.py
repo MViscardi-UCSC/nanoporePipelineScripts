@@ -495,7 +495,34 @@ def merge_results(**other_kwargs):
             extra_columns_to_drop.remove(col_to_keep)
         # Drop the unsaved columns!
         sam_df = sam_df.drop(extra_columns_to_drop, axis=1)
-        
+
+        # Set dataframe column datatypes!
+        # datatypes to use:
+        o = "object"  # TODO: this could eventually be pd.StringDtype
+        c = "category"
+        ui8 = "uint8"
+        ui16 = "uint16"
+        ui32 = "uint32"
+
+        df_dtypes = {"read_id": o,  # string
+                     "bit_flag": ui16,  # uint16
+                     "chr_id": c,  # category
+                     "chr_pos": ui32,  # uint32
+                     "mapq": ui8,  # uint8
+                     "cigar": o,  # string
+                     "sequence": o,  # string
+                     "phred_qual": o,  # string
+                     "num_mismatches": ui32,  # uint32, after parsing
+                     "transcript_strand": c,  # category, after parsing. I don't really know what this column is...
+                     #                              ALL of the values here are "+"?
+                     "type_of_alignment": c,  # category, after parsing
+                     }
+        sam_df = sam_df.astype(df_dtypes)
+
+        # Pull the 16 bit flag to get strand information (important for merge w/ featC later)
+        sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-", 0: "+"})
+        sam_df = sam_df.astype({"strand": c})
+
         if keep_multimaps:
             # Use the 256 bit flag to pick out reads with secondary alignments
             sam_df["multi"] = (sam_df.bit_flag & 256) == 256
