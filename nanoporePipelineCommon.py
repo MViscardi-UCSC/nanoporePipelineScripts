@@ -41,8 +41,8 @@ def find_newest_matching_file(path_str):
 
 def load_ski_pelo_targets(as_df=False):
     df = pd.read_csv("/data16/marcus/working/210119_SkiPeloTargets_fromStarDust/"
-                         "170723_MSandM.wtAndSkiPelo_Bounds_-12_-14_S.DESeqgeneCts_"
-                         "diffExpression_2.7319418642771283e-06Down.txt", names=["gene_id"])
+                     "170723_MSandM.wtAndSkiPelo_Bounds_-12_-14_S.DESeqgeneCts_"
+                     "diffExpression_2.7319418642771283e-06Down.txt", names=["gene_id"])
     if as_df:
         return df
     else:
@@ -71,46 +71,53 @@ class BamHeadersAndDf(NamedTuple):
     df: pd.DataFrame
 
 
-def minimap_bam_to_df(bam_path) -> BamHeadersAndDf:
+def minimap_bam_to_df(bam_path, drop_secondaries_and_unmapped=True,
+                      name_columns=True) -> BamHeadersAndDf:
     from subprocess import check_output
     from io import BytesIO
 
+    if drop_secondaries_and_unmapped:
+        drop_flag = '-F 0x904 '
+    else:
+        drop_flag = ''
+
     # First read the bam file into a tab-seperated string object:
-    output = check_output(f"samtools view {bam_path}", shell=True)
+    output = check_output(f"samtools view {drop_flag}{bam_path}", shell=True)
 
     # Use pandas to load this string object into a dataframe
     df = pd.read_csv(BytesIO(output),
                      encoding='utf8',
                      sep="\t",
-                     names=range(23),
+                     names=range(22),
                      low_memory=False
                      )
 
-    # Column names will make handling the dataframe easier,
-    #   but they are not going to end up in the new sam/bam
-    minimap_bam_header_names = ["read_id",
-                                "bit_flag",
-                                "chr_id",
-                                "chr_pos",
-                                "mapq",
-                                "cigar",
-                                "r_next",
-                                "p_next",
-                                "len",
-                                "sequence",
-                                "phred_qual",
-                                "num_mismatches",
-                                "best_dp_score",
-                                "dp_score",
-                                "num_ambiguous_bases",
-                                "transcript_strand",
-                                "type_of_alignment",
-                                "num_minimizes",
-                                "chain_score",
-                                "chain_score_top_secondary",
-                                "gap_compressed_divergence",
-                                "len_of_query_w_repeats"]
-    df = df.rename(columns=dict(zip(range(23), minimap_bam_header_names)))
+    if name_columns:
+        # Column names will make handling the dataframe easier,
+        #   but they are not going to end up in the new sam/bam
+        minimap_bam_header_names = ["read_id",
+                                    "bit_flag",
+                                    "chr_id",
+                                    "chr_pos",
+                                    "mapq",
+                                    "cigar",
+                                    "r_next",
+                                    "p_next",
+                                    "len",
+                                    "sequence",
+                                    "phred_qual",
+                                    "num_mismatches",
+                                    "best_dp_score",
+                                    "dp_score",
+                                    "num_ambiguous_bases",
+                                    "transcript_strand",
+                                    "type_of_alignment",
+                                    "num_minimizers",
+                                    18,
+                                    19,
+                                    20,
+                                    21]
+        df = df.rename(columns=dict(enumerate(minimap_bam_header_names)))
 
     header = check_output(f"samtools view -H {bam_path}", shell=True).decode("utf-8")
     output = BamHeadersAndDf(header, df)
@@ -127,7 +134,8 @@ def save_sorted_bam_obj(bam_obj: BamHeadersAndDf, output_path: str,
     # subprocess.run accepts the input param to pass to the bash call!
     run(f"samtools view -S -b - | samtools sort -o {output_path}.sorted.bam",
         input=buffer.encode('utf-8'), shell=True)
-    run(f'samtools index {output_path}.sorted.bam', shell=True)
+    if index:
+        run(f'samtools index {output_path}.sorted.bam', shell=True)
 
 
 if __name__ == '__main__':
