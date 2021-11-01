@@ -413,41 +413,31 @@ def concat_files(outputDir, **other_kwargs):
 #        we have per gene
 #################################################################################
 def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
-    # feature_counts_file = os.tsv_path.exists(f"{outputDir}/featureCounts/")
-    if regenerate or not path.exists(f"{outputDir}/featureCounts/cat.sorted.bam.featureCounts"):
+
+    feature_counts_flag = regenerate or \
+                          not path.exists(f"{outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.featureCounts")
+    if feature_counts_flag:
         genome_gtf_file = glob(f"{genomeDir}/*.gtf")
         if len(genome_gtf_file) != 1:
             raise NotImplementedError(f"Currently this script only supports having genomeDirs "
                                       f"with one gtf files that ends with '.gtf'")
         call = f"featureCounts -L -T {threads} -R CORE -a {genome_gtf_file[0]} " \
-               f"-o {outputDir}/featureCounts/{get_dt(for_file=True)} {outputDir}/cat_files/cat.sorted.bam " \
+               f"-o {outputDir}/featureCounts/{get_dt(for_file=True)} " \
+               f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam " \
                f"2>&1 | tee -a {outputDir}/logs/{get_dt()}.featureCounts.log"
         print(f"Starting featureCounts at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
         live_cmd_call(call)
         print(f"\n\nFinished featureCounts at {get_dt(for_print=True)}")
+
+        filter_call = f"grep Assigned {outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.featureCounts " \
+                      f">> {outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts"
+        print(f"Filtering featureCounts calls at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
+        live_cmd_call(filter_call)
+        print(f"\n\nFinished filtering at {get_dt(for_print=True)}")
     else:
         print(f"\n\nPost calling processing already occurred. Based on file at:"
               f"\n\t{outputDir}/featureCounts/[...]\n"
               f"Use the regenerate tag if you want to rerun featureCounts.\n")
-
-
-#################################################################################
-# Step4: Concatenate files (less important for single MinIon runs), and create
-#        a single file that contains information from all the tools I am using
-#################################################################################
-def final_touches(outputDir, **other_kwargs):
-    # Most of this is much less necessary as we are not getting the nested files that came out of Roach's gridION!
-    calls = [f"samtools view {outputDir}/cat_files/cat.sorted.bam > {outputDir}/cat_files/cat.sorted.sam",
-             f"head -n 1 {outputDir}/nanopolish/polya.tsv > {outputDir}/nanopolish/polya.passed.tsv",
-             f"grep PASS {outputDir}/nanopolish/polya.tsv >> {outputDir}/nanopolish/polya.passed.tsv",
-             f"grep Assigned {outputDir}/featureCounts/cat.sorted.bam.featureCounts "
-             f">> {outputDir}/featureCounts/cat.sorted.bam.Assigned.featureCounts",
-             ]
-    print(f"Starting final cleanup at {get_dt(for_print=True)}\n")
-    for num, call in enumerate(calls):
-        print(f"\nStarting call ({num + 1} of {len(calls)}):\t{call}")
-        live_cmd_call(call)
-    print(f"\n\nFinished final cleanup at {get_dt(for_print=True)}")
 
 
 def merge_results(**other_kwargs):
