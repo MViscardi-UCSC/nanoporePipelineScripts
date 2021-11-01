@@ -375,7 +375,7 @@ def nanopolish_index_and_polya(genomeDir, dataDir, outputDir, threads, regenerat
         filter_call = f"head -n 1 {outputDir}/nanopolish/polya.tsv > {outputDir}/nanopolish/polya.passed.tsv; " \
                       f"grep PASS {outputDir}/nanopolish/polya.tsv >> {outputDir}/nanopolish/polya.passed.tsv"
         print(f"\nStarting filtering nanopolish polyA calls at {get_dt(for_print=True)}"
-              f"\nUsing call:\t{call}\n")
+              f"\nUsing call:\t{filter_call}\n")
         live_cmd_call(filter_call)
         print(f"\n\nFinished filtering nanopolish polyA calls at {get_dt(for_print=True)}")
     else:
@@ -393,13 +393,15 @@ def concat_files(outputDir, **other_kwargs):
     bam_file_for_feature_counts = f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam"
 
     # Most of this is much less necessary as we are not getting the nested files that came out of Roach's gridION!
-    calls = [f"samtools view  -b -F UNMAP,SECONDARY,SUPPLEMENTARY {original_bam_file} > {bam_file_for_feature_counts}",
+    calls = [f"samtools view  -b -F 0x904 {original_bam_file} > {bam_file_for_feature_counts}",
              # The above command will build a new bam file w/out reads w/ bit_flags:
              #    0x004, UNMAP           =   reads who's sequence didn't align to the genome
              #    0x100, SECONDARY       =   reads that are secondary alignments
              #    0x800, SUPPLEMENTARY   =   reads that are supplemental alignments
              f"samtools view {outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam "
              f"> {outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam",
+             f"samtools view {outputDir}/cat_files/cat.sorted.bam "
+             f"> {outputDir}/cat_files/cat.sorted.sam",
              ]
     print(f"Starting final cleanup at {get_dt(for_print=True)}\n")
     for num, call in enumerate(calls):
@@ -413,7 +415,6 @@ def concat_files(outputDir, **other_kwargs):
 #        we have per gene
 #################################################################################
 def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
-
     feature_counts_flag = regenerate or \
                           not path.exists(f"{outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.featureCounts")
     if feature_counts_flag:
@@ -431,7 +432,7 @@ def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
 
         filter_call = f"grep Assigned {outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.featureCounts " \
                       f">> {outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts"
-        print(f"Filtering featureCounts calls at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
+        print(f"Filtering featureCounts calls at {get_dt(for_print=True)}\nUsing call:\t{filter_call}\n")
         live_cmd_call(filter_call)
         print(f"\n\nFinished filtering at {get_dt(for_print=True)}")
     else:
