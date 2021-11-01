@@ -367,9 +367,17 @@ def nanopolish_index_and_polya(genomeDir, dataDir, outputDir, threads, regenerat
         call = f"nanopolish polya --threads={threads} --reads={outputDir}/cat_files/cat.fastq " \
                f"--bam={outputDir}/cat_files/cat.sorted.bam --genome={genome_fa_file[0]} " \
                f"> {outputDir}/nanopolish/polya.tsv"
-        print(f"Starting nanopolish polyA at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
+        print(f"\nStarting nanopolish polyA at {get_dt(for_print=True)} (This takes a while)"
+              f"\nUsing call:\t{call}\n")
         live_cmd_call(call)
         print(f"\n\nFinished nanopolish polyA at {get_dt(for_print=True)}")
+
+        filter_call = f"head -n 1 {outputDir}/nanopolish/polya.tsv > {outputDir}/nanopolish/polya.passed.tsv; " \
+                      f"grep PASS {outputDir}/nanopolish/polya.tsv >> {outputDir}/nanopolish/polya.passed.tsv"
+        print(f"\nStarting filtering nanopolish polyA calls at {get_dt(for_print=True)}"
+              f"\nUsing call:\t{call}\n")
+        live_cmd_call(filter_call)
+        print(f"\n\nFinished filtering nanopolish polyA calls at {get_dt(for_print=True)}")
     else:
         print(f"\n\nNanopolish polyA already ran. Based on file at:"
               f"\n\t{outputDir}/nanopolish/polya.tsv\n"
