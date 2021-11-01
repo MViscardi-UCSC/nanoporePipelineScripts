@@ -102,8 +102,9 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                             type=str, default=None,
                             help="Steps to run within the pipeline: (G)uppy basecalling, "
                                  "(M)inimap, (N)anopolish, (F)eature counts, (C)oncat files, "
-                                 "merge with (P)andas, and/or use f(L)air to ID transcripts "
-                                 "(not default behavior) [GMNFCP]")
+                                 "merge with (P)andas, use f(L)air to ID transcripts "
+                                 "(not default behavior), map pTRI nanopore (S)tandards, "
+                                 "and/or random e(X)tra steps (plotting). [GMNFCPS]")
         parser.add_argument('--sampleID', metavar='sampleID',
                             type=int, default=None,
                             help="sampleID to pass to FLAIR [sample1]")
