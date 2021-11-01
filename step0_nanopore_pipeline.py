@@ -489,7 +489,7 @@ def merge_results(**other_kwargs):
             sam_df[minimap_flag_column] = sam_df[minimap_flag_column].str.split(":").str[-1]
 
         # Make a list of columns to drop:
-        extra_columns_to_drop = extra_columns
+        extra_columns_to_drop = extra_columns + ["r_next", "p_next", "len"]
         # Remove the columns I want to keep from this "drop list"
         for col_to_keep in ["type_of_alignment", "transcript_strand", "num_mismatches"]:
             extra_columns_to_drop.remove(col_to_keep)
