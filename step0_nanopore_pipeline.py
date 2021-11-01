@@ -557,12 +557,14 @@ def merge_results(**other_kwargs):
             print(f"\n\nPolyA Dataframe info:")
             print(polya_df.info())
         # LETS SMOOSH THEM ALL TOGETHER!!!
-        # TODO: This is severely broken in terms of the featureCounts merge:
+        # This is severely broken in terms of the featureCounts merge:
         #       B/c the featureCounts output only retains read_id, it doesn't
         #       have enough information to merge uniquely for reads that map
         #       more than once!! This means that read A that maps to gene X and Y
         #       is eventually producing 4 lines of data....
-        # TODO: Revisiting on 10/26/2021: This is still broken. B/c the multiple
+        # 8/24/2021: Sorta fixed this by just dropping all duplicate reads! (line 484)
+        #            Back to square one... lol
+        # Revisiting on 10/26/2021: This is still broken. B/c the multiple
         #       hits (meaning multiple identical read_ids) in the bam/sam file are passed to
         #       feature counts, it propagates any multi-mappers. Currently I avoid this by
         #       dropping ANY read that hits more than once, meaning that propagation of
@@ -572,8 +574,8 @@ def merge_results(**other_kwargs):
         #           OR: I could try to rename reads in the bam file w/ their map location,
         #           as this could help to uniquely identify primaries, and that info would
         #           get passed though featureCounts!
-        # 8/24/2021: Sorta fixed this by just dropping all duplicate reads! (line 484)
-        #            Back to square one... lol
+        # 10/28/2021: We'll call this provisionally solved, b/c I used some samtools features above
+        #             to exclusively pass mapped, primary reads to featureCounts
         sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
         merge_df = sam_featc_df.merge(polya_df, how="inner", left_on=["read_id"],
                                       right_on=["read_id"])
