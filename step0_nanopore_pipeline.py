@@ -527,10 +527,19 @@ def merge_results(**other_kwargs):
             # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
             sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
         else:
+            # This shouldn't be dropping AS MANY reads now because I dumped secondary alignments with samtools
             sam_df = sam_df[~sam_df.duplicated(subset="read_id", keep=False)]
-        # Next lets pull in the featureCounts results (there is a population of duplicates here)
-        featc_df = pd.read_csv(f"{outputDir}/featureCounts/cat.sorted.bam.Assigned.featureCounts",
-                               sep="\t", names=["read_id", "qc_tag_featc", "qc_pass", "gene_id"])
+
+        # Next lets pull in the featureCounts results
+        featc_df = pd.read_csv(f"{outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts",
+                               sep="\t", names=["read_id", "qc_tag_featc", "qc_pass_featc", "gene_id"])
+        # Some reads will be ambiguously assigned to two different genes, for now I will drop these assignments (~1%):
+        featc_df = featc_df.drop_duplicates()
+        featc_df = featc_df[~featc_df.read_id.duplicated(keep=False)]  # The ~ inverts the filter :)
+        # We can also load the gene_names dataframe and add it to the featureCounts one
+        names_df = gene_names_to_gene_ids()
+        featc_df = featc_df.merge(names_df, on="gene_id", how="left")
+
         # Load up nanopolish polyA results (also a population of duplicates here!!)
         polya_df = pd.read_csv(f"{outputDir}/nanopolish/polya.passed.tsv", sep="\t")
         polya_df = polya_df.rename(columns={"readname": "read_id",
