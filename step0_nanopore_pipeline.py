@@ -542,10 +542,12 @@ def merge_results(**other_kwargs):
 
         # Load up nanopolish polyA results (also a population of duplicates here!!)
         polya_df = pd.read_csv(f"{outputDir}/nanopolish/polya.passed.tsv", sep="\t")
+        # For some god-awful reason the chr_pos in polyA are -1 to those in the SAM file:
+        polya_df["position"] = polya_df["position"] + 1
         polya_df = polya_df.rename(columns={"readname": "read_id",
-                                            "qc_tag": "qc_tag_polya"})  # b/c featC also has a qc_tag!
-        names_df = gene_names_to_gene_ids()
-        featc_df = featc_df.merge(names_df, on="gene_id")
+                                            "qc_tag": "qc_tag_polya",
+                                            "position": "chr_pos",
+                                            "contig": "chr_id"})  # b/c featC also has a qc_tag!
         if print_info:
             print("#" * 100)
             print(f"\n\nSAM Dataframe info:")
