@@ -182,7 +182,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                            regenerate=False,
                            altGenomeDirs=[],
                            threads=20,
-                           stepsToRun="GMNFCPS",
+                           stepsToRun="GMNCFPS",
                            sampleID="sample1",
                            condition="conditionA",
                            minimapParam="-x splice -uf -k14",
@@ -216,7 +216,8 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
     return finalArgDict
 
 
-def buildOutputDirs(outputDir, stepsToRun, **kwargs) -> None:
+def buildOutputDirs(stepsToRun, **kwargs) -> None:
+    outputDir = kwargs["outputDir"]
     dirs_list = (("Z", outputDir),  # I am just going to use Z to mean always
                  ("G", "fastqs"),
                  ("M", "cat_files"),
@@ -727,8 +728,8 @@ def flair(outputDir, **other_kwargs):
         return transcript_df
 
     flair_df = run_and_load_flair(outputDir, **other_kwargs)
-    final_df = merge_some_more(flair_df, outputDir,
-                               output_to_file=True)
+    final_flair_df = merge_some_more(flair_df, outputDir,
+                                     output_to_file=True)
 
 
 def extra_steps(outputDir, df=None, **other_kwargs):
@@ -776,7 +777,7 @@ def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
 
 def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
     return_value = None
-    buildOutputDirs(**args)
+    buildOutputDirs(stepsToRun, **kwargs)
 
     steps_dict = {"G": [guppy_basecall_w_gpu, "Guppy Basecalling"],
                   "A": [alternative_genome_filtering, "Filtering Alt. Genomes (not implemented)"],
@@ -795,14 +796,14 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
             step_print = f"Starting step: \"{step_name}\" . . ."
             print("\n\n", step_print, f"\n{'#' * len(step_print)}\n", sep="")
             if code == "P":  # The pandas merge will both: save a file and return a tuple of dataframes
-                return_value = step_func(**args)
+                return_value = step_func(**kwargs)
             elif code == "X" or code == "S":
                 if return_value:  # The extra steps function will accept a df, or load from the disk
-                    step_func(df=return_value[0], **args)
+                    step_func(df=return_value[0], **kwargs)
                 else:
-                    step_func(**args)
+                    step_func(**kwargs)
             else:  # The rest of the functions work by loading and saving to the disk
-                step_func(**args)
+                step_func(**kwargs)
         else:
             step_print = f"Skipping step: \"{step_name}\" . . ."
             print("\n", step_print, f"\n{'#' * len(step_print)}\n", sep="")
