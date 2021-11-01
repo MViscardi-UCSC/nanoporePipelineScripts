@@ -459,24 +459,24 @@ def merge_results(**other_kwargs):
                                        drop_secondaries_and_unmapped=False).df
         print(f" Done!")
         # And lets rename columns!
-        sam_header_names = ["read_id",
-                            "bit_flag",
-                            "chr_id",
-                            "chr_pos",
-                            "mapq",
-                            "cigar",
+        sam_header_names = ["read_id",  # string
+                            "bit_flag",  # uint16
+                            "chr_id",  # category
+                            "chr_pos",  # uint32
+                            "mapq",  # uint8
+                            "cigar",  # string
                             "r_next",
                             "p_next",
                             "len",
                             "sequence",
                             "phred_qual",
                             ]
-        extra_columns = ["num_mismatches",  # Keep
+        extra_columns = ["num_mismatches",  # Keep, string
                          "best_dp_score",
                          "dp_score",
                          "num_ambiguous_bases",
-                         "transcript_strand",  # Keep
-                         "type_of_alignment",  # Keep
+                         "transcript_strand",  # Keep, string
+                         "type_of_alignment",  # Keep, category (by the end)
                          "num_minimizes",
                          "chain_score",  # This column onwards is inconsistent,
                          "chain_score_top_secondary",  # b/c these are optional flags!
