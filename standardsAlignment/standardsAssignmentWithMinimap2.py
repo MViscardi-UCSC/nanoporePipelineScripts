@@ -26,17 +26,19 @@ import mappy as mp
 from pprint import pprint
 import pandas as pd
 from tqdm import tqdm
+from typing import Union
 
 pd.set_option("display.max_columns", None)
 
 
-def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar_width=150) -> pd.DataFrame:
+def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar_width=150,
+                    threads=10, **kwargs) -> Union[str, pd.DataFrame]:
     path_to_genome = "/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/" \
                      "intermediate_files/standards_with_indexes.fa"
     aligner = mp.Aligner(path_to_genome,
                          preset="splice", k=14,
                          extra_flags=0x100000,  # From: https://github.com/lh3/minimap2/blob/master/minimap.h
-                         n_threads=10,
+                         n_threads=threads,
                          )
     if not aligner:
         raise Exception("ERROR: failed to load/build index")
@@ -48,7 +50,7 @@ def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar
 
     if isinstance(fastq_file, str):
         row_iterator = tqdm(mp.fastx_read(fastq_file),
-                            total=sum(1 for line in open(fastq_file))//4,
+                            total=sum(1 for line in open(fastq_file)) // 4,
                             ncols=bar_width)
         for read_id, sequence, _ in row_iterator:
             seq_assignment = _loop_align_seq_to_adapters(aligner, read_id,
@@ -57,6 +59,8 @@ def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar
             seq_assignments.append(seq_assignment)
             row_iterator.set_description(f"Processing {read_id}")
     elif isinstance(compressed_df, pd.DataFrame):
+        if not "pTRI" in compressed_df["chr_id"].to_list():
+            return f"Chromosome pTRI not found in dataframe, please run minimap2 w/ genome that has pTRI added!!"
         row_iterator = tqdm(compressed_df.to_dict(orient='records'),
                             ncols=bar_width)
         for row_dict in row_iterator:
