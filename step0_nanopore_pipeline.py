@@ -484,10 +484,10 @@ def merge_results(**other_kwargs):
                          "len_of_query_w_repeats"]
         sam_header_names += extra_columns
         sam_df = sam_df.rename(columns=dict(enumerate(sam_header_names)))
-        # Pull the 16 bit flag to get strand information (important for merge w/ featC later)
-        sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-",
-                                                                      0: "+"})
-        
+
+        for minimap_flag_column in ["type_of_alignment", "transcript_strand", "num_mismatches"]:
+            sam_df[minimap_flag_column] = sam_df[minimap_flag_column].str.split(":").str[-1]
+
         # Make a list of columns to drop:
         extra_columns_to_drop = extra_columns
         # Remove the columns I want to keep from this "drop list"
