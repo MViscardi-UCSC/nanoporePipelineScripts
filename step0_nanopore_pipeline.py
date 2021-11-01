@@ -622,17 +622,22 @@ def merge_results(**other_kwargs):
             print(f"Dropping any genes with less than {dropGeneWithHitsLessThan} read hits")
             gene_df = gene_df[gene_df["read_hits"] >= dropGeneWithHitsLessThan]
         gene_df.sort_values("read_hits", ascending=False, inplace=True)
-        print(f"Mean PolyA Length: {gene_df['polya_mean'].mean():.3f}")
-        filename = f"{get_dt(for_file=True)}_compressedOnGenes"
+        # print(f"Mean PolyA Length: {gene_df['polya_mean'].mean():.3f}")
+
         if output_to_file:
-            gene_df.to_parquet(f"{outputDir}/merge_files/{filename}.parquet")
-            gene_df.to_csv(f"{outputDir}/merge_files/{filename}.tsv", sep="\t")
-            gene_df.drop(['read_ids',
-                          'polya_lengths',
-                          'read_lengths',
-                          'genomic_starts',
-                          'cigars'],
-                         axis=1).to_csv(f"{outputDir}/merge_files/{filename}_simple.tsv", sep="\t")
+            filename = f"{get_dt(for_file=True)}_compressedOnGenes"
+            output_file = f"{outputDir}/merge_files/{filename}"
+            print(f"Saving compressed on genes files to:\n\t{output_file} + .parquet/.tsv")
+            gene_df.to_parquet(f"{output_file}.parquet")
+            # gene_df.to_csv(f"{output_file}.tsv", sep="\t")
+            light_gene_df = gene_df.drop(['read_ids',
+                                          'polya_lengths',
+                                          'read_lengths',
+                                          'genomic_starts',
+                                          'cigars'],
+                                         axis=1)
+            light_gene_df.to_csv(f"{output_file}_simple.tsv", sep="\t", index=False)
+            light_gene_df.to_parquet(f"{output_file}_simple.parquet")
         return gene_df
 
     print(f"Starting to merge all data at {get_dt(for_print=True)}\n")
