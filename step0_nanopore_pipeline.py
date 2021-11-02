@@ -317,7 +317,7 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
               f"Use the regenerate tag if you want to rerun.\n")
 
     alt_filter_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.altGenome.sam") \
-                      or not path.exists(f"{outputDir}/cat_files/cat.pre_altGenome.fastq")
+        or not path.exists(f"{outputDir}/cat_files/cat.pre_altGenome.fastq")
     if alt_filter_flag:
         call = f"samtools view  -F 0x004 cat.altGenome.bam > cat.altGenome_hits.sam"
         # The above command will build a sam file w/out reads w/ bit_flags:
@@ -329,6 +329,9 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
         print(f"\n\nAlternative genome samtools view already ran. Based on file at:"
               f"\n\t{outputDir}/cat_files/cat.altGenome.sam\n"
               f"Use the regenerate tag if you want to rerun.\n")
+    # TODO: Add fastq file filtering based off what ends up in the cat.altGenome_hits.sam
+    #       First copy the current cat.fastq to "cat.preAltGenome.fastq".
+    #       Then make a new "cat.fastq" with only the reads that didn't map to the altGenome
 
 
 def minimap2_and_samtools(genomeDir, outputDir, threads, regenerate, minimapParam, **other_kwargs):
@@ -615,7 +618,7 @@ def merge_results(**other_kwargs):
         #           get passed though featureCounts!
         # 10/28/2021: We'll call this provisionally solved, b/c I used some samtools features above
         #             to exclusively pass mapped, primary reads to featureCounts
-        
+
         # These steps now retain reads w/out gene assignments or polyA tail calls!
         #   This filtering should be easy to do in later scripts.
         sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
