@@ -396,22 +396,22 @@ if __name__ == '__main__':
     # path1, path2 = sys.argv
 
     pathdict = {
-        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/"
+        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/*/"
                  "merge_files/210713_compressedOnGenes_simple.tsv",
         "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
-                    "output_dir/merge_files/*_compressedOnGenes_simple.tsv",
+                    "*/merge_files/*_compressedOnGenes_simple.tsv",
         "totalRNA2": "/data16/marcus/working/"
-                     "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir/"
+                     "210720_nanoporeRun_totalRNA_0639_L3_replicate/*/"
                      "merge_files/*_compressedOnGenes_simple.tsv",
-        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/"
+        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/*/"
                  "merge_files/*_compressedOnGenes_simple.tsv",
         "polyA2": "/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
-                  "output_dir/merge_files/*_compressedOnGenes_simple.tsv",
+                  "*/merge_files/*_compressedOnGenes_simple.tsv",
         "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
                  "output_dir/merge_files/*_compressedOnGenes_simple.tsv"
     }
 
-    run_with = ["polyA", "polyA2", "totalRNA2"]
+    run_with = ["polyA2", "totalRNA2"]
 
     pathdict = {name: find_newest_matching_file(pathdict[name]) for name in run_with}
 
@@ -421,9 +421,11 @@ if __name__ == '__main__':
                    2: "hits_rank",
                    3: "read_len_mean",
                    4: "polya_mean"}
-    prefix = prefix_dict[3]
     
-    color_by_dict = {1: "read_len_mean_mean",
+    prefix = prefix_dict[1]
+    
+    color_by_dict = {0: None,
+                     1: "read_len_mean_mean",
                      2: "tail_length_diff",
                      3: "read_len_std_mean",
                      4: "tail_avg_stdev",
