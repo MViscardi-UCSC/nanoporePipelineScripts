@@ -289,8 +289,46 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, *
 # Step2: Nanopolish index, map to genome with minimap2, samtools index/sort, &
 #        Nanopolish calls of polyA tail lengths TODO: split minimap and nanopolish stuff
 #################################################################################
-def alternative_genome_filtering():
-    pass
+def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam, regenerate, **other_kwargs):
+    altmap_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.altGenome.bam")
+    if not altmap_flag:
+        bam_length = path.getsize(f"{outputDir}/cat_files/cat.altGenome.bam")
+        if bam_length == 0:
+            minimap_flag = True  # This is all to catch screwed up runs that have empty bam files!!!
+    if altmap_flag:
+        for alt_genome in altGenomeDirs:
+            alt_genome_fa_file = glob(f"{altGenomeDirs}/*.fsa")
+            if len(altGenomeDirs) != 1:
+                raise NotImplementedError(f"Currently this script only supports having genomeDirs "
+                                          f"with one fsa file that ends with '.fsa'")
+            alt_genome_bed_file = glob(f"{altGenomeDirs}/*.bed")
+            if len(alt_genome_bed_file) != 1:
+                raise NotImplementedError(f"Currently this script only supports having genomeDirs "
+                                          f"with one bed file that ends with '.bed'")
+            call = f"minimap2 -a {minimapParam} {alt_genome_fa_file[0]} {outputDir}/cat_files/cat.fastq " \
+                   f"-t {threads} --junc-bed {alt_genome_bed_file[0]} | samtools view -b - -o " \
+                   f"{outputDir}/cat_files/cat.altGenome.bam"
+            print(f"Starting alt_genome minimap2 at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
+            live_cmd_call(call)
+            print(f"\n\nFinished alt_genome minimap2 at {get_dt(for_print=True)}\n")
+    else:
+        print(f"\n\nAlternative genome MiniMap2 already ran. Based on file at:"
+              f"\n\t{outputDir}/cat_files/cat.altGenome.bam\n"
+              f"Use the regenerate tag if you want to rerun.\n")
+
+    alt_filter_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.altGenome.sam") \
+                      or not path.exists(f"{outputDir}/cat_files/cat.pre_altGenome.fastq")
+    if alt_filter_flag:
+        call = f"samtools view  -F 0x004 cat.altGenome.bam > cat.altGenome_hits.sam"
+        # The above command will build a sam file w/out reads w/ bit_flags:
+        #    0x004, UNMAP           =   reads who's sequence didn't align to the genome
+        print(f"Starting alt_genome samtools view at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
+        live_cmd_call(call)
+        print(f"\n\nFinished alt_genome samtools view at {get_dt(for_print=True)}")
+    else:
+        print(f"\n\nAlternative genome samtools view already ran. Based on file at:"
+              f"\n\t{outputDir}/cat_files/cat.altGenome.sam\n"
+              f"Use the regenerate tag if you want to rerun.\n")
 
 
 def minimap2_and_samtools(genomeDir, outputDir, threads, regenerate, minimapParam, **other_kwargs):
