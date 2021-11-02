@@ -27,12 +27,13 @@ from pprint import pprint
 import pandas as pd
 from tqdm import tqdm
 from typing import Union
+from nanoporePipelineCommon import find_newest_matching_file
 
 pd.set_option("display.max_columns", None)
 
 
-def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar_width=150,
-                    threads=10, **kwargs) -> Union[str, pd.DataFrame]:
+def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar_width=None,
+                    keep_minimap_obj=False, threads=10, **kwargs) -> Union[str, pd.DataFrame]:
     path_to_genome = "/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/" \
                      "intermediate_files/standards_with_indexes.fa"
     aligner = mp.Aligner(path_to_genome,
@@ -71,7 +72,30 @@ def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar
         raise NotImplementedError("Please provide either a fastq or a df")
 
     print("Finished Alignment")
-    return pd.DataFrame(seq_assignments)
+
+    mappy_df = pd.DataFrame(seq_assignments)
+
+    if not keep_minimap_obj:
+        mappy_cols = ["stds_q_start",
+                      "stds_q_end",
+                      "stds_strand",
+                      "stds_chr_id",
+                      "stds_chr_len",
+                      "stds_r_start",
+                      "stds_r_end",
+                      "stds_mlen",
+                      "stds_blen",
+                      "stds_mapq",
+                      "stds_type_of_alignment",
+                      "stds_ts",
+                      "stds_cigar"]
+        mappy_df[mappy_cols] = mappy_df.apply(lambda row: _loop_pull_mappy_obj_info(row["mapping_obj"],
+                                                                                    columns=mappy_cols),
+                                              axis=1, result_type="expand")
+        mappy_df.drop(columns="mapping_obj", inplace=True)
+        for mappy_flag_col in ["stds_type_of_alignment", "stds_ts", "stds_cigar"]:
+            mappy_df[mappy_flag_col] = mappy_df[mappy_flag_col].str.split(":").str[-1]
+    return mappy_df
 
 
 def _loop_align_seq_to_adapters(aligner, read_id, sequence, chr_id=None,
@@ -145,6 +169,20 @@ def _loop_align_seq_to_adapters(aligner, read_id, sequence, chr_id=None,
         if print_per_seq:
             print("No match")
     return seq_assignment
+
+
+def _loop_pull_mappy_obj_info(mappy_obj, columns=None, return_dict=False):
+    if mappy_obj is None:
+        if return_dict:
+            return dict(zip(columns, [None for _ in columns]))
+        else:
+            return [None for _ in columns]
+    else:
+        mappy_list = str(mappy_obj).split("\t")
+        if return_dict:
+            return dict(zip(columns, mappy_list))
+        else:
+            return mappy_list
 
 
 def plot_value_counts(standards_df: pd.DataFrame, x: str = "adapter"):
@@ -234,11 +272,12 @@ if __name__ == '__main__':
     #              "output_dir/cat_files/cat.fastq"
     # df = align_standards(fastq_file=path_to_fa)
     path_to_compressed = "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/" \
-                         "output_dir/merge_files/210929_mergedOnReads.tsv"
-    df = pd.read_csv(path_to_compressed, sep="\t", low_memory=False)
+                         "output_dir/merge_files/*_mergedOnReads.parquet"
+    path_to_compressed = find_newest_matching_file(path_to_compressed)
+    df = pd.read_parquet(path_to_compressed)
 
     # I built this wrapper to do below work:
-    df = df.merge(align_standards(compressed_df=df, keep_read_id=True), on="read_id")
+    df = df.merge(align_standards(compressed_df=df, keep_read_id=True, keep_minimap_obj=True), on="read_id")
 
     # This step pulls information from the mapping_obj objects:
     # TODO: This step should probably overwrite information from minimap2 regarding the standards.
