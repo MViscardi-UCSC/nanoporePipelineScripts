@@ -298,14 +298,14 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
     if not altmap_flag:
         bam_length = path.getsize(f"{outputDir}/cat_files/cat.altGenome.sam")
         if bam_length == 0:
-            minimap_flag = True  # This is all to catch screwed up runs that have empty bam files!!!
+            altmap_flag = True  # This is all to catch screwed up runs that have empty bam files!!!
     if altmap_flag:
         for alt_genome in altGenomeDirs:
-            alt_genome_fa_file = glob(f"{altGenomeDirs}/*.fsa")
-            if len(altGenomeDirs) != 1:
+            alt_genome_fa_file = glob(f"{alt_genome}/*.fsa")
+            if len(alt_genome_fa_file) != 1:
                 raise NotImplementedError(f"Currently this script only supports having genomeDirs "
                                           f"with one fsa file that ends with '.fsa'")
-            alt_genome_bed_file = glob(f"{altGenomeDirs}/*.bed")
+            alt_genome_bed_file = glob(f"{alt_genome}/*.bed")
             if len(alt_genome_bed_file) != 1:
                 raise NotImplementedError(f"Currently this script only supports having genomeDirs "
                                           f"with one bed file that ends with '.bed'")
