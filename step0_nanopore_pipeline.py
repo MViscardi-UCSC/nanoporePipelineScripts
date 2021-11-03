@@ -35,6 +35,9 @@ from argparse import ArgumentParser
 from subprocess import Popen, CalledProcessError, PIPE
 from typing import List
 from glob import glob
+
+from tqdm import tqdm
+
 from nanoporePipelineCommon import find_newest_matching_file, get_dt, minimap_bam_to_df
 
 import pandas as pd
@@ -290,6 +293,7 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, *
 #        Nanopolish calls of polyA tail lengths TODO: split minimap and nanopolish stuff
 #################################################################################
 def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam, regenerate, **other_kwargs):
+    import mappy as mp
     altmap_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.altGenome.bam")
     if not altmap_flag:
         bam_length = path.getsize(f"{outputDir}/cat_files/cat.altGenome.sam")
@@ -323,11 +327,24 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
         print(f"Starting fastq backup at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
         live_cmd_call(call)
         print(f"\n\nFinished fastq backup at {get_dt(for_print=True)}")
-        
-        # Then we'll load the alt genome mapped reads from the sam file:
-        alt_mapped_reads = pd.read_csv(f"{outputDir}/cat_files/cat.altGenome.sam", sep="\t",
-                                       uscols=[0], index_col=False)
-        print(alt_mapped_reads)
+
+        # Then we'll load the alt genome mapped reads from the sam file to a pd.Dataframe:
+        #   The below call might break if minimap2 passed headers!
+        alt_mapped_read_df = pd.read_csv(f"{outputDir}/cat_files/cat.altGenome.sam", sep="\t",
+                                         usecols=[0], index_col=False, names=range(22),
+                                         low_memory=False)
+        alt_mapped_read_df.rename({0: "read_id"}, inplace=True)
+
+        # Next we'll build a dataframe of the fastq file!
+        fastq_items_list = []  # List to hold fastq items as we iterate over
+        # Below will allow us to track how long the fastq parse is taking:
+        row_iterator = tqdm(mp.fastx_read(f"{outputDir}/cat_files/cat.pre_altGenome.fastq", read_comment=True),
+                            total=sum(1 for line in open(f"{outputDir}/cat_files/cat.pre_altGenome.fastq")) // 4)
+        for read_id, sequence, quality, comment in row_iterator:
+            fastq_items_list.append([read_id, sequence, "+", quality, comment])
+            row_iterator.set_description(f"Processing {read_id}")
+        # Convert the fastq items list into a pandas dataframe so it can be filtered by the alt_mapped_reads_df
+        fastq_df = pd.DataFrame(fastq_items_list, columns=["read_id", "sequence", "quality", "comment"])
         
     else:
         print(f"\n\nAlternative genome fastq filtering already ran. Based on file at:"
