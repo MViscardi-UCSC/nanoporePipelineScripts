@@ -14,7 +14,7 @@ def per_library_run(lib_name, path_to_settings):
     print(f"##Starting run for {lib_name} @ {get_dt(for_print=True)}##")
     start = datetime.now()
     settings_dict = {"settings": path_to_settings,
-                     # I could add other over-ride settings here if wanted!
+                     "stepsToRun": "GAMNFCPS",
                      }
     args = meshSetsAndArgs(skip_cli_dict=settings_dict)
     main_out = main(**args)
@@ -27,18 +27,20 @@ def per_library_run(lib_name, path_to_settings):
 
 
 if __name__ == '__main__':
-    lib_dict = dict(polyA1="/210528_NanoporeRun_0639_L3s/"
-                           "211028_polyA-updated_settingsFile.txt",
-                    riboD="/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/"
-                          "210928and211029_riboD-and-yeastCarrier_settingsFile.txt",
-                    totalRNA1="/210709_NanoporeRun_totalRNA_0639_L3/"
-                              "211029_totalRNA_0639_L3_settingsFile.txt",
-                    polyA2="/210719_nanoporeRun_polyA_0639_L3_replicate/"
-                           "211031_polyA_0639_L3_settingsFile.txt",
-                    totalRNA2="/210720_nanoporeRun_totalRNA_0639_L3_replicate/"
-                              "211031_totalRNA_0639_L3_settingsFile.txt",
-                    xrn1="/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
-                         "211031_totalRNA_5108_xrn-1-KD_settingsFile.txt")
+    lib_dict = dict(
+        # polyA1="/210528_NanoporeRun_0639_L3s/"
+        #        "211028_polyA-updated_settingsFile.txt",
+        riboD="/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/"
+              "210928and211029_riboD-and-yeastCarrier_settingsFile.txt",
+        totalRNA1="/210709_NanoporeRun_totalRNA_0639_L3/"
+                  "211029_totalRNA_0639_L3_settingsFile.txt",
+        # polyA2="/210719_nanoporeRun_polyA_0639_L3_replicate/"
+        #        "211031_polyA_0639_L3_settingsFile.txt",
+        # totalRNA2="/210720_nanoporeRun_totalRNA_0639_L3_replicate/"
+        #           "211031_totalRNA_0639_L3_settingsFile.txt",
+        # xrn1="/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
+        #      "211031_totalRNA_5108_xrn-1-KD_settingsFile.txt",
+    )
     working_path = "/data16/marcus/working"
 
     time_dict = {}
