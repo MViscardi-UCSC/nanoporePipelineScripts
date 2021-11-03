@@ -344,8 +344,20 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
             fastq_items_list.append([read_id, sequence, "+", quality, comment])
             row_iterator.set_description(f"Processing {read_id}")
         # Convert the fastq items list into a pandas dataframe so it can be filtered by the alt_mapped_reads_df
-        fastq_df = pd.DataFrame(fastq_items_list, columns=["read_id", "sequence", "quality", "comment"])
-        
+        fastq_df = pd.DataFrame(fastq_items_list, columns=["read_id", "sequence", "plus", "quality", "comment"])
+        # Cool way to only keep values that don't appear in alt_mapped_read_df:
+        #   (From: https://tinyurl.com/22czvzua)
+        fastq_alt_merge = fastq_df.merge(alt_mapped_read_df, on="read_id", indicator=True,
+                                         how="outer")
+        # Trying out query operator, some notes on this here:
+        #   https://stackoverflow.com/questions/67341369/pandas-why-query-instead-of-bracket-operator
+        fastq_reads_that_didnt_alt_map = fastq_alt_merge.query('_merge=="left_only"').drop('_merge', axis=1)
+        # Write this dataframe to a fastq file with some hacky tricks:
+        fastq_reads_that_didnt_alt_map["read_id"] = ">" + fastq_reads_that_didnt_alt_map["read_id"] + " " +\
+                                                    fastq_reads_that_didnt_alt_map["comment"]
+        fastq_reads_that_didnt_alt_map = fastq_reads_that_didnt_alt_map.drop("comment", axis=1)
+        fastq_reads_that_didnt_alt_map.to_csv(f"{outputDir}/cat_files/cat.wout_altMapped.fastq",
+                                              index=False, header=False, sep="\n")
     else:
         print(f"\n\nAlternative genome fastq filtering already ran. Based on file at:"
               f"\n\t{outputDir}/cat_files/cat.pre_altGenome.fastq\n"
