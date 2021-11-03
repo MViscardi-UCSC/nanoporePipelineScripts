@@ -292,7 +292,7 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, *
 def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam, regenerate, **other_kwargs):
     altmap_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.altGenome.bam")
     if not altmap_flag:
-        bam_length = path.getsize(f"{outputDir}/cat_files/cat.altGenome.bam")
+        bam_length = path.getsize(f"{outputDir}/cat_files/cat.altGenome.sam")
         if bam_length == 0:
             minimap_flag = True  # This is all to catch screwed up runs that have empty bam files!!!
     if altmap_flag:
@@ -306,8 +306,8 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
                 raise NotImplementedError(f"Currently this script only supports having genomeDirs "
                                           f"with one bed file that ends with '.bed'")
             call = f"minimap2 -a {minimapParam} {alt_genome_fa_file[0]} {outputDir}/cat_files/cat.fastq " \
-                   f"-t {threads} --junc-bed {alt_genome_bed_file[0]} | samtools view -b - -o " \
-                   f"{outputDir}/cat_files/cat.altGenome.bam"
+                   f"-t {threads} --junc-bed {alt_genome_bed_file[0]} --sam-hit-only " \
+                   f"> {outputDir}/cat_files/cat.altGenome.sam"
             print(f"Starting alt_genome minimap2 at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
             live_cmd_call(call)
             print(f"\n\nFinished alt_genome minimap2 at {get_dt(for_print=True)}\n")
@@ -316,18 +316,22 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
               f"\n\t{outputDir}/cat_files/cat.altGenome.bam\n"
               f"Use the regenerate tag if you want to rerun.\n")
 
-    alt_filter_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.altGenome.sam") \
-        or not path.exists(f"{outputDir}/cat_files/cat.pre_altGenome.fastq")
+    alt_filter_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.pre_altGenome.fastq")
     if alt_filter_flag:
-        call = f"samtools view  -F 0x004 cat.altGenome.bam > cat.altGenome_hits.sam"
-        # The above command will build a sam file w/out reads w/ bit_flags:
-        #    0x004, UNMAP           =   reads who's sequence didn't align to the genome
-        print(f"Starting alt_genome samtools view at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
+        # First backup the fastq file that the real minimap2 call will need:
+        call = f"cp {outputDir}/cat_files/cat.fastq {outputDir}/cat_files/cat.pre_altGenome.fastq"
+        print(f"Starting fastq backup at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
         live_cmd_call(call)
-        print(f"\n\nFinished alt_genome samtools view at {get_dt(for_print=True)}")
+        print(f"\n\nFinished fastq backup at {get_dt(for_print=True)}")
+        
+        # Then we'll load the alt genome mapped reads from the sam file:
+        alt_mapped_reads = pd.read_csv(f"{outputDir}/cat_files/cat.altGenome.sam", sep="\t",
+                                       uscols=[0], index_col=False)
+        print(alt_mapped_reads)
+        
     else:
-        print(f"\n\nAlternative genome samtools view already ran. Based on file at:"
-              f"\n\t{outputDir}/cat_files/cat.altGenome.sam\n"
+        print(f"\n\nAlternative genome fastq filtering already ran. Based on file at:"
+              f"\n\t{outputDir}/cat_files/cat.pre_altGenome.fastq\n"
               f"Use the regenerate tag if you want to rerun.\n")
     # TODO: Add fastq file filtering based off what ends up in the cat.altGenome_hits.sam
     #       First copy the current cat.fastq to "cat.preAltGenome.fastq".
