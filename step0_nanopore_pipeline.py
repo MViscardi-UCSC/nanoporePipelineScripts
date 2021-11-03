@@ -224,9 +224,9 @@ def buildOutputDirs(stepsToRun, **kwargs) -> None:
     dirs_list = (("Z", outputDir),  # I am just going to use Z to mean always
                  ("G", "fastqs"),
                  ("M", "cat_files"),
-                 ("N", "nanopolish"),  # TODO: split nanopolish from minimap2
+                 ("N", "nanopolish"),
                  ("F", "featureCounts"),
-                 ("Z", "logs"),  # Z again
+                 ("Z", "logs"),
                  ("P", "merge_files"),
                  ("L", "flair"),
                  )
@@ -294,7 +294,7 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, *
 #################################################################################
 def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam, regenerate, **other_kwargs):
     import mappy as mp
-    altmap_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.altGenome.bam")
+    altmap_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.altGenome.sam")
     if not altmap_flag:
         bam_length = path.getsize(f"{outputDir}/cat_files/cat.altGenome.sam")
         if bam_length == 0:
@@ -310,7 +310,8 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
                 raise NotImplementedError(f"Currently this script only supports having genomeDirs "
                                           f"with one bed file that ends with '.bed'")
             call = f"minimap2 -a {minimapParam} {alt_genome_fa_file[0]} {outputDir}/cat_files/cat.fastq " \
-                   f"-t {threads} --junc-bed {alt_genome_bed_file[0]} --sam-hit-only " \
+                   f"-t {threads} --junc-bed {alt_genome_bed_file[0]} " \
+                   f" --sam-hit-only " \
                    f"> {outputDir}/cat_files/cat.altGenome.sam"
             print(f"Starting alt_genome minimap2 at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
             live_cmd_call(call)
@@ -320,7 +321,7 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
               f"\n\t{outputDir}/cat_files/cat.altGenome.bam\n"
               f"Use the regenerate tag if you want to rerun.\n")
 
-    alt_filter_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.pre_altGenome.fastq")
+    alt_filter_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.wout_altMapped.fastq")
     if alt_filter_flag:
         # First backup the fastq file that the real minimap2 call will need:
         call = f"cp {outputDir}/cat_files/cat.fastq {outputDir}/cat_files/cat.pre_altGenome.fastq"
@@ -330,12 +331,21 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
 
         # Then we'll load the alt genome mapped reads from the sam file to a pd.Dataframe:
         #   The below call might break if minimap2 passed headers!
+        print(f"Starting to load alt genome called sam file from: {outputDir}/cat_files/cat.altGenome.sam . . .")
+        header_lines = 0
+        with open(f"{outputDir}/cat_files/cat.altGenome.sam", 'r')as sam_file_quick:
+            for line in sam_file_quick:
+                if line.startswith('@'):
+                    header_lines += 1
+                else:
+                    break
         alt_mapped_read_df = pd.read_csv(f"{outputDir}/cat_files/cat.altGenome.sam", sep="\t",
-                                         usecols=[0], index_col=False, names=range(22),
-                                         low_memory=False)
-        alt_mapped_read_df.rename({0: "read_id"}, inplace=True)
-
+                                         usecols=[0], index_col=False, header=None,
+                                         low_memory=False, skiprows=header_lines)
+        alt_mapped_read_df.rename(columns={0: "read_id"}, inplace=True)
+        print(f"Finished loading alt genome called sam file from: {outputDir}/cat_files/cat.altGenome.sam")
         # Next we'll build a dataframe of the fastq file!
+        print(f"Starting to load fastq file from: {outputDir}/cat_files/cat.pre_altGenome.fastq . . .")
         fastq_items_list = []  # List to hold fastq items as we iterate over
         # Below will allow us to track how long the fastq parse is taking:
         row_iterator = tqdm(mp.fastx_read(f"{outputDir}/cat_files/cat.pre_altGenome.fastq", read_comment=True),
@@ -345,6 +355,7 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
             row_iterator.set_description(f"Processing {read_id}")
         # Convert the fastq items list into a pandas dataframe so it can be filtered by the alt_mapped_reads_df
         fastq_df = pd.DataFrame(fastq_items_list, columns=["read_id", "sequence", "plus", "quality", "comment"])
+        print(f"Finished loading fastq file from: {outputDir}/cat_files/cat.pre_altGenome.fastq . . .")
         # Cool way to only keep values that don't appear in alt_mapped_read_df:
         #   (From: https://tinyurl.com/22czvzua)
         fastq_alt_merge = fastq_df.merge(alt_mapped_read_df, on="read_id", indicator=True,
@@ -353,10 +364,10 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
         #   https://stackoverflow.com/questions/67341369/pandas-why-query-instead-of-bracket-operator
         fastq_reads_that_didnt_alt_map = fastq_alt_merge.query('_merge=="left_only"').drop('_merge', axis=1)
         # Write this dataframe to a fastq file with some hacky tricks:
-        fastq_reads_that_didnt_alt_map["read_id"] = ">" + fastq_reads_that_didnt_alt_map["read_id"] + " " +\
+        fastq_reads_that_didnt_alt_map["read_id"] = "@" + fastq_reads_that_didnt_alt_map["read_id"] + " " +\
                                                     fastq_reads_that_didnt_alt_map["comment"]
         fastq_reads_that_didnt_alt_map = fastq_reads_that_didnt_alt_map.drop("comment", axis=1)
-        fastq_reads_that_didnt_alt_map.to_csv(f"{outputDir}/cat_files/cat.wout_altMapped.fastq",
+        fastq_reads_that_didnt_alt_map.to_csv(f"{outputDir}/cat_files/cat.fastq",
                                               index=False, header=False, sep="\n")
     else:
         print(f"\n\nAlternative genome fastq filtering already ran. Based on file at:"
@@ -854,8 +865,7 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
     buildOutputDirs(stepsToRun, **kwargs)
 
     steps_dict = {"G": [guppy_basecall_w_gpu, "Guppy Basecalling"],
-                  "A": [alternative_genome_filtering, "Filtering Alt. Genomes (not implemented)"],
-                  # TODO: Add alternative genome filter mapping function here^^^
+                  "A": [alternative_genome_filtering, "Filtering Alt. Genomes (currently pretty rough and slow)"],
                   "M": [minimap2_and_samtools, "Minimap2 and SamTools"],
                   "N": [nanopolish_index_and_polya, "Nanopolish Index and polyA Calling"],
                   "C": [concat_files, "Concatenate Files"],
