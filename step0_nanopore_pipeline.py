@@ -281,8 +281,10 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, *
               f"Running with call: {call}\n")
         # TODO: optimize the num_callers and gpu_runners_per_caller params!!
         live_cmd_call(call)
+        print(f"Finished Guppy Basecalling with GPU @ {get_dt(for_print=True)}. . .\n")
+        print(f"Starting to concatenate fastq files @ {get_dt(for_print=True)}. . .\n")
         live_cmd_call(rf"cat {outputDir}/fastqs/pass/*.fastq > {outputDir}/cat_files/cat.fastq")
-        print(f"Finished Guppy Basecalling with GPU @ {get_dt(for_print=True)}. . .")
+        print(f"Finished to concatenating fastq files @ {get_dt(for_print=True)}. . .")
     else:
         print(f"\n\nCalling already occurred. Based on file at:\n\t{outputDir}/cat_files/cat.fastq\n"
               f"Use the regenerate tag if you want to rerun calling.\n")
@@ -293,7 +295,7 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, *
 #        Nanopolish calls of polyA tail lengths TODO: split minimap and nanopolish stuff
 #################################################################################
 def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam, regenerate, **other_kwargs):
-    import mappy as mp
+    import filecmp
     altmap_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.altGenome.sam")
     if not altmap_flag:
         bam_length = path.getsize(f"{outputDir}/cat_files/cat.altGenome.sam")
@@ -321,14 +323,20 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
               f"\n\t{outputDir}/cat_files/cat.altGenome.bam\n"
               f"Use the regenerate tag if you want to rerun.\n")
 
-    alt_filter_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.wout_altMapped.fastq")
-    if alt_filter_flag:
+    fastq_backup_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.pre_altGenome.fastq")
+    if fastq_backup_flag:
         # First backup the fastq file that the real minimap2 call will need:
         call = f"cp {outputDir}/cat_files/cat.fastq {outputDir}/cat_files/cat.pre_altGenome.fastq"
         print(f"Starting fastq backup at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
         live_cmd_call(call)
         print(f"\n\nFinished fastq backup at {get_dt(for_print=True)}")
-
+    else:
+        print(f"\n\nBacking up of cat.fastq file already happened. Based on file at:"
+              f"\n\t{outputDir}/cat_files/cat.pre_altGenome.fastq\n"
+              f"Use the regenerate tag if you want to rerun.\n")
+    alt_filtering_flag = regenerate or filecmp.cmp(f"{outputDir}/cat_files/cat.pre_altGenome.fastq",
+                                                   f"{outputDir}/cat_files/cat.fastq")
+    if alt_filtering_flag:
         # Then we'll load the alt genome mapped reads from the sam file to a pd.Dataframe:
         #   The below call might break if minimap2 passed headers!
         print(f"Starting to load alt genome called sam file from: {outputDir}/cat_files/cat.altGenome.sam . . .")
@@ -351,8 +359,9 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
         fastq_file.filter_against(alt_mapped_read_df)
         fastq_file.save_to_fastq(f"{outputDir}/cat_files/cat.fastq")
     else:
-        print(f"\n\nAlternative genome fastq filtering already ran. Based on file at:"
-              f"\n\t{outputDir}/cat_files/cat.pre_altGenome.fastq\n"
+        print(f"\n\nAlternative genome fastq filtering already ran. Based on the result that files:"
+              f"\n\t{outputDir}/cat_files/cat.pre_altGenome.fastq and cat.fastq"
+              f"\n\tAre 'the same'\n"
               f"Use the regenerate tag if you want to rerun.\n")
     # TODO: Add fastq file filtering based off what ends up in the cat.altGenome_hits.sam
     #       First copy the current cat.fastq to "cat.preAltGenome.fastq".
