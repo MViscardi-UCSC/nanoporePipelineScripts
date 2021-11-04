@@ -658,7 +658,9 @@ def merge_results(**other_kwargs):
         sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
         merge_df = sam_featc_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
         merge_df = merge_df.drop_duplicates()
+        # Dropping unmapped reads, after the addition of the -F 0x904 with samtools this should do nothing
         merge_df = merge_df[merge_df["sequence"] != "*"]
+        # Dropping terrible mapq scored reads, I don't think there are very many of these at all(?)
         merge_df = merge_df[merge_df["mapq"] != 0]
         if print_info:
             print("\n\n")
