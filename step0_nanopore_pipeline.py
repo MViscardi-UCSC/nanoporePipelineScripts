@@ -812,9 +812,9 @@ def flair(outputDir, **other_kwargs):
 def extra_steps(outputDir, df=None, **other_kwargs):
     import plotly.express as px
     if not isinstance(df, pd.DataFrame):
-        path = find_newest_matching_file(f"{outputDir}/merge_files/*_mergedOnReads.tsv")
+        path = find_newest_matching_file(f"{outputDir}/merge_files/*_mergedOnReads.parquet")
         print(f"Dataframe not passed, loading file from: {path}")
-        df = pd.read_csv(path, sep="\t")
+        df = pd.read_parquet(path)
         print("Loaded.")
     sample_df = df.sample(n=10000)
     sample_df["dup"] = sample_df.duplicated(subset="read_id", keep=False).map({True: 1, False: 0})
