@@ -469,7 +469,7 @@ def concat_files(outputDir, **other_kwargs):
     bam_file_for_feature_counts = f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam"
 
     # Most of this is much less necessary as we are not getting the nested files that came out of Roach's gridION!
-    calls = [f"samtools view  -b -F 0x904 {original_bam_file} > {bam_file_for_feature_counts}",
+    calls = [f"samtools view -b -F 0x904 {original_bam_file} > {bam_file_for_feature_counts}",
              # The above command will build a new bam file w/out reads w/ bit_flags:
              #    0x004, UNMAP           =   reads who's sequence didn't align to the genome
              #    0x100, SECONDARY       =   reads that are secondary alignments
