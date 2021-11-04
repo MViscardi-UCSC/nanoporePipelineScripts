@@ -7,6 +7,46 @@ A common location for some often used methods.
 import pandas as pd
 
 
+class FastqFile:
+    def __init__(self, path, head=None):
+        from tqdm import tqdm
+        import mappy as mp
+        self.path = path
+        self.subset = isinstance(head, int)
+        fastq_items_list = []  # List to hold fastq items as we iterate over
+        # Below will allow us to track how long the fastq parse is taking:
+        row_iterator = tqdm(mp.fastx_read(path, read_comment=True),
+                            total=sum(1 for line in open(path)) // 4)
+        for line, (read_id, sequence, quality, comment) in enumerate(row_iterator):
+            fastq_items_list.append([read_id, sequence, "+", quality, comment])
+            row_iterator.set_description(f"Processing {read_id}")
+            if self.subset and line >= head:
+                break
+        # Convert the fastq items list into a pandas dataframe so it can be filtered by the alt_mapped_reads_df
+        self.df = pd.DataFrame(fastq_items_list, columns=["read_id", "sequence", "plus", "quality", "comment"])
+        print(self.df.head())
+
+    def filter_against(self, df_w_read_id):
+        # Cool way to only keep values that don't appear in alt_mapped_read_df:
+        #   (From: https://tinyurl.com/22czvzua)
+        # Also trying out query operator, some notes on this here:
+        #   https://stackoverflow.com/questions/67341369/pandas-why-query-instead-of-bracket-operator
+        self.df = pd.merge(self.df, df_w_read_id,
+                           on="read_id",
+                           indicator=True,
+                           how="outer").query('_merge=="left_only"').drop('_merge', axis=1)
+
+    def save_to_fastq(self, output_path):
+        from csv import QUOTE_NONE
+        self.df["read_id"] = "@" + self.df["read_id"] + " " + \
+                             self.df["comment"]
+        self.df.drop("comment", axis=1).to_csv(output_path,
+                                               index=False,
+                                               header=False,
+                                               sep="\n",
+                                               quoting=QUOTE_NONE)
+
+
 def get_dt(for_print=False, for_file=False):
     from datetime import datetime
     now = datetime.now()
@@ -139,7 +179,6 @@ def save_sorted_bam_obj(bam_obj: BamHeadersAndDf, output_path: str,
 
 
 if __name__ == '__main__':
-    # parquet = tsv_to_parquet("./Caenorhabditis_elegans.WBcel235.100.gtf.dataframe_parse.tsv")
-    # print(pd.read_parquet(parquet).info())
-    # print(load_ski_pelo_targets(as_df=True))
-    print(rev_compliment("AAACCCGGGTTT"))
+    fastq = FastqFile("./testOutputs/in.fastq")
+    fastq.save_to_fastq("./testOutputs/out.fastq")
+    print(fastq)
