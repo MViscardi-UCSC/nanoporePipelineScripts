@@ -17,6 +17,7 @@ class FastqFile:
         # Below will allow us to track how long the fastq parse is taking:
         row_iterator = tqdm(mp.fastx_read(path, read_comment=True),
                             total=sum(1 for line in open(path)) // 4)
+        print(f"Starting fastq iterative load @ {get_dt(for_print=True)}")
         for line, (read_id, sequence, quality, comment) in enumerate(row_iterator):
             fastq_items_list.append([read_id, sequence, "+", quality, comment])
             row_iterator.set_description(f"Processing {read_id}")
@@ -24,7 +25,6 @@ class FastqFile:
                 break
         # Convert the fastq items list into a pandas dataframe so it can be filtered by the alt_mapped_reads_df
         self.df = pd.DataFrame(fastq_items_list, columns=["read_id", "sequence", "plus", "quality", "comment"])
-        print(self.df.head())
 
     def filter_against(self, df_w_read_id):
         # Cool way to only keep values that don't appear in alt_mapped_read_df:
