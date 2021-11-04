@@ -129,8 +129,8 @@ def merge_on_chr_pos(read_assignment_df: pd.DataFrame, reads_df: pd.DataFrame,
         reads_df = reads_df.sample(subsample)
     print(f"Merging read assignments and reads at {get_dt(for_print=True)}")
     merge_df = reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
-                              how="left", suffixes=["_fromReads",
-                                                    "_fromAssign"])
+                              how="left", suffixes=("_fromReads",
+                                                    "_fromAssign"))
     # merge_df = merge_df[~(merge_df.gene_id_fromReads.isna() & merge_df.gene_id_fromAssign.isna())]
     # below call drops reads that don't get assigned by Josh's tool
     merge_df = merge_df[~merge_df.gene_id_fromAssign.isna()]
