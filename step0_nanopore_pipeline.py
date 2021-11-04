@@ -38,7 +38,7 @@ from glob import glob
 
 from tqdm import tqdm
 
-from nanoporePipelineCommon import find_newest_matching_file, get_dt, minimap_bam_to_df
+from nanoporePipelineCommon import find_newest_matching_file, get_dt, minimap_bam_to_df, FastqFile
 
 import pandas as pd
 import numpy as np
@@ -346,29 +346,10 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
         print(f"Finished loading alt genome called sam file from: {outputDir}/cat_files/cat.altGenome.sam")
         # Next we'll build a dataframe of the fastq file!
         print(f"Starting to load fastq file from: {outputDir}/cat_files/cat.pre_altGenome.fastq . . .")
-        fastq_items_list = []  # List to hold fastq items as we iterate over
-        # Below will allow us to track how long the fastq parse is taking:
-        row_iterator = tqdm(mp.fastx_read(f"{outputDir}/cat_files/cat.pre_altGenome.fastq", read_comment=True),
-                            total=sum(1 for line in open(f"{outputDir}/cat_files/cat.pre_altGenome.fastq")) // 4)
-        for read_id, sequence, quality, comment in row_iterator:
-            fastq_items_list.append([read_id, sequence, "+", quality, comment])
-            row_iterator.set_description(f"Processing {read_id}")
-        # Convert the fastq items list into a pandas dataframe so it can be filtered by the alt_mapped_reads_df
-        fastq_df = pd.DataFrame(fastq_items_list, columns=["read_id", "sequence", "plus", "quality", "comment"])
+        fastq_file = FastqFile(f"{outputDir}/cat_files/cat.pre_altGenome.fastq")
         print(f"Finished loading fastq file from: {outputDir}/cat_files/cat.pre_altGenome.fastq . . .")
-        # Cool way to only keep values that don't appear in alt_mapped_read_df:
-        #   (From: https://tinyurl.com/22czvzua)
-        fastq_alt_merge = fastq_df.merge(alt_mapped_read_df, on="read_id", indicator=True,
-                                         how="outer")
-        # Trying out query operator, some notes on this here:
-        #   https://stackoverflow.com/questions/67341369/pandas-why-query-instead-of-bracket-operator
-        fastq_reads_that_didnt_alt_map = fastq_alt_merge.query('_merge=="left_only"').drop('_merge', axis=1)
-        # Write this dataframe to a fastq file with some hacky tricks:
-        fastq_reads_that_didnt_alt_map["read_id"] = "@" + fastq_reads_that_didnt_alt_map["read_id"] + " " +\
-                                                    fastq_reads_that_didnt_alt_map["comment"]
-        fastq_reads_that_didnt_alt_map = fastq_reads_that_didnt_alt_map.drop("comment", axis=1)
-        fastq_reads_that_didnt_alt_map.to_csv(f"{outputDir}/cat_files/cat.fastq",
-                                              index=False, header=False, sep="\n")
+        fastq_file.filter_against(alt_mapped_read_df)
+        fastq_file.save_to_fastq(f"{outputDir}/cat_files/cat.fastq")
     else:
         print(f"\n\nAlternative genome fastq filtering already ran. Based on file at:"
               f"\n\t{outputDir}/cat_files/cat.pre_altGenome.fastq\n"
