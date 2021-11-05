@@ -342,8 +342,9 @@ def plotly_pdf(stop_distances_pdf, window_min, window_max, mask_edges=True,
 
 
 if __name__ == '__main__':
-
-    working_dir = "/data16/marcus/working/" + WORKING_DIR_DICT["xrn-1"]
+    
+    lib = "polyA"
+    working_dir = "/data16/marcus/working/" + WORKING_DIR_DICT[lib]
 
     square_range = 2500  # None
     if isinstance(square_range, int):
@@ -357,14 +358,15 @@ if __name__ == '__main__':
                                                                             ),
                                                   # target_list=["ets-4"],
                                                   # target_list=["E02C12.8"],
-                                                  target_list=load_ski_pelo_targets(as_df=False),
+                                                  # target_list=load_ski_pelo_targets(as_df=False),
                                                   # target_column="gene_name",
-                                                  target_column="gene_id",
+                                                  # target_column="gene_id",
                                                   ),
                                min_max=range_to_plot, smallest_allowed_utr=50,
                                normalize=True, normalize_with_reads=True)
 
     plotly_pdf(stops_pdf, range_to_plot[0], range_to_plot[1],
                mask_edges=True, rolling_avg=True,
-               different_title=f"Meta Plot of 5' Ends of ONT dRNA-seq Reads (Ski/Pelo Targets)",
+               different_title=f"Meta Plot of 5' Ends of ONT dRNA-seq Reads ({lib})"
+               # different_title=f"Meta Plot of 5' Ends of ONT dRNA-seq Reads (Ski/Pelo Targets)",
                )

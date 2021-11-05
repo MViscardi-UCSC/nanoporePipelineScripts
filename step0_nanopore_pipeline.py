@@ -38,7 +38,8 @@ from glob import glob
 
 from tqdm import tqdm
 
-from nanoporePipelineCommon import find_newest_matching_file, get_dt, minimap_bam_to_df, FastqFile
+from nanoporePipelineCommon import find_newest_matching_file, get_dt, minimap_bam_to_df,\
+    FastqFile, gene_names_to_gene_ids, assign_w_josh_method
 
 import pandas as pd
 import numpy as np
@@ -53,13 +54,6 @@ def live_cmd_call(command):
             print(line, end="")
     if p.returncode != 0:
         raise CalledProcessError(p.returncode, p.args)
-
-
-def gene_names_to_gene_ids(tsv_path: str = "/data16/marcus/genomes/elegansRelease100"
-                                           "/Caenorhabditis_elegans.WBcel235.100.gtf"
-                                           ".tsv") -> pd.DataFrame:
-    df = pd.read_csv(tsv_path, sep="\t")[["gene_name", "gene_id"]].drop_duplicates(ignore_index=True)
-    return df
 
 
 #################################################################################
@@ -809,27 +803,51 @@ def flair(outputDir, **other_kwargs):
                                      output_to_file=True)
 
 
-def extra_steps(outputDir, df=None, **other_kwargs):
-    import plotly.express as px
+def extra_steps(outputDir, genomeDir, df=None, **other_kwargs):
+    def _flip_neg_strand_genes(chr_position: int, cigar: str, strand: str) -> int:
+        import regex as re
+        if strand == "+":
+            read_end = chr_position
+            return read_end
+        else:
+            numbers = list(map(int, re.findall(rf'(\d+)[MDNSI]', cigar)))
+            cigar_chars = re.findall(rf'\d+([MDNSI])', cigar)
+            mnd_nums, mnd_chars = [], []
+            for i, cigar_char in enumerate(cigar_chars):
+                if cigar_char in "MND":
+                    mnd_chars.append(cigar_char)
+                    mnd_nums.append(numbers[i])
+            read_end = chr_position + sum(mnd_nums)
+            return read_end
+    
     if not isinstance(df, pd.DataFrame):
         path = find_newest_matching_file(f"{outputDir}/merge_files/*_mergedOnReads.parquet")
         print(f"Dataframe not passed, loading file from: {path}")
         df = pd.read_parquet(path)
         print("Loaded.")
-    sample_df = df.sample(n=10000)
-    sample_df["dup"] = sample_df.duplicated(subset="read_id", keep=False).map({True: 1, False: 0})
-    sample_df["multi"] = (sample_df.bit_flag & 256) == 256
-    read_ids_of_multis = sample_df[sample_df["multi"]]["read_id"]
-    sample_df = sample_df[~sample_df["read_id"].isin(read_ids_of_multis.to_list())]
-    # sample_df = sample_df[sample_df.dup == 1]
-    sample_df["len"] = sample_df["sequence"].apply(len)
-    # sample_df["bit_flag"] = sample_df["bit_flag"].apply(str)
-    # fig = px.box(sample_df, y="mapq", x="bit_flag", notched=True, points="all")
-    fig = px.parallel_coordinates(sample_df[["dup", "bit_flag", "mapq", "len"]],
-                                  )
-    fig.show()
-    print(sample_df.info())
-
+    if "original_chr_pos" not in df.columns.to_list():
+        print(f"\nMaking adjustments for 5' ends")
+        df["original_chr_pos"] = df["chr_pos"]
+        df["chr_pos"] = df.apply(lambda read: _flip_neg_strand_genes(read["original_chr_pos"],
+                                                                     read["cigar"],
+                                                                     read["strand"]),
+                                 axis=1)
+        print("(saved parquet w/ adjusted read_ends) ", end="")
+    merged_df = assign_w_josh_method(reads_df=df, genomeDir=genomeDir)
+    merged_df.to_parquet(f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReadsPlus.parquet")
+    # sample_df = df.sample(n=10000)
+    # sample_df["dup"] = sample_df.duplicated(subset="read_id", keep=False).map({True: 1, False: 0})
+    # sample_df["multi"] = (sample_df.bit_flag & 256) == 256
+    # read_ids_of_multis = sample_df[sample_df["multi"]]["read_id"]
+    # sample_df = sample_df[~sample_df["read_id"].isin(read_ids_of_multis.to_list())]
+    # # sample_df = sample_df[sample_df.dup == 1]
+    # sample_df["len"] = sample_df["sequence"].apply(len)
+    # # sample_df["bit_flag"] = sample_df["bit_flag"].apply(str)
+    # # fig = px.box(sample_df, y="mapq", x="bit_flag", notched=True, points="all")
+    # fig = px.parallel_coordinates(sample_df[["dup", "bit_flag", "mapq", "len"]],
+    #                               )
+    # fig.show()
+    # print(sample_df.info())
 
 def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
     from standardsAlignment.standardsAssignmentWithMinimap2 import align_standards, plot_value_counts

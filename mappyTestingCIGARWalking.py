@@ -7,7 +7,7 @@ heatmap scripts is actually getting to the same "end" that minimap2
 would have called with the original mapping!
 """
 
-from geneHeatmaps2 import _flip_neg_strand_genes, load_reads_tsv
+from geneHeatmaps2 import _flip_neg_strand_genes, load_reads_parquet
 from nanoporePipelineCommon import find_newest_matching_file
 from standardsAlignment.standardsAssignmentWithMinimap2 import _loop_align_seq_to_adapters
 import mappy
@@ -59,7 +59,7 @@ def _loop_align_seq(aligner, name, seq, print_per_seq=False):
 if __name__ == '__main__':
     
     working_dir = "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD"
-    df = load_reads_tsv(find_newest_matching_file(f"{working_dir}/output_dir/"
+    df = load_reads_parquet(find_newest_matching_file(f"{working_dir}/output_dir/"
                                                   f"merge_files/*_mergedOnReads.tsv"), head=100)
 
     genome_path = "/data16/marcus/genomes/elegansRelease100/200430_allChrs.fa"

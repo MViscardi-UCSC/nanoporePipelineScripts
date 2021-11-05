@@ -14,7 +14,7 @@ import seaborn as sea
 import matplotlib.pyplot as plt
 
 from nanoporePipelineCommon import find_newest_matching_file, get_dt
-from geneHeatmaps2 import load_tsv_and_assign_w_josh_method, load_read_assignment_parquet
+from geneHeatmaps2 import load_tsv_and_assign_w_josh_method, load_read_assignments
 
 
 def load_merged_on_reads(path_to_merged, lib_name: str = None, head=None):
@@ -56,7 +56,7 @@ def seaborn_lib_ecdfs(concatenated_df):
 
 
 def load_for_cds_based_plotting(path_dict, drop_unassigned=True, subset=None):
-    read_assignment_df = load_read_assignment_parquet(f"/data16/marcus/genomes/elegansRelease100/"
+    read_assignment_df = load_read_assignments(f"/data16/marcus/genomes/elegansRelease100/"
                                                       f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
     # Loop through each library name in the list and for each:
     #   1. Load the TSV

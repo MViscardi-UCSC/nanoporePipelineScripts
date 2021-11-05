@@ -47,6 +47,40 @@ class FastqFile:
                                                quoting=QUOTE_NONE)
 
 
+def assign_w_josh_method(reads_df, genomeDir):
+    def load_read_assignments(assignment_file_parquet_path) -> pd.DataFrame:
+        print(f"Loading read assignment file from: {assignment_file_parquet_path} ", end="")
+        read_assignment_df = pd.read_parquet(assignment_file_parquet_path)
+        print(". ")
+        return read_assignment_df
+    
+    def merge_on_chr_pos(read_assignment_df: pd.DataFrame, reads_df: pd.DataFrame) -> pd.DataFrame:
+        print(f"Merging read assignments and reads at {get_dt(for_print=True)}")
+        merge_df = reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
+                                  how="left", suffixes=("_fromReads",
+                                                        "_fromAssign"))
+        # merge_df = merge_df[~(merge_df.gene_id_fromReads.isna() & merge_df.gene_id_fromAssign.isna())]
+        # below call drops reads that don't get assigned by Josh's tool
+        merge_df = merge_df[~merge_df.gene_id_fromAssign.isna()]
+        merge_df = merge_df[merge_df.strand_fromReads == merge_df.strand_fromAssign]
+        print(f"Done merging at {get_dt(for_print=True)}")
+        return merge_df
+    
+    read_assignments_df = load_read_assignments(f"{genomeDir}/Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
+    print("Finished loading files!")
+    # for df in [reads_df, read_assignments_df]:
+    #     print(df.info())
+    merged_df = merge_on_chr_pos(read_assignments_df, reads_df)
+    return merged_df
+
+
+def gene_names_to_gene_ids(tsv_path: str = "/data16/marcus/genomes/elegansRelease100"
+                                           "/Caenorhabditis_elegans.WBcel235.100.gtf"
+                                           ".tsv") -> pd.DataFrame:
+    df = pd.read_csv(tsv_path, sep="\t")[["gene_name", "gene_id"]].drop_duplicates(ignore_index=True)
+    return df
+
+
 def get_dt(for_print=False, for_file=False):
     from datetime import datetime
     now = datetime.now()

@@ -39,15 +39,15 @@ import pandas as pd
 import regex as re
 
 from step0_nanopore_pipeline import find_newest_matching_file, get_dt, gene_names_to_gene_ids
+from nanoporePipelineCommon import find_newest_matching_file, get_dt, assign_w_josh_method
 
 
-def load_reads_tsv(read_tsv, head=None) -> pd.DataFrame:
-
-    print(f"Loading merged on reads file from: {read_tsv} ", end="")
+def load_reads_parquet(read_parquet, head=None) -> pd.DataFrame:
+    print(f"Loading merged on reads file from: {read_parquet} ", end="")
     if isinstance(head, int):
-        df = pd.read_csv(read_tsv, sep="\t", nrows=head)
+        df = pd.read_parquet(read_parquet, nrows=head)
     else:
-        df = pd.read_csv(read_tsv, sep="\t")
+        df = pd.read_parquet(read_parquet)
     print(". ", end="")
     if "original_chr_pos" not in df.columns.to_list():
         print(f"\nMaking adjustments for 5' ends")
@@ -56,8 +56,8 @@ def load_reads_tsv(read_tsv, head=None) -> pd.DataFrame:
                                                                      read["cigar"],
                                                                      read["strand"]),
                                  axis=1)
-        df.to_csv(read_tsv, sep="\t", index=False)
-        print("(saved tsv w/ adjusted read_ends) ", end="")
+        df.to_parquet(read_parquet)
+        print("(saved parquet w/ adjusted read_ends) ", end="")
     print(". ")
     return df
 
@@ -114,31 +114,6 @@ def load_read_assignment_tsv(assignment_file_tsv, save_file=True) -> pd.DataFram
     return df
 
 
-def load_read_assignment_parquet(assignment_file_parquet, save_file=True) -> pd.DataFrame:
-    print(f"Loading read assignment file from: {assignment_file_parquet} ", end="")
-    df = pd.read_parquet(assignment_file_parquet)
-    print(". ")
-    return df
-
-
-def merge_on_chr_pos(read_assignment_df: pd.DataFrame, reads_df: pd.DataFrame,
-                     subsample=None) -> pd.DataFrame:
-    if isinstance(subsample, int):
-        print(f"Subsampling reads file and read assignment file to {subsample} rows each.")
-        read_assignment_df = read_assignment_df.sample(subsample)
-        reads_df = reads_df.sample(subsample)
-    print(f"Merging read assignments and reads at {get_dt(for_print=True)}")
-    merge_df = reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
-                              how="left", suffixes=("_fromReads",
-                                                    "_fromAssign"))
-    # merge_df = merge_df[~(merge_df.gene_id_fromReads.isna() & merge_df.gene_id_fromAssign.isna())]
-    # below call drops reads that don't get assigned by Josh's tool
-    merge_df = merge_df[~merge_df.gene_id_fromAssign.isna()]
-    merge_df = merge_df[merge_df.strand_fromReads == merge_df.strand_fromAssign]
-    print(f"Done merging at {get_dt(for_print=True)}")
-    return merge_df
-
-
 def plotly_cdf(cdf_values, x_values):
     import plotly.graph_objects as go
 
@@ -186,7 +161,7 @@ def plotly_imshow_heatmap(extra_annotation, output_name, plotter_df, title, x_ax
                                               titleside="bottom"
                                               ),
                       hovermode="y")
-    fig.write_html(f"./testOutputs/{get_dt(for_output=True)}_{output_name}.html")
+    fig.write_html(f"./testOutputs/{get_dt(for_file=True)}_{output_name}.html")
     fig.show()
 
 
@@ -247,11 +222,11 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-300, 300),
     ], inplace=True)
     plotter_df["norm_cdf_lists"] = pd.DataFrame(plotter_df.apply(lambda x: x["norm_cdf"].tolist(),
                                                                  axis=1), index=plotter_df.index)
-    
+
     x_axis_cdfs = plotter_df["norm_cdf"].to_list()
-    
+
     x_labels = list(range(bounds[0] - 1, bounds[1] + 1))
-    
+
     if plotter_df.shape[0] > 1:
         plotly_imshow_heatmap(extra_annotation, output_name, plotter_df, title, x_axis_cdfs, x_labels)
     elif plotter_df.shape[0] == 1:
@@ -262,18 +237,19 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-300, 300),
 
 def compress_on_transcripts(merged_df, drop_sub, save_as=None):
     transcript_groupby = merged_df.groupby(["gene_id_fromAssign", "transcript_id"])
-    smaller_df = transcript_groupby["to_stop"].apply(list).to_frame(name="stop_distances")
-    smaller_df["transcript_hits"] = transcript_groupby["transcript_id"].apply(len).to_frame(name="transcript_hits")
-    smaller_df = smaller_df.reset_index().rename(columns={"gene_id_fromAssign": "gene_id"})
-    smaller_df = smaller_df[smaller_df["transcript_hits"] >= drop_sub]
+    transcripts_df = transcript_groupby["to_stop"].apply(list).to_frame(name="stop_distances")
+    transcripts_df["transcript_hits"] = transcript_groupby["transcript_id"].apply(len).to_frame(name="transcript_hits")
+    transcripts_df = transcripts_df.reset_index().rename(columns={"gene_id_fromAssign": "gene_id"})
+    transcripts_df = transcripts_df[transcripts_df["transcript_hits"] >= drop_sub]
     gene_df = gene_names_to_gene_ids()
-    smaller_df = smaller_df.merge(gene_df, on="gene_id", how="inner")
-    smaller_df["identifier"] = smaller_df["gene_name"].astype(str) + " (" + smaller_df["transcript_id"].astype(str) \
-                              + ")" + " [" + smaller_df["transcript_hits"].astype(str) + "]"
+    transcripts_df = transcripts_df.merge(gene_df, on="gene_id", how="inner")
+    transcripts_df["identifier"] = transcripts_df["gene_name"].astype(str) + " (" + \
+                                   transcripts_df["transcript_id"].astype(str) \
+                                   + ")" + " [" + transcripts_df["transcript_hits"].astype(str) + "]"
     if isinstance(save_as, str):
-        smaller_df.to_parquet(save_as)
+        transcripts_df.to_parquet(save_as)
         print(f"Saved file to {save_as}")
-    return smaller_df
+    return transcripts_df
 
 
 def parse_annies_deseq(csv_path: str) -> list:
@@ -285,21 +261,22 @@ def parse_annies_deseq(csv_path: str) -> list:
     return df["gene_id"].tolist()
 
 
-def main(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100", drop_sub=10,
+def main(library_strs, genome_dir="/data16/marcus/genomes/elegansRelease100", drop_sub=10,
          target_list=[], target_column="gene_name"):
-    merged_df, working_dir = load_tsv_and_assign_w_josh_method(library_str, genome_dir=genome_dir)
-    smaller_df = compress_on_transcripts(merged_df, drop_sub,
-                                         save_as=f"{working_dir}/output_dir/merge_files/"
-                                                 f"{get_dt(for_output=True)}_compressedOnTranscripts_"
-                                                 f"fromJoshsSystem.parquet")
-    if target_list:
-        selected_df = smaller_df[smaller_df[target_column].isin(target_list)]
-        if selected_df.shape[0] >= 1:
-            smaller_df = selected_df
-        else:
-            print(f"{target_list} has zero hits in the {target_column} column... No filtering run")
-    print(merged_df, smaller_df)
-    plot_heatmap(smaller_df)
+    for lib in library_strs:
+        merged_df, working_dir = load_tsv_and_assign_w_josh_method(lib, genome_dir=genome_dir)
+        smaller_df = compress_on_transcripts(merged_df, drop_sub,
+                                             save_as=f"{working_dir}/output_dir/merge_files/"
+                                                     f"{get_dt(for_file=True)}_compressedOnTranscripts_"
+                                                     f"fromJoshsSystem.parquet")
+        if target_list:
+            selected_df = smaller_df[smaller_df[target_column].isin(target_list)]
+            if selected_df.shape[0] >= 1:
+                smaller_df = selected_df
+            else:
+                print(f"{target_list} has zero hits in the {target_column} column... No filtering run")
+        print(merged_df, smaller_df)
+        plot_heatmap(smaller_df)
 
 
 def load_tsv_and_assign_w_josh_method(library_str, genome_dir="/data16/marcus/genomes/elegansRelease100",
@@ -324,29 +301,25 @@ def load_tsv_and_assign_w_josh_method(library_str, genome_dir="/data16/marcus/ge
         working_dir = f"/data16/marcus/working/{working_dir_dict[library_str]}"
     except KeyError:
         raise KeyError(f"Key: {library_str} isn't in the working directory dictionary keys : {working_dir_dict.keys()}")
-    reads_df = load_reads_tsv(find_newest_matching_file(f"{working_dir}/output_dir/merge_files/*_mergedOnReads.tsv"),
-                              head=nrows)
-    read_assignment_df = load_read_assignment_parquet(f"{genome_dir}/"
-                                                      f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
-    print("Finished loading files!")
-    for df in [reads_df, read_assignment_df]:
-        print(df.info())
-    merged_df = merge_on_chr_pos(read_assignment_df, reads_df)
+    reads_df = load_reads_parquet(find_newest_matching_file(f"{working_dir}/output_dir/merge_files/"
+                                                            f"*_mergedOnReads.parquet"),
+                                  head=nrows)
+    merged_df = assign_w_josh_method(reads_df, genome_dir)
     return merged_df, working_dir
 
 
 if __name__ == '__main__':
     annie_deseq_csv_path = "/data16/marcus/working/210204_smg-1and6_alteredGenes_fromAnnie/" \
                            "210209_GenesUpInSMG1AndSMG6.csv"
-    annies_deseq_genes = parse_annies_deseq(annie_deseq_csv_path)
-    
-    main("xrn-1",
-         drop_sub=25,
+    # annies_deseq_genes = parse_annies_deseq(annie_deseq_csv_path)
+
+    main(["polyA", "totalRNA", "polyA2", "totalRNA2"],
+         drop_sub=10,
          # target_list=annies_deseq_genes,
          # target_column="gene_id",
-         target_list=['tbb-2',
-                      'tbb-1',
-                      'mec-7',
-                      'mec-12'],
-         target_column='gene_name'
+         # target_list=['tbb-2',
+         #              'tbb-1',
+         #              'mec-7',
+         #              'mec-12'],
+         # target_column='gene_name'
          )
