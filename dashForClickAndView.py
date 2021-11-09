@@ -121,7 +121,7 @@ def my_first_attempt():
 
 
 def load_and_merge_lib_parquets(lib_dict, drop_unassigned=True, drop_failed_polya=True,
-                                drop_sub_n=5):
+                                drop_sub_n=5, keep_transcript_info=False) -> [pd.DataFrame, pd.DataFrame]:
     read_assignment_df = pd.read_parquet(f"/data16/marcus/genomes/elegansRelease100/"
                                          f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
     # Loop through each library name in the list and for each:
@@ -148,8 +148,20 @@ def load_and_merge_lib_parquets(lib_dict, drop_unassigned=True, drop_failed_poly
     super_df = super_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
                               how="left", suffixes=["_fromFeatureCounts",
                                                     ""])
+    if not keep_transcript_info:
+        super_df = super_df[["lib",
+                             "read_id",
+                             "chr_id",
+                             "chr_pos",
+                             "gene_id",
+                             "gene_name",
+                             "sequence",
+                             "polya_length",
+                             "strand_fromFeatureCounts",
+                             "strand",
+                             ]].drop_duplicates()
     if drop_failed_polya:
-        print(f"Read counts pre-failed-polyA call drop:   {super_df.shape[0]}")
+        print(f"\nRead counts pre-failed-polyA call drop:   {super_df.shape[0]}")
         super_df = super_df[~super_df["polya_length"].isna()]
         print(f"Read counts post-failed-polyA call drop:  {super_df.shape[0]}")
     print(f"\rFinished merge!")
@@ -173,65 +185,124 @@ def load_and_merge_lib_parquets(lib_dict, drop_unassigned=True, drop_failed_poly
     return super_df, compressed_df
 
 
-def distributions_of_polya_tails(reads_df, compressed_df):
+def distributions_of_polya_tails(libs):
     import dash
+    import json
     from dash import dcc
     from dash import html
     from dash.dependencies import Input, Output
     import plotly.express as px
     import plotly.graph_objects as go
 
+    if len(libs) < 2:
+        raise ValueError(f"Please provide 2 or more libraries, only {len(libs)} given.")
+
+    reads_df, compressed_df = load_and_merge_lib_parquets(libs)
+    print(reads_df, compressed_df, sep="\n\n")
+    lib_list = compressed_df.reset_index().lib.unique().tolist()
+    compressed_df = compressed_df.reset_index()
+    reads_df = reads_df[["lib",
+                         "read_id",
+                         "chr_id",
+                         "chr_pos",
+                         "gene_id",
+                         "gene_name",
+                         "read_length",
+                         "polya_length",
+                         ]].drop_duplicates()
+
     external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+    styles = {
+        'pre': {
+            'border': 'thin lightgrey solid',
+            'overflowX': 'scroll',
+            'overflowY': 'scroll',
+        }
+    }
+
     app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
     app.layout = html.Div([
         # Option to change the libraries at the top of the plot
         html.Div([
+            dcc.Markdown("""
+                **Select X and Y libraries**"""),
             dcc.Dropdown(
                 id='xaxis-lib',
                 options=[{'label': i, 'value': i} for i in lib_list],
-                value=lib_list[0],
-            ),
+                value=lib_list[0]),
             dcc.Dropdown(
                 id='yaxis-lib',
                 options=[{'label': i, 'value': i} for i in lib_list],
-                value=lib_list[1],
+                value=lib_list[1]),
+            dcc.Markdown("""
+                **Select minimum reads/gene to allow**"""),
+            dcc.Slider(
+                id='min-hits-slider',
+                min=5, max=100,
+                value=5,
+                marks={str(n): str(n) for n in range(5, 105, 5)},
+                step=None,
             )]),
-        # Plots
+        # Plots row
         html.Div([
             html.Div([
                 # First plot with title and 8/12 width space
                 html.H3('Scatter plot'),
                 dcc.Graph(id='primary-scatter',
                           hoverData={'points': [{'customdata': ['WBGene00010964', 'ctc-1', 'lots', 'lots']}]})
-            ], className="eight columns", style={'display': 'inline-block'}),
+            ], className="six columns", style={'display': 'inline-block'}),
 
             html.Div([
                 # Second plot with less fo the width space
                 html.H3('violin-plot'),
                 dcc.Graph(id='violin-plot')
-            ], className="four columns", style={'display': 'inline-block'}),
-        ], className='row')
+            ], className="six columns", style={'display': 'inline-block'}),
+        ], className='row'),
+        # Info Row
+        html.Div(className='row', children=[
+            html.Div([
+                dcc.Markdown("""
+                **Hover Data**
+
+                Mouse over values in the graph.
+            """),
+                html.Pre(id='hover-data', style=styles['pre'])
+            ], className='four columns'),
+            html.Div([
+                dcc.Markdown("""
+                **Selection Data**
+
+                Click points to select data.
+                Or to select multiple:
+                Shift+click, or choose the lasso/rectangle select tool in the graph's menu
+                bar and then select points in the graph.
+            """),
+                html.Pre(id='selected-data', style=styles['pre']),
+            ], className='four columns'),
+        ])
     ])
 
     @app.callback(
         Output('primary-scatter', 'figure'),
         [Input('xaxis-lib', 'value'),
-         Input('yaxis-lib', 'value')])
-    def main_plot(xaxis_library, yaxis_library):
-        x_axis_df = compressed_df[compressed_df.lib == xaxis_library][["lib",
-                                                                       "gene_id",
-                                                                       "gene_name",
-                                                                       "gene_hits",
-                                                                       "mean_polya_length"]]
-        y_axis_df = compressed_df[compressed_df.lib == yaxis_library][["lib",
-                                                                       "gene_id",
-                                                                       "gene_name",
-                                                                       "gene_hits",
-                                                                       "mean_polya_length"]]
+         Input('yaxis-lib', 'value'),
+         Input('min-hits-slider', 'value')])
+    def main_plot(xaxis_library, yaxis_library, min_hits):
+        min_hit_df = compressed_df[compressed_df['gene_hits'] >= min_hits]
+        x_axis_df = min_hit_df[min_hit_df.lib == xaxis_library][["gene_id",
+                                                                 "gene_name",
+                                                                 "gene_hits",
+                                                                 "mean_polya_length"]]
+        y_axis_df = min_hit_df[min_hit_df.lib == yaxis_library][["gene_id",
+                                                                 "gene_name",
+                                                                 "gene_hits",
+                                                                 "mean_polya_length"]]
+
         plot_df = pd.merge(x_axis_df, y_axis_df, on=["gene_id", "gene_name"],
                            suffixes=(f"_{xaxis_library}",
                                      f"_{yaxis_library}"))
+
         fig = px.scatter(plot_df, x=f"mean_polya_length_{xaxis_library}", y=f"mean_polya_length_{yaxis_library}",
                          custom_data=["gene_id", "gene_name"],
                          hover_name="gene_name", hover_data=["gene_id",
@@ -239,6 +310,8 @@ def distributions_of_polya_tails(reads_df, compressed_df):
                                                              f"gene_hits_{yaxis_library}"])
         fig.update_layout(margin={'l': 40, 'b': 40, 't': 10, 'r': 0}, hovermode='closest', clickmode="event+select")
         fig.update_traces(marker_size=7)
+        fig.update_layout(xaxis_title=f"Mean polyA Tail Length (Lib: {xaxis_library})",
+                          yaxis_title=f"Mean polyA Tail Length (Lib: {yaxis_library})")
         return fig
 
     def _plot_split_violin(filtered_df, x_lib, y_lib):
@@ -258,8 +331,18 @@ def distributions_of_polya_tails(reads_df, compressed_df):
                                 line_color='orange',
                                 )
                       )
-        fig.update_traces(meanline_visible=True)
-        fig.update_layout(violingap=0, violinmode='overlay', margin={'l': 0, 'b': 40, 't': 10, 'r': 40})
+        fig.update_traces(meanline_visible=True,
+                          points='all',
+                          jitter=0.05,
+                          scalemode='count')
+        fig.update_layout(violingap=0, violinmode='overlay',
+                          margin={'l': 0, 'b': 40, 't': 10, 'r': 40},
+                          yaxis_title=f"Distribution of PolyA Tail Length Calls",
+                          legend=dict(orientation="h",
+                                      yanchor="bottom",
+                                      y=1.02,
+                                      xanchor="left",
+                                      x=0))
         return fig
 
     @app.callback(
@@ -268,25 +351,58 @@ def distributions_of_polya_tails(reads_df, compressed_df):
          Input('xaxis-lib', 'value'),
          Input('yaxis-lib', 'value')])
     def handle_violin(selectedData, x_lib, y_lib):
-        gene_id, gene_name = selectedData['points'][0]['customdata'][:2]
-        violin_df = reads_df[reads_df["gene_id"] == gene_id][["lib",
-                                                              "gene_id",
-                                                              "gene_name",
-                                                              "polya_length",
-                                                              "read_id"]]
+        column_list = ["lib",
+                       "gene_id",
+                       "gene_name",
+                       "polya_length",
+                       "read_id"]
+        gene_id_list = []
+        if selectedData:
+            for point_dict in selectedData['points']:
+                gene_id_list.append(point_dict['customdata'][0])
+            # gene_id, gene_name = selectedData['points'][0]['customdata'][:2]
+            violin_df = reads_df[reads_df["gene_id"].isin(gene_id_list)][column_list]
+        else:
+            violin_df = pd.DataFrame(dict(zip(column_list, [[] for _ in range(len(column_list))])))
         return _plot_split_violin(violin_df, x_lib, y_lib)
-    
-    app.run_server(debug=True, dev_tools_hot_reload=False)
+
+    @app.callback(
+        Output('hover-data', 'children'),
+        [Input('primary-scatter', 'hoverData'),
+         Input('xaxis-lib', 'value'),
+         Input('yaxis-lib', 'value')])
+    def display_hover_data(hoverData, x_lib, y_lib):
+        return_data = []
+        if not hoverData:
+            return None
+        for point_dict in hoverData['points']:
+            gene_id, gene_name, x_counts, y_counts = point_dict['customdata']
+            return_data.append({'Gene Name': gene_name,
+                                'Gene ID': gene_id,
+                                f'{x_lib} hits': x_counts,
+                                f'{y_lib} hits': y_counts})
+        return json.dumps(return_data, indent=2)
+
+    @app.callback(
+        Output('selected-data', 'children'),
+        [Input('primary-scatter', 'selectedData'),
+         Input('xaxis-lib', 'value'),
+         Input('yaxis-lib', 'value')])
+    def display_selected_data(selectedData, x_lib, y_lib):
+        if not selectedData:
+            return "No points selected"
+        return_data = []
+        for point_dict in selectedData['points']:
+            gene_id, gene_name, x_counts, y_counts = point_dict['customdata']
+            return_data.append({'Gene Name': gene_name,
+                                'Gene ID': gene_id,
+                                f'{x_lib} hits': x_counts,
+                                f'{y_lib} hits': y_counts})
+        return json.dumps(return_data, indent=2)
+
+    app.run_server(debug=False, dev_tools_hot_reload=False)
 
 
 if __name__ == '__main__':
-    libs = ["totalRNA2", "polyA2"]
-    
-    if len(libs) < 2:
-        raise ValueError(f"Please provide 2 or more libraries, only {len(libs)} given.")
-
-    read_df, comp_df = load_and_merge_lib_parquets(libs)
-    print(read_df, comp_df, sep="\n\n")
-    lib_list = comp_df.reset_index().lib.unique().tolist()
-    comp_df = comp_df.reset_index()
-    distributions_of_polya_tails(reads_df=read_df, compressed_df=comp_df)
+    libraries_to_run = ["totalRNA2", "polyA2"]
+    distributions_of_polya_tails(libraries_to_run)
