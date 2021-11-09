@@ -120,7 +120,7 @@ def my_first_attempt():
         app.run_server(debug=True)
 
 
-def load_and_merge_lib_parquets(lib_dict, drop_unassigned=True, drop_failed_polya=True,
+def load_and_merge_lib_parquets(lib_list, drop_unassigned=True, drop_failed_polya=True,
                                 drop_sub_n=5, keep_transcript_info=False) -> [pd.DataFrame, pd.DataFrame]:
     read_assignment_df = pd.read_parquet(f"/data16/marcus/genomes/elegansRelease100/"
                                          f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
@@ -131,7 +131,7 @@ def load_and_merge_lib_parquets(lib_dict, drop_unassigned=True, drop_failed_poly
     #   3. Concatenate these dataframe into one large dataframe
     #       NOTE: This structure can be seperated again based on
     #       the "lib" column added in the previous step
-    path_dict = pick_libs_return_paths_dict(lib_dict, file_suffix="parquet")
+    path_dict = pick_libs_return_paths_dict(lib_list, file_suffix="parquet")
     df_dict = {}
     for library_name, parquet_path in path_dict.items():
         print(f"Loading parquet for {library_name} lib. . .")
@@ -198,7 +198,7 @@ def distributions_of_polya_tails(libs):
         raise ValueError(f"Please provide 2 or more libraries, only {len(libs)} given.")
 
     reads_df, compressed_df = load_and_merge_lib_parquets(libs)
-    print(reads_df, compressed_df, sep="\n\n")
+    # print(reads_df, compressed_df, sep="\n\n")
     lib_list = compressed_df.reset_index().lib.unique().tolist()
     compressed_df = compressed_df.reset_index()
     reads_df = reads_df[["lib",
@@ -309,9 +309,10 @@ def distributions_of_polya_tails(libs):
                                                              f"gene_hits_{xaxis_library}",
                                                              f"gene_hits_{yaxis_library}"])
         fig.update_layout(margin={'l': 40, 'b': 40, 't': 10, 'r': 0}, hovermode='closest', clickmode="event+select")
-        fig.update_traces(marker_size=7)
+        fig.update_traces(marker=dict(size=7, color='darkgray', opacity=0.7))
         fig.update_layout(xaxis_title=f"Mean polyA Tail Length (Lib: {xaxis_library})",
-                          yaxis_title=f"Mean polyA Tail Length (Lib: {yaxis_library})")
+                          yaxis_title=f"Mean polyA Tail Length (Lib: {yaxis_library})",
+                          template='plotly_white')
         return fig
 
     def _plot_split_violin(filtered_df, x_lib, y_lib):
@@ -321,14 +322,14 @@ def distributions_of_polya_tails(libs):
                                 y=filtered_df['polya_length'][filtered_df['lib'] == x_lib],
                                 legendgroup=x_lib, scalegroup=x_lib, name=x_lib,
                                 side='negative',
-                                line_color='blue',
+                                line_color='MediumPurple',
                                 )
                       )
         fig.add_trace(go.Violin(x=filtered_df['gene_name'][filtered_df['lib'] == y_lib],
                                 y=filtered_df['polya_length'][filtered_df['lib'] == y_lib],
                                 legendgroup=y_lib, scalegroup=y_lib, name=y_lib,
                                 side='positive',
-                                line_color='orange',
+                                line_color='LightSeaGreen',
                                 )
                       )
         fig.update_traces(meanline_visible=True,
@@ -342,7 +343,8 @@ def distributions_of_polya_tails(libs):
                                       yanchor="bottom",
                                       y=1.02,
                                       xanchor="left",
-                                      x=0))
+                                      x=0),
+                          template='plotly_white')
         return fig
 
     @app.callback(
@@ -404,5 +406,8 @@ def distributions_of_polya_tails(libs):
 
 
 if __name__ == '__main__':
-    libraries_to_run = ["totalRNA2", "polyA2"]
+    from sys import argv
+    libraries_to_run = argv[1:]
+    print(f"Running w/ libraries: {libraries_to_run}")
+    # libraries_to_run = ["totalRNA2", "polyA2"]
     distributions_of_polya_tails(libraries_to_run)
