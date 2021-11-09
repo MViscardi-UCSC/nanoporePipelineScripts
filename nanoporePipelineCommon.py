@@ -47,12 +47,37 @@ class FastqFile:
                                                quoting=QUOTE_NONE)
 
 
+def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet"):
+    path_dict = {
+        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/"
+                 "merge_files/*_mergedOnReads.",
+        "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
+                    "output_dir/merge_files/*_mergedOnReads.",
+        "totalRNA2": "/data16/marcus/working/"
+                     "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir/"
+                     "merge_files/*_mergedOnReads.",
+        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/"
+                 "merge_files/*_mergedOnReads.",
+        "polyA2": "/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
+                  "output_dir/merge_files/*_mergedOnReads.",
+        "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
+                 "output_dir/merge_files/*_mergedOnReads."
+    }
+    return_dict = {}
+    for lib_key, file_prefix_path in path_dict.items():
+        if lib_key in lib_list:
+            return_dict[lib_key] = find_newest_matching_file(file_prefix_path + file_suffix)
+    return return_dict
+
+
+def load_read_assignments(assignment_file_parquet_path) -> pd.DataFrame:
+    print(f"Loading read assignment file from: {assignment_file_parquet_path} ", end="")
+    read_assignment_df = pd.read_parquet(assignment_file_parquet_path)
+    print(". ")
+    return read_assignment_df
+
+
 def assign_w_josh_method(reads_df, genomeDir):
-    def load_read_assignments(assignment_file_parquet_path) -> pd.DataFrame:
-        print(f"Loading read assignment file from: {assignment_file_parquet_path} ", end="")
-        read_assignment_df = pd.read_parquet(assignment_file_parquet_path)
-        print(". ")
-        return read_assignment_df
     
     def merge_on_chr_pos(read_assignment_df: pd.DataFrame, reads_df: pd.DataFrame) -> pd.DataFrame:
         print(f"Merging read assignments and reads at {get_dt(for_print=True)}")
