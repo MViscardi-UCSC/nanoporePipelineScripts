@@ -13,8 +13,8 @@ import plotly.express as px
 import seaborn as sea
 import matplotlib.pyplot as plt
 
-from nanoporePipelineCommon import find_newest_matching_file, get_dt
-from geneHeatmaps2 import load_tsv_and_assign_w_josh_method, load_read_assignments
+from nanoporePipelineCommon import find_newest_matching_file, get_dt, load_read_assignments, pick_libs_return_paths_dict
+from geneHeatmaps2 import load_tsv_and_assign_w_josh_method
 
 
 def load_merged_on_reads(path_to_merged, lib_name: str = None, head=None):
@@ -235,29 +235,6 @@ def main_plot_ecdfs(path_dict: dict, plotly_or_seaborn: str):
         seaborn_lib_ecdfs(long_df)
     else:
         print(f"Please answer 'plotly_or_seaborn' param w/ 'plotly' or 'seaborn'... not '{plotly_or_seaborn}'!!")
-
-
-def pick_libs_return_paths_dict(lib_list: list):
-    path_dict = {
-        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/"
-                 "merge_files/*_mergedOnReads.tsv",
-        "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
-                    "output_dir/merge_files/*_mergedOnReads.tsv",
-        "totalRNA2": "/data16/marcus/working/"
-                     "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir/"
-                     "merge_files/*_mergedOnReads.tsv",
-        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/"
-                 "merge_files/*_mergedOnReads.tsv",
-        "polyA2": "/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
-                  "output_dir/merge_files/*_mergedOnReads.tsv",
-        "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
-                 "output_dir/merge_files/*_mergedOnReads.tsv"
-    }
-    return_dict = {}
-    for lib_key, tsv_path in path_dict.items():
-        if lib_key in lib_list:
-            return_dict[lib_key] = find_newest_matching_file(tsv_path)
-    return return_dict
 
 
 if __name__ == '__main__':
