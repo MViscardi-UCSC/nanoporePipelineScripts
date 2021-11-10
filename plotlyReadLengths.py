@@ -20,7 +20,14 @@ from geneHeatmaps2 import load_tsv_and_assign_w_josh_method
 def load_merged_on_reads(path_to_merged, lib_name: str = None, head=None):
     if lib_name:
         print(f"Starting to load library dataframe for: {lib_name} . . .", end="")
-    merged_on_reads_df = pd.read_csv(path_to_merged, sep="\t", nrows=head)
+    if path_to_merged.endswith(".parquet"):
+        merged_on_reads_df = pd.read_parquet(path_to_merged)
+        if isinstance(head, int):
+            merged_on_reads_df = merged_on_reads_df.head(head)
+    elif path_to_merged.endswith(".tsv"):
+        merged_on_reads_df = pd.read_csv(path_to_merged, sep="\t", nrows=head)
+    else:
+        raise NotImplementedError(f"Please provide file that ends w/ .tsv or .parquet, not:\n{path_to_merged}")
     merged_on_reads_df["read_len"] = merged_on_reads_df["sequence"].str.len()
     if lib_name:
         print(f"\rFinish loading library dataframe for: {lib_name}!")
@@ -66,10 +73,8 @@ def load_for_cds_based_plotting(path_dict, drop_unassigned=True, subset=None):
     #       NOTE: This structure can be seperated again based on
     #       the "lib" column added in the previous step
     df_dict = {}
-    for library_name, tsv_path in path_dict.items():
-        lib_df = load_merged_on_reads(tsv_path, lib_name=library_name, head=subset)
-        # lib_df["lib"] = library_name
-        # super_df = pd.concat([super_df, lib_df], ignore_index=True)
+    for library_name, file_path in path_dict.items():
+        lib_df = load_merged_on_reads(file_path, lib_name=library_name, head=subset)
         df_dict[library_name] = lib_df
 
     # This is a cute way to quickly merge all of these dfs into one, while retaining lib info.
@@ -238,13 +243,14 @@ def main_plot_ecdfs(path_dict: dict, plotly_or_seaborn: str):
 
 
 if __name__ == '__main__':
-    run_with = ["polyA2", "totalRNA2", "polyA", "xrn-1"]
+    run_with = ["polyA2", "totalRNA2", "polyA"]
     lib_path_dict = pick_libs_return_paths_dict(run_with)
 
     longest_df = load_for_cds_based_plotting(lib_path_dict, subset=None)
     handle_long_df_and_plot(longest_df, distance_from_start_cutoff=50,
                             plotly_or_seaborn="seaborn_cat",
-                            genes_or_txns="txns",
-                            filter_hits_less_than=5)
+                            genes_or_txns="genes",
+                            filter_hits_less_than=40)
+    main_plot_ecdfs(lib_path_dict, plotly_or_seaborn="seaborn")
     # main_plot_ecdfs(lib_path_dict, plotly_or_seaborn="seaborn")
     print("Done..")
