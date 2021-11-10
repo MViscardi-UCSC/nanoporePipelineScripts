@@ -54,8 +54,11 @@ def plotly_lib_ecdfs(concatenated_df):
 
 
 def seaborn_lib_ecdfs(concatenated_df):
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sea.ecdfplot(data=concatenated_df, x="read_len", hue="lib", ax=ax)
+    sea.set_style("whitegrid")
+    sea.set_context("notebook")
+    plt.style.context("seaborn-whitegrid")
+    fig, ax = plt.subplots(figsize=(6, 6))
+    sea.ecdfplot(data=concatenated_df, x="read_length", hue="lib", ax=ax)
     plt.xlim(0, 3500)
     # plt.legend(loc='lower right')
     plt.savefig(f"./testOutputs/{get_dt(for_file=True)}_readLen_ecdfs.svg")
@@ -242,15 +245,74 @@ def main_plot_ecdfs(path_dict: dict, plotly_or_seaborn: str):
         print(f"Please answer 'plotly_or_seaborn' param w/ 'plotly' or 'seaborn'... not '{plotly_or_seaborn}'!!")
 
 
+def plot_ecdf_211109(libs):
+    from dashForClickAndView import load_and_merge_lib_parquets
+    reads_df, compressed_df = load_and_merge_lib_parquets(libs)
+    seaborn_lib_ecdfs(reads_df)
+    return reads_df, compressed_df
+
+
+def plot_scatter_211109(libs, compressed_df, plot_column, min_hits=40):
+    x_lib, y_lib = libs[:2]
+    
+    min_hit_df = compressed_df[compressed_df['gene_hits'] >= min_hits]
+    x_axis_df = min_hit_df[min_hit_df.lib == x_lib][["gene_id",
+                                                     "gene_name",
+                                                     "gene_hits",
+                                                     "mean_polya_length",
+                                                     "mean_read_length"]]
+    y_axis_df = min_hit_df[min_hit_df.lib == y_lib][["gene_id",
+                                                     "gene_name",
+                                                     "gene_hits",
+                                                     "mean_polya_length",
+                                                     "mean_read_length"]]
+    
+    plot_df = pd.merge(x_axis_df, y_axis_df, on=["gene_id", "gene_name"],
+                       suffixes=(f"_{x_lib}",
+                                 f"_{y_lib}"))
+    max_mean = min_hit_df[plot_column].max()
+    max_mean += 10
+    min_mean = min_hit_df[plot_column].min()
+    min_mean -= 10
+    
+    sea.set_style("whitegrid")
+    sea.set_context("notebook")
+    plt.style.context("seaborn-whitegrid")
+    plot_size = 5
+    fig, ax = plt.subplots(figsize=(plot_size, plot_size))
+    
+    fig = sea.scatterplot(data=plot_df, ax=ax,
+                          x=f"{plot_column}_{x_lib}",
+                          y=f"{plot_column}_{y_lib}",
+                          color=(0.2, 0.2, 0.2, 0.5))
+    fig.set_xlim(round(min_mean/10)*10, round(max_mean/10)*10)
+    # fig.set_xticks(range(round(min_mean/10)*10, round(max_mean/10)*10, 500))
+    fig.set_ylim(round(min_mean/10)*10, round(max_mean/10)*10)
+    # fig.set_yticks(range(round(min_mean/10)*10, round(max_mean/10)*10, 500))
+    fig.set_title(f"Mean Read Tail Lengths per Gene\n(hits cutoff of {min_hits}reads/gene)")
+    fig.set_xlabel(f"Mean Read Length Per Gene from: {x_lib} (nts)")
+    fig.set_ylabel(f"Mean Read Length Per Gene from: {y_lib} (nts)")
+    fig.set(yscale='log', xscale='log')
+    ticks = [100, 300, 1000, 3000, 10000]
+    labels = [i for i in ticks]
+    fig.set(yticks=ticks, yticklabels=labels,
+            xticks=ticks, xticklabels=labels)
+    sea.despine()
+    plt.tight_layout()
+    plt.savefig(f"./testOutputs/{get_dt(for_file=True)}_readLen_scatter.svg")
+    plt.show()
+
 if __name__ == '__main__':
     run_with = ["polyA2", "totalRNA2", "polyA"]
-    lib_path_dict = pick_libs_return_paths_dict(run_with)
-
-    longest_df = load_for_cds_based_plotting(lib_path_dict, subset=None)
-    handle_long_df_and_plot(longest_df, distance_from_start_cutoff=50,
-                            plotly_or_seaborn="seaborn_cat",
-                            genes_or_txns="genes",
-                            filter_hits_less_than=40)
-    main_plot_ecdfs(lib_path_dict, plotly_or_seaborn="seaborn")
+    # lib_path_dict = pick_libs_return_paths_dict(run_with)
+    # 
+    # longest_df = load_for_cds_based_plotting(lib_path_dict, subset=None)
+    # handle_long_df_and_plot(longest_df, distance_from_start_cutoff=50,
+    #                         plotly_or_seaborn="seaborn_cat",
+    #                         genes_or_txns="genes",
+    #                         filter_hits_less_than=40)
     # main_plot_ecdfs(lib_path_dict, plotly_or_seaborn="seaborn")
+    # # main_plot_ecdfs(lib_path_dict, plotly_or_seaborn="seaborn")
+    
+    plot_ecdf_211109(run_with)
     print("Done..")
