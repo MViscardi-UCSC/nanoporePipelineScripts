@@ -12,7 +12,7 @@ https://dash.plotly.com/interactive-graphing
 https://dash.plotly.com/dash-core-components/graph
 https://community.plotly.com/t/generate-another-plot-from-data-obtained-from-hovering-over-the-one-graph-and-a-pandas-dataframe/51848/4
 """
-from nanoporePipelineCommon import pick_libs_return_paths_dict
+from nanoporePipelineCommon import pick_libs_return_paths_dict, get_dt
 import pandas as pd
 
 pd.set_option('display.width', 400)
@@ -189,11 +189,11 @@ def load_and_merge_lib_parquets(lib_list, drop_unassigned=True, drop_failed_poly
 def distributions_of_polya_tails(libs):
     import dash
     import json
-    from dash import dcc
-    from dash import html
+    from dash import dcc, html, callback_context
     from dash.dependencies import Input, Output
     import plotly.express as px
     import plotly.graph_objects as go
+    import plotly.io as pio
 
     if len(libs) < 2:
         raise ValueError(f"Please provide 2 or more libraries, only {len(libs)} given.")
@@ -270,6 +270,15 @@ def distributions_of_polya_tails(libs):
             """),
                 html.Pre(id='selected-data', style=styles['pre']),
             ], className='four columns'),
+            html.Div([
+                html.Div([
+                    html.Button('Popout Scatter', id='btn-nclicks-1', n_clicks=0),
+                    html.Button('Popout Violin', id='btn-nclicks-2', n_clicks=0)]),
+                html.Div([
+                    html.Button('Save Scatter', id='btn-nclicks-3', n_clicks=0),
+                    html.Button('Save Violin', id='btn-nclicks-4', n_clicks=0)]),
+                html.Div(id='container-button-timestamp'),
+            ])
         ])
     ])
 
@@ -347,6 +356,19 @@ def distributions_of_polya_tails(libs):
                           template='plotly_white')
         return fig
 
+    def _plot_triple_violin(filtered_df):
+        fig = px.violin(filtered_df, x="gene_name", y="polya_length",
+                        color="lib", points="all")
+        fig.update_layout(margin={'l': 0, 'b': 40, 't': 10, 'r': 40},
+                          yaxis_title=f"Distribution of PolyA Tail Length Calls",
+                          legend=dict(orientation="h",
+                                      yanchor="bottom",
+                                      y=1.02,
+                                      xanchor="left",
+                                      x=0),
+                          template='plotly_white')
+        return fig
+
     @app.callback(
         Output('violin-plot', 'figure'),
         [Input('primary-scatter', 'selectedData'),
@@ -366,7 +388,8 @@ def distributions_of_polya_tails(libs):
             violin_df = reads_df[reads_df["gene_id"].isin(gene_id_list)][column_list]
         else:
             violin_df = pd.DataFrame(dict(zip(column_list, [[] for _ in range(len(column_list))])))
-        return _plot_split_violin(violin_df, x_lib, y_lib)
+        # return _plot_split_violin(violin_df, x_lib, y_lib)
+        return _plot_triple_violin(violin_df)
 
     @app.callback(
         Output('hover-data', 'children'),
@@ -401,7 +424,39 @@ def distributions_of_polya_tails(libs):
                                 f'{x_lib} hits': x_counts,
                                 f'{y_lib} hits': y_counts})
         return json.dumps(return_data, indent=2)
-
+    
+    @app.callback(
+        Output('container-button-timestamp', 'children'),
+        [Input('btn-nclicks-1', 'n_clicks'),
+         Input('btn-nclicks-2', 'n_clicks'),
+         Input('btn-nclicks-3', 'n_clicks'),
+         Input('btn-nclicks-4', 'n_clicks'),
+         Input('primary-scatter', 'figure'),
+         Input('violin-plot', 'figure')])
+    def save_button_click(pop_scatter, pop_violin, save_scatter, save_violin, scatter_fig, violin_fig):
+        changed_id = [p['prop_id'] for p in callback_context.triggered][0]
+        if 'btn-nclicks-1' in changed_id:
+            msg = 'Popout Scatter'
+            # print(scatter_fig)
+            pio.show(scatter_fig)
+        elif 'btn-nclicks-2' in changed_id:
+            msg = 'Popout Violin'
+            # print(violin_fig)
+            pio.show(violin_fig)
+        elif 'btn-nclicks-3' in changed_id:
+            msg = 'Save Scatter'
+            save_file_loc = f"./testOutputs/{get_dt(for_file=True)}_dashScatter.svg"
+            go.Figure(scatter_fig).write_image(save_file_loc,
+                                                  width=600, height=600, scale=2)
+        elif 'btn-nclicks-4' in changed_id:
+            msg = 'Save Violin'
+            save_file_loc = f"./testOutputs/{get_dt(for_file=True)}_dashViolin.svg"
+            go.Figure(violin_fig).write_image(save_file_loc,
+                                               width=1000, height=500, scale=2)
+        else:
+            msg = '*None of the buttons*'
+        return html.Div(f"{msg} was most recently clicked")
+    
     app.run_server(debug=False, dev_tools_hot_reload=False)
 
 
