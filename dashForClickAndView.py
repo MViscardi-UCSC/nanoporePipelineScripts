@@ -230,7 +230,7 @@ def distributions_of_polya_tails(libs):
             dcc.Slider(
                 id='min-hits-slider',
                 min=5, max=100,
-                value=5,
+                value=40,
                 marks={str(n): str(n) for n in range(5, 105, 5)},
                 step=None,
             )]),
@@ -249,7 +249,7 @@ def distributions_of_polya_tails(libs):
                 dcc.Graph(id='violin-plot')
             ], className="six columns", style={'display': 'inline-block'}),
         ], className='row'),
-        # Info Row
+        # Info and Button Row
         html.Div(className='row', children=[
             html.Div([
                 dcc.Markdown("""
@@ -316,12 +316,14 @@ def distributions_of_polya_tails(libs):
                          custom_data=["gene_id", "gene_name"],
                          hover_name="gene_name", hover_data=["gene_id",
                                                              f"gene_hits_{xaxis_library}",
-                                                             f"gene_hits_{yaxis_library}"])
-        fig.update_layout(margin={'l': 40, 'b': 40, 't': 10, 'r': 0}, hovermode='closest', clickmode="event+select")
-        fig.update_traces(marker=dict(size=7, color='darkgray', opacity=0.7))
-        fig.update_layout(xaxis_title=f"Mean polyA Tail Length (Lib: {xaxis_library})",
+                                                             f"gene_hits_{yaxis_library}"],
+                         width=500, height=500)
+        fig.update_layout(margin={'l': 40, 'b': 40, 't': 10, 'r': 0},
+                          hovermode='closest', clickmode="event+select",
+                          xaxis_title=f"Mean polyA Tail Length (Lib: {xaxis_library})",
                           yaxis_title=f"Mean polyA Tail Length (Lib: {yaxis_library})",
                           template='plotly_white')
+        fig.update_traces(marker=dict(size=7, color='darkgray', opacity=0.7))
         fig.add_trace(go.Scatter(x=[min_mean_tail, max_mean_tail],
                                  y=[min_mean_tail, max_mean_tail],
                                  mode='lines',
@@ -402,6 +404,11 @@ def distributions_of_polya_tails(libs):
                                       xanchor="left",
                                       x=0),
                           template='plotly_white')
+        fig.update_traces(meanline_visible=True,
+                          points='all',  # show all points
+                          # jitter=0.05,  # add some jitter on points for better visibility
+                          # scalemode='count',  # scale violin plot area with total count
+                          )
         return fig
 
     @app.callback(
