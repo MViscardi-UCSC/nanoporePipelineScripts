@@ -182,6 +182,7 @@ def load_and_merge_lib_parquets(lib_list, drop_unassigned=True, drop_failed_poly
         print(f"Gene counts pre sub-{drop_sub_n} gene-hits drop:  {compressed_df.shape[0]}")
         compressed_df = compressed_df[compressed_df["gene_hits"] >= drop_sub_n]
         print(f"Gene counts post sub-{drop_sub_n} gene-hits drop:  {compressed_df.shape[0]}")
+    compressed_df = compressed_df.reset_index()
     return super_df, compressed_df
 
 
@@ -198,18 +199,7 @@ def distributions_of_polya_tails(libs):
         raise ValueError(f"Please provide 2 or more libraries, only {len(libs)} given.")
 
     reads_df, compressed_df = load_and_merge_lib_parquets(libs)
-    # print(reads_df, compressed_df, sep="\n\n")
-    lib_list = compressed_df.reset_index().lib.unique().tolist()
-    compressed_df = compressed_df.reset_index()
-    reads_df = reads_df[["lib",
-                         "read_id",
-                         "chr_id",
-                         "chr_pos",
-                         "gene_id",
-                         "gene_name",
-                         "read_length",
-                         "polya_length",
-                         ]].drop_duplicates()
+    lib_list = compressed_df.lib.unique().tolist()
 
     external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
     styles = {
@@ -248,14 +238,14 @@ def distributions_of_polya_tails(libs):
         html.Div([
             html.Div([
                 # First plot with title and 8/12 width space
-                html.H3('Scatter plot'),
+                html.H3('Rocket Plot of Mean Tail Lengths'),
                 dcc.Graph(id='primary-scatter',
                           hoverData={'points': [{'customdata': ['WBGene00010964', 'ctc-1', 'lots', 'lots']}]})
             ], className="six columns", style={'display': 'inline-block'}),
 
             html.Div([
                 # Second plot with less fo the width space
-                html.H3('violin-plot'),
+                html.H3('Violin Plot of Selected Data'),
                 dcc.Graph(id='violin-plot')
             ], className="six columns", style={'display': 'inline-block'}),
         ], className='row'),
@@ -290,6 +280,10 @@ def distributions_of_polya_tails(libs):
          Input('min-hits-slider', 'value')])
     def main_plot(xaxis_library, yaxis_library, min_hits):
         min_hit_df = compressed_df[compressed_df['gene_hits'] >= min_hits]
+        max_mean_tail = min_hit_df.mean_polya_length.max()
+        max_mean_tail += 10
+        min_mean_tail = min_hit_df.mean_polya_length.min()
+        min_mean_tail -= 10
         x_axis_df = min_hit_df[min_hit_df.lib == xaxis_library][["gene_id",
                                                                  "gene_name",
                                                                  "gene_hits",
@@ -313,6 +307,12 @@ def distributions_of_polya_tails(libs):
         fig.update_layout(xaxis_title=f"Mean polyA Tail Length (Lib: {xaxis_library})",
                           yaxis_title=f"Mean polyA Tail Length (Lib: {yaxis_library})",
                           template='plotly_white')
+        fig.add_trace(go.Scatter(x=[min_mean_tail, max_mean_tail],
+                                 y=[min_mean_tail, max_mean_tail],
+                                 mode='lines',
+                                 showlegend=False))
+        fig.update_xaxes(range=[min_mean_tail, max_mean_tail])
+        fig.update_yaxes(range=[min_mean_tail, max_mean_tail])
         return fig
 
     def _plot_split_violin(filtered_df, x_lib, y_lib):
