@@ -316,8 +316,7 @@ def distributions_of_polya_tails(libs):
                          custom_data=["gene_id", "gene_name"],
                          hover_name="gene_name", hover_data=["gene_id",
                                                              f"gene_hits_{xaxis_library}",
-                                                             f"gene_hits_{yaxis_library}"],
-                         width=500, height=500)
+                                                             f"gene_hits_{yaxis_library}"])
         fig.update_layout(margin={'l': 40, 'b': 40, 't': 10, 'r': 0},
                           hovermode='closest', clickmode="event+select",
                           xaxis_title=f"Mean polyA Tail Length (Lib: {xaxis_library})",
@@ -334,9 +333,9 @@ def distributions_of_polya_tails(libs):
                                      x=selected_df[f"mean_polya_length_{xaxis_library}"],
                                      y=selected_df[f"mean_polya_length_{yaxis_library}"],
                                      customdata=list(zip(selected_df[f"gene_id"],
-                                                    selected_df[f"gene_name"],
-                                                    selected_df[f"gene_hits_{xaxis_library}"],
-                                                    selected_df[f"gene_hits_{yaxis_library}"])),
+                                                         selected_df[f"gene_name"],
+                                                         selected_df[f"gene_hits_{xaxis_library}"],
+                                                         selected_df[f"gene_hits_{yaxis_library}"])),
                                      marker=dict(color='red',
                                                  size=7,
                                                  line=dict(color='black',
