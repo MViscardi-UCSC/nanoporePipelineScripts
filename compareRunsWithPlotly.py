@@ -7,7 +7,7 @@ Marcus Viscardi, 8/3/21
 
 import pandas as pd
 import scipy.stats
-from nanoporePipelineCommon import find_newest_matching_file
+from nanoporePipelineCommon import find_newest_matching_file, pick_libs_return_paths_dict, get_dt
 
 import warnings
 from pandas.core.common import SettingWithCopyWarning
@@ -16,10 +16,11 @@ warnings.simplefilter(action="ignore", category=SettingWithCopyWarning)
 pd.set_option("display.max_columns", None)
 
 
-def load_df(path_to_file) -> pd.DataFrame:
-    with open(path_to_file, 'r') as file:
-        df = pd.read_csv(file, sep="\t")
-    return df
+def load_df(path_to_file: str) -> pd.DataFrame:
+    if path_to_file.endswith(".tsv"):
+        return pd.read_csv(path_to_file, sep="\t")
+    elif path_to_file.endswith(".parquet"):
+        return pd.read_parquet(path_to_file)
 
 
 def load_and_merge_from_dict(path_dict: dict, min_hit_cutoff: int = None,
@@ -161,8 +162,11 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
     fig.add_annotation(dict(x=0, y=1.03, showarrow=False,
                             text=f"{spearman}",
                             textangle=0, xref="paper", yref="paper"))
+    fig.update_layout(template='plotly_white')
 
     fig.show()
+    fig.write_image(f"./testOutputs/{get_dt(for_file=True)}_assessing-{compare_column_prefix}.svg",
+                    width=600, height=600, scale=2)
 
 
 def plotly_scatter(data, cutoff=None):
@@ -413,7 +417,7 @@ if __name__ == '__main__':
 
     run_with = ["polyA2", "totalRNA2"]
 
-    pathdict = {name: find_newest_matching_file(pathdict[name]) for name in run_with}
+    pathdict = pick_libs_return_paths_dict(run_with, file_suffix="parquet", file_midfix="compressedOnGenes_simple")
 
     cutoff = 20
 
@@ -436,7 +440,7 @@ if __name__ == '__main__':
                      9: "t_fraction",
                      }
     
-    color_by = color_by_dict[6]
+    color_by = color_by_dict[0]
     
     drop_mtDNA = False
     drop_gc_less = True
