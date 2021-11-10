@@ -191,6 +191,7 @@ def distributions_of_polya_tails(libs):
     import json
     from dash import dcc, html, callback_context
     from dash.dependencies import Input, Output
+    import dash_daq as daq
     import plotly.express as px
     import plotly.graph_objects as go
     import plotly.io as pio
@@ -225,15 +226,19 @@ def distributions_of_polya_tails(libs):
                 id='yaxis-lib',
                 options=[{'label': i, 'value': i} for i in lib_list],
                 value=lib_list[1]),
-            dcc.Markdown("""
+            html.Div([
+                dcc.Markdown("""
                 **Select minimum reads/gene to allow**"""),
-            dcc.Slider(
-                id='min-hits-slider',
-                min=5, max=100,
-                value=40,
-                marks={str(n): str(n) for n in range(5, 105, 5)},
-                step=None,
-            )]),
+                dcc.Slider(
+                    id='min-hits-slider',
+                    min=5, max=100,
+                    value=40,
+                    marks={str(n): str(n) for n in range(5, 105, 5)},
+                    step=None),
+                daq.BooleanSwitch(id='trendline-switch', on=False,
+                                  label="Trendline for scatter:"),
+            ]),
+        ]),
         # Plots row
         html.Div([
             html.Div([
@@ -287,8 +292,10 @@ def distributions_of_polya_tails(libs):
         [Input('xaxis-lib', 'value'),
          Input('yaxis-lib', 'value'),
          Input('min-hits-slider', 'value'),
-         Input('selected-data', 'children')])
-    def main_plot(xaxis_library, yaxis_library, min_hits, selectedData) -> go.Figure:
+         Input('selected-data', 'children'),
+         Input('trendline-switch', 'on')])
+    def main_plot(xaxis_library, yaxis_library, min_hits,
+                  selectedData, trendline_switch) -> go.Figure:
         if selectedData != "No points selected":
             selected_gene_ids = [hit["Gene ID"] for hit in json.loads(selectedData)]
             selected_gene_names = [hit["Gene Name"] for hit in json.loads(selectedData)]
@@ -311,12 +318,17 @@ def distributions_of_polya_tails(libs):
         plot_df = pd.merge(x_axis_df, y_axis_df, on=["gene_id", "gene_name"],
                            suffixes=(f"_{xaxis_library}",
                                      f"_{yaxis_library}"))
-
+        
+        if trendline_switch:
+            trend ="ols"
+        else:
+            trend = None
         fig = px.scatter(plot_df, x=f"mean_polya_length_{xaxis_library}", y=f"mean_polya_length_{yaxis_library}",
                          custom_data=["gene_id", "gene_name"],
                          hover_name="gene_name", hover_data=["gene_id",
                                                              f"gene_hits_{xaxis_library}",
-                                                             f"gene_hits_{yaxis_library}"])
+                                                             f"gene_hits_{yaxis_library}"],
+                         trendline=trend)
         fig.update_layout(margin={'l': 40, 'b': 40, 't': 10, 'r': 0},
                           hovermode='closest', clickmode="event+select",
                           xaxis_title=f"Mean polyA Tail Length (Lib: {xaxis_library})",
@@ -326,6 +338,8 @@ def distributions_of_polya_tails(libs):
         fig.add_trace(go.Scatter(x=[min_mean_tail, max_mean_tail],
                                  y=[min_mean_tail, max_mean_tail],
                                  mode='lines',
+                                 line=dict(color='black',
+                                           dash='dash'),
                                  showlegend=False))
         if selectedData != "No points selected":
             selected_df = plot_df[plot_df["gene_id"].isin(selected_gene_ids)]
