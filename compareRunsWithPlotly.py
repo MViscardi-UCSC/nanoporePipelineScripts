@@ -415,18 +415,18 @@ if __name__ == '__main__':
                  "output_dir/merge_files/*_compressedOnGenes_simple.tsv"
     }
 
-    run_with = ["polyA2", "totalRNA2"]
+    run_with = ["polyA2", "totalRNA2", "polyA"]
 
     pathdict = pick_libs_return_paths_dict(run_with, file_suffix="parquet", file_midfix="compressedOnGenes_simple")
 
-    cutoff = 20
+    cutoff = 40
 
     prefix_dict = {1: "read_hits",
                    2: "hits_rank",
                    3: "read_len_mean",
                    4: "polya_mean"}
     
-    prefix = prefix_dict[1]
+    prefix = prefix_dict[4]
     
     color_by_dict = {0: None,
                      1: "read_len_mean_mean",
