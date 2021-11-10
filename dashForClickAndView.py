@@ -286,8 +286,14 @@ def distributions_of_polya_tails(libs):
         Output('primary-scatter', 'figure'),
         [Input('xaxis-lib', 'value'),
          Input('yaxis-lib', 'value'),
-         Input('min-hits-slider', 'value')])
-    def main_plot(xaxis_library, yaxis_library, min_hits):
+         Input('min-hits-slider', 'value'),
+         Input('selected-data', 'children')])
+    def main_plot(xaxis_library, yaxis_library, min_hits, selectedData) -> go.Figure:
+        if selectedData != "No points selected":
+            selected_gene_ids = [hit["Gene ID"] for hit in json.loads(selectedData)]
+            selected_gene_names = [hit["Gene Name"] for hit in json.loads(selectedData)]
+        else:
+            selected_gene_ids, selected_gene_names = [], []
         min_hit_df = compressed_df[compressed_df['gene_hits'] >= min_hits]
         max_mean_tail = min_hit_df.mean_polya_length.max()
         max_mean_tail += 10
@@ -320,6 +326,35 @@ def distributions_of_polya_tails(libs):
                                  y=[min_mean_tail, max_mean_tail],
                                  mode='lines',
                                  showlegend=False))
+        if selectedData != "No points selected":
+            selected_df = plot_df[plot_df["gene_id"].isin(selected_gene_ids)]
+            fig.add_trace(go.Scatter(mode='markers',
+                                     x=selected_df[f"mean_polya_length_{xaxis_library}"],
+                                     y=selected_df[f"mean_polya_length_{yaxis_library}"],
+                                     customdata=list(zip(selected_df[f"gene_id"],
+                                                    selected_df[f"gene_name"],
+                                                    selected_df[f"gene_hits_{xaxis_library}"],
+                                                    selected_df[f"gene_hits_{yaxis_library}"])),
+                                     marker=dict(color='red',
+                                                 size=7,
+                                                 line=dict(color='black',
+                                                           width=2)),
+                                     name='Selected Genes',
+                                     showlegend=False))
+            fig.update_layout(legend=dict(orientation="h",
+                                          yanchor="bottom",
+                                          y=1.02,
+                                          xanchor="left",
+                                          x=0))
+            # selected_data_points = px.scatter(plot_df[plot_df["gene_id"].isin(selected_gene_ids)],
+            #                                   x=f"mean_polya_length_{xaxis_library}",
+            #                                   y=f"mean_polya_length_{yaxis_library}",
+            #                                   custom_data=["gene_id", "gene_name"],
+            #                                   hover_name="gene_name", hover_data=["gene_id",
+            #                                                                       f"gene_hits_{xaxis_library}",
+            #                                                                       f"gene_hits_{yaxis_library}"],
+            #                                   color=1)
+            # fig.add_trace(selected_data_points.data[0])
         fig.update_xaxes(range=[min_mean_tail, max_mean_tail])
         fig.update_yaxes(range=[min_mean_tail, max_mean_tail])
         return fig
@@ -424,7 +459,7 @@ def distributions_of_polya_tails(libs):
                                 f'{x_lib} hits': x_counts,
                                 f'{y_lib} hits': y_counts})
         return json.dumps(return_data, indent=2)
-    
+
     @app.callback(
         Output('container-button-timestamp', 'children'),
         [Input('btn-nclicks-1', 'n_clicks'),
@@ -447,21 +482,22 @@ def distributions_of_polya_tails(libs):
             msg = 'Save Scatter'
             save_file_loc = f"./testOutputs/{get_dt(for_file=True)}_dashScatter.svg"
             go.Figure(scatter_fig).write_image(save_file_loc,
-                                                  width=600, height=600, scale=2)
+                                               width=600, height=600, scale=2)
         elif 'btn-nclicks-4' in changed_id:
             msg = 'Save Violin'
             save_file_loc = f"./testOutputs/{get_dt(for_file=True)}_dashViolin.svg"
             go.Figure(violin_fig).write_image(save_file_loc,
-                                               width=1000, height=500, scale=2)
+                                              width=1000, height=500, scale=2)
         else:
             msg = '*None of the buttons*'
         return html.Div(f"{msg} was most recently clicked")
-    
+
     app.run_server(debug=False, dev_tools_hot_reload=False)
 
 
 if __name__ == '__main__':
     from sys import argv
+
     libraries_to_run = argv[1:]
     print(f"Running w/ libraries: {libraries_to_run}")
     # libraries_to_run = ["totalRNA2", "polyA2"]
