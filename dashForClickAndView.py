@@ -416,9 +416,14 @@ def distributions_of_polya_tails(libs):
                                       y=1.02,
                                       xanchor="left",
                                       x=0),
-                          template='plotly_white')
+                          template='plotly_white',
+                          violingap=0.1, violingroupgap=0)
         fig.update_traces(meanline_visible=True,
                           points='all',  # show all points
+                          side='positive',
+                          spanmode='hard',
+                          pointpos=-0.1,  # could maybe go back to both sides and zero this...
+                          marker=dict(opacity=0.5),
                           # jitter=0.05,  # add some jitter on points for better visibility
                           # scalemode='count',  # scale violin plot area with total count
                           )
