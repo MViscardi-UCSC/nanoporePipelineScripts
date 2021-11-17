@@ -187,7 +187,6 @@ def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str 
         merge_df = merge_df[merge_df["chr"] != "MtDNA"]
     if drop_gc_less:
         merge_df = merge_df[~merge_df["gene_gc"].isna()]
-    # print(merge_df.columns)
     plotly_from_triple_merge(merge_df, keys,
                              cutoff=cut_off,
                              x=0,
@@ -195,37 +194,6 @@ def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str 
                              compare_column_prefix=prefix,
                              color_by=color_by,
                              )
-
-
-def plotly_3d(pathdict, prefix, cutoff):
-    merge_df, key_list = load_and_merge_from_dict(pathdict, min_hit_cutoff=cutoff)
-    import plotly.express as px
-    merge_df["sum_tail_length"] = \
-        merge_df[f'polya_mean_{key_list[0]}'].add(merge_df[f'polya_mean_{key_list[1]}'], axis=0).add(
-            merge_df[f'polya_mean_{key_list[2]}'], axis=0)
-    print(f"{prefix}_{list(pathdict.keys())[0]}")
-    fig = px.scatter_3d(merge_df,
-                        x=f"{prefix}_{key_list[0]}",
-                        y=f"{prefix}_{key_list[1]}",
-                        z=f"{prefix}_{key_list[2]}",
-                        hover_name='gene_id', color="sum_tail_length",
-                        hover_data=[f'polya_mean_{key_list[0]}', f'polya_mean_{key_list[1]}',
-                                    f'polya_mean_{key_list[2]}',
-                                    f'read_hits_{key_list[0]}', f'read_hits_{key_list[1]}',
-                                    f'read_hits_{key_list[2]}'],
-                        labels={f"polya_mean_{key_list[0]}": f"{key_list[0]} - Mean Tail Length (nts)",
-                                f"polya_mean_{key_list[1]}": f"{key_list[1]} - Mean Tail Length (nts)",
-                                f"polya_mean_{key_list[2]}": f"{key_list[2]} - Mean Tail Length (nts)",
-                                f"read_hits_{key_list[0]}": f"{key_list[0]} - Reads/Gene",
-                                f"read_hits_{key_list[1]}": f"{key_list[1]} - Reads/Gene",
-                                f"read_hits_{key_list[2]}": f"{key_list[2]} - Reads/Gene",
-                                f"hits_rank_{key_list[0]}": f"{key_list[0]} - Rank of Reads/Gene",
-                                f"hits_rank_{key_list[1]}": f"{key_list[1]} - Rank of Reads/Gene",
-                                f"hits_rank_{key_list[2]}": f"{key_list[2]} - Rank of Reads/Gene",
-                                f"gene_id": "WBGene ID",
-                                }, )
-    fig.show()
-
 
 if __name__ == '__main__':
 
