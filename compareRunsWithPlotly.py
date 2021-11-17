@@ -25,7 +25,13 @@ def load_df(path_to_file: str) -> pd.DataFrame:
 
 def load_and_merge_from_dict(path_dict: dict, min_hit_cutoff: int = None,
                              add_names: bool = True, add_gc_frac: bool = True) -> (pd.DataFrame, list):
-    df_dict = {key: load_df(path) for (key, path) in path_dict.items()}
+    test_path = list(path_dict.values())[0]
+    if test_path.endswith(".tsv"):
+        df_dict = {key: pd.read_csv(path, sep="\t") for (key, path) in path_dict.items()}
+    elif test_path.endswith(".parquet"):
+        df_dict = {key: pd.read_parquet(path) for (key, path) in path_dict.items()}
+    else:
+        raise NotImplementedError(f"Need file paths that end with parquet or tsv, not:\n{test_path}\n{path_dict}")
     df_key_list = list(df_dict.keys())
     print(f"\nCreating dataframes for: {df_key_list}...")
     for key, df in df_dict.items():
@@ -92,8 +98,7 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
         title = f"Number of Reads per Gene between RNA Selection Methods ({x_key} & {y_key})"
     else:
         title = f"Comparing: {compare_column_prefix} between {x_key} and {y_key}"
-
-
+    
     merged_df["tail_avg_stdev"] = merged_df[f'polya_stdev_{x_key}']. \
         add(merged_df[f'polya_stdev_{y_key}'], axis=0).abs().div(2)
     merged_df["read_len_std_mean"] = merged_df[f'read_len_std_{x_key}']. \
@@ -169,99 +174,6 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
                     width=600, height=600, scale=2)
 
 
-def plotly_scatter(data, cutoff=None):
-    import plotly.express as px
-
-    fig = px.scatter(data, x="polya_mean_totalRNA", y="polya_mean_polyA",
-                     color="hits_rank_totalRNA",
-                     # color="mean_tail_diff",
-                     hover_name='gene_id',
-                     hover_data=['polya_mean_totalRNA', 'polya_mean_polyA', 'read_hits_totalRNA', 'read_hits_polyA'],
-                     title=f"PolyA Mean Lengths per Gene between RNA Selection Methods\n(dropped genes w/ <{cutoff} hits)",
-                     labels=dict(polya_mean_totalRNA="Total RNA - Mean Tail Length (nts)",
-                                 polya_mean_polyA="PolyA - Mean Tail Length (nts)",
-                                 read_hits_totalRNA="Total RNA - Reads/Gene",
-                                 read_hits_polyA="PolyA - Reads/Gene",
-                                 gene_id="WBGene ID",
-                                 mean_tail_diff="Mean Tail Length Difference (nts)"),
-                     trendline="ols")
-
-    fig.update_layout(shapes=[{'type': 'line',
-                               'yref': 'paper',
-                               'xref': 'paper',
-                               'y0': 0, 'y1': 1,
-                               'x0': 0, 'x1': 1}])
-    min = 30
-    max = 120
-    fig.update_xaxes(range=[min, max])
-    fig.update_yaxes(range=[min, max])
-
-    fig.show()
-
-
-def plotly_w_slider(data, max_cutoff=50):
-    """
-    Grabbed from here: https://plotly.com/python/sliders/#sliders-in-plotly-express
-    
-    Not working?
-    
-    :param data: 
-    :param max_cutoff: 
-    :return: 
-    """
-    import plotly.graph_objects as go
-    import plotly.express as px
-    import numpy as np
-
-    # Create figure
-    fig = go.Figure()
-
-    # Add traces, one for each slider step
-    for step in np.arange(1, max_cutoff + 1, 1):
-        step_data = data[data["read_hits_totalRNA"] >= step]
-        fig.add_scatter(visible=False,
-                        mode="markers",
-                        name="cutoff = " + str(step),
-                        hovertext=step_data["gene_id"],
-                        x=step_data["polya_mean_totalRNA"], y=step_data["polya_mean_polyA"], )
-        fig.update_layout(shapes=[{'type': 'line',
-                                   'yref': 'paper',
-                                   'xref': 'paper',
-                                   'y0': 0, 'y1': 1,
-                                   'x0': 0, 'x1': 1}])
-    min = 30
-    max = 120
-    fig.update_xaxes(range=[min, max])
-    fig.update_yaxes(range=[min, max])
-
-    # Make 20th trace visible
-    fig.data[20].visible = True
-
-    # Create and add slider
-    steps = []
-    for i in range(len(fig.data)):
-        step = dict(
-            method="update",
-            args=[{"visible": [False] * len(fig.data)},
-                  {"title": f"Slider set to gene hit cutoff of: {i} reads"}],  # layout attribute
-        )
-        step["args"][0]["visible"][i] = True  # Toggle i'th trace to "visible"
-        steps.append(step)
-
-    sliders = [dict(
-        active=20,
-        currentvalue={"prefix": "Gene Hit Cutoff: "},
-        pad={"t": 50},
-        steps=steps
-    )]
-
-    fig.update_layout(
-        sliders=sliders
-    )
-
-    fig.show()
-
-
 def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str = "",
                    color_by: str = None, drop_mt_dna: bool = False, drop_gc_less: bool = True):
     key_list = list(path_dict.keys())
@@ -315,105 +227,7 @@ def plotly_3d(pathdict, prefix, cutoff):
     fig.show()
 
 
-def plotly_subplots_and_load(pathdict, prefix, cutoff):
-    from plotly.subplots import make_subplots
-    import plotly.graph_objects as go
-    import numpy as np
-
-    merge_df, keys = load_and_merge_from_dict(pathdict, min_hit_cutoff=cutoff)
-
-    fig = make_subplots(rows=1, cols=len(keys))
-
-    label_dict = {f"gene_id": "WBGene ID"}
-    if prefix == "polya_mean" or prefix == "hits_rank":
-        scale_type = "linear"
-    elif prefix == "read_hits":
-        scale_type = "log"
-    else:
-        raise ValueError(f"The prefix {prefix} isn't coded into here... yet!")
-
-    for key in keys:
-        label_dict[f"polya_mean_{key}"] = f"{key} - Mean Tail Length (nts)"
-        label_dict[f"read_hits_{key}"] = f"{key} - Reads/Gene"
-        label_dict[f"hits_rank_{key}"] = f"{key} - Ranking of Reads/Gene"
-
-    for plot_num in range(0, len(keys), 1):
-
-        compare_plot = plot_num + 1
-        if compare_plot >= len(keys):
-            compare_plot = 0
-        print(f"Grabbing plots from key numbers {plot_num} & {compare_plot}")
-
-        plot_name = f"{prefix}_{keys[plot_num]}"
-        comp_plot_name = f"{prefix}_{keys[compare_plot]}"
-        row_num = 1
-        col_num = plot_num + 1
-        fig.add_trace(go.Scatter(x=merge_df[plot_name], y=merge_df[comp_plot_name],
-                                 mode='markers', name=f"{keys[plot_num]} vs. {keys[compare_plot]}"),
-                      row=row_num, col=col_num)
-        fig.add_trace(go.Scatter(x=np.arange(0, 1000, 10), y=np.arange(0, 1000, 10),
-                                 line=dict(color="#4a4a4a", width=1, dash='dash'),
-                                 showlegend=False, mode="lines"),
-                      row=row_num, col=col_num)
-        fig.update_xaxes(title_text=label_dict[plot_name],
-                         row=row_num, col=col_num, type=scale_type)
-        fig.update_yaxes(title_text=label_dict[comp_plot_name],
-                         row=row_num, col=col_num, type=scale_type)
-    fig.update_layout(height=400, width=1000, showlegend=False,
-                      title_text=f"Number of Reads per Gene between RNA Selection Methods")
-    fig.show()
-
-
-def plotly_click_to_clipboard():
-    import plotly.graph_objects as go
-    import numpy as np
-    np.random.seed(1)
-
-    x = np.random.rand(100)
-    y = np.random.rand(100)
-
-    f = go.FigureWidget([go.Scatter(x=x, y=y, mode='markers')])
-
-    scatter = f.data[0]
-    colors = ['#a3a7e4'] * 100
-    scatter.marker.color = colors
-    scatter.marker.size = [10] * 100
-    f.layout.hovermode = 'closest'
-
-    # create our callback function
-    def update_point(trace, points, selector):
-        c = list(scatter.marker.color)
-        s = list(scatter.marker.size)
-        for i in points.point_inds:
-            c[i] = '#bae2be'
-            s[i] = 20
-            with f.batch_update():
-                scatter.marker.color = c
-                scatter.marker.size = s
-
-    scatter.on_click(update_point)
-
-    f.show()
-
-
 if __name__ == '__main__':
-    # path1, path2 = sys.argv
-
-    pathdict = {
-        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/*/"
-                 "merge_files/210713_compressedOnGenes_simple.tsv",
-        "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
-                    "*/merge_files/*_compressedOnGenes_simple.tsv",
-        "totalRNA2": "/data16/marcus/working/"
-                     "210720_nanoporeRun_totalRNA_0639_L3_replicate/*/"
-                     "merge_files/*_compressedOnGenes_simple.tsv",
-        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/*/"
-                 "merge_files/*_compressedOnGenes_simple.tsv",
-        "polyA2": "/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
-                  "*/merge_files/*_compressedOnGenes_simple.tsv",
-        "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
-                 "output_dir/merge_files/*_compressedOnGenes_simple.tsv"
-    }
 
     run_with = ["polyA2", "totalRNA2", "polyA"]
 
