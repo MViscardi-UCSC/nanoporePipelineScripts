@@ -47,7 +47,8 @@ class FastqFile:
                                                quoting=QUOTE_NONE)
 
 
-def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", file_midfix="mergedOnReads"):
+def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", file_midfix="mergedOnReads",
+                                return_all: bool = False):
     merge_dir_dict = {
         "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/"
                  "merge_files",
@@ -63,6 +64,8 @@ def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", fi
         "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
                  "output_dir/merge_files"
     }
+    if return_all:
+        lib_list = merge_dir_dict.keys()
     file_suffix = file_suffix.strip(".")
     return_dict = {}
     for lib_key, merge_dir in merge_dir_dict.items():
