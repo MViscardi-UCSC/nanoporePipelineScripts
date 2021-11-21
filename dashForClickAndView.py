@@ -522,7 +522,8 @@ def distributions_of_polya_tails(libs):
 
 if __name__ == '__main__':
     from sys import argv
-
+    
+    # TODO: Add drop down to select plot column!
     libraries_to_run = argv[1:]
     print(f"Running w/ libraries: {libraries_to_run}")
     # libraries_to_run = ["totalRNA2", "polyA2"]
