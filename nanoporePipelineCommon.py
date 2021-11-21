@@ -48,29 +48,34 @@ class FastqFile:
 
 
 def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", file_midfix="mergedOnReads",
-                                return_all: bool = False):
-    merge_dir_dict = {
-        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir/"
-                 "merge_files",
+                                output_dir_folder="merge_files", return_all: bool = False) -> dict:
+    output_dir_dict = {
+        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir",
         "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
-                    "output_dir/merge_files",
+                    "output_dir",
         "totalRNA2": "/data16/marcus/working/"
-                     "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir/"
-                     "merge_files",
-        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir/"
-                 "merge_files",
-        "polyA2": "/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
-                  "output_dir/merge_files",
-        "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
-                 "output_dir/merge_files"
+                     "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir",
+        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir",
+        "polyA2": "/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/output_dir",
+        "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/output_dir",
+        "xrn-1-5tera": "/data16/marcus/working/211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/output_dir",
+        "pTRI-stds": "/data16/marcus/working/211121_nanoporeRun_pTRIstds/output_dir",
     }
     if return_all:
-        lib_list = merge_dir_dict.keys()
+        lib_list = output_dir_dict.keys()
     file_suffix = file_suffix.strip(".")
     return_dict = {}
-    for lib_key, merge_dir in merge_dir_dict.items():
+    for lib_key, output_dir in output_dir_dict.items():
         if lib_key in lib_list:
-            return_dict[lib_key] = find_newest_matching_file(f"{merge_dir}/*_{file_midfix}.{file_suffix}")
+            file_path = f"{output_dir}/{output_dir_folder}/*_{file_midfix}.{file_suffix}"
+            print(f"Looking for file for {lib_key}, at {file_path}...", end=" ")
+            return_dict[lib_key] = find_newest_matching_file(file_path)
+            print(f"File Found.")
+    if not return_dict:
+        raise KeyError(f"No matching library keys found, please use keys from the following list: "
+                       f"{list(output_dir_dict.keys())}. "
+                       f"You passed the following keys: "
+                       f"{lib_list}")
     return return_dict
 
 
