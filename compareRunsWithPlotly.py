@@ -4,7 +4,7 @@ Marcus Viscardi, 8/3/21
 
 
 """
-
+import os
 import pandas as pd
 import scipy.stats
 from nanoporePipelineCommon import find_newest_matching_file, pick_libs_return_paths_dict, get_dt
@@ -82,7 +82,8 @@ def load_and_merge_from_dict(path_dict: dict, min_hit_cutoff: int = None,
 
 def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
                              x=0, y=1, compare_column_prefix="polya_mean",
-                             color_by: str = None):
+                             color_by: str = None, ols_trend: bool = True,
+                             save_dir: str = None):
     import plotly.express as px
     import plotly.graph_objects as go
     if isinstance(x, int) and isinstance(y, int):
@@ -92,6 +93,7 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
         x_key = x
         y_key = y
 
+    # Set title variable, based on what's being plotted
     if compare_column_prefix == "polya_mean":
         title = f"PolyA Mean Lengths per Gene between RNA Selection Methods"
     elif compare_column_prefix == "read_hits":
@@ -99,12 +101,19 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
     else:
         title = f"Comparing: {compare_column_prefix} between {x_key} and {y_key}"
     
+    # Set trendline variable
+    if ols_trend:
+        ols_trend = "ols"
+    else:
+        ols_trend = None
     merged_df["tail_avg_stdev"] = merged_df[f'polya_stdev_{x_key}']. \
         add(merged_df[f'polya_stdev_{y_key}'], axis=0).abs().div(2)
     merged_df["read_len_std_mean"] = merged_df[f'read_len_std_{x_key}']. \
         add(merged_df[f'read_len_std_{y_key}'], axis=0).abs().div(2)
     merged_df["tail_length_diff"] = merged_df[f'polya_mean_{x_key}']. \
         sub(merged_df[f'polya_mean_{y_key}'], axis=0).abs()
+    merged_df["tail_length_mean_mean"] = merged_df[f'polya_mean_{x_key}']. \
+        add(merged_df[f'polya_mean_{y_key}'], axis=0).abs().div(2)
     merged_df["read_len_mean_mean"] = merged_df[f'read_len_mean_{x_key}']. \
         add(merged_df[f'read_len_mean_{y_key}'], axis=0).abs().div(2)
     if isinstance(color_by, str):
@@ -113,7 +122,7 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
         color_column = None
     labels_dict = {"gene_id": "WBGene ID",
                    "ident": "Identity",
-                   "tail_length_diff": "Mean Tail Length Diff (nts)",
+                   "tail_length_diff": "Mean Tail Diff (nts)",
                    "read_rank_diff": "Difference in Read Rank",
                    "chr": "Chromosome",
                    "gene_gc": "GC Fraction from Annot's"}
@@ -136,7 +145,8 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
                                  "c_fraction", "g_fraction"],
                      title=title,
                      labels=labels_dict,
-                     trendline="ols",
+                     trendline=ols_trend,
+                     color_continuous_scale='Bluered',
                      # marginal_x="violin", marginal_y="violin",
                      )
     if compare_column_prefix == "polya_mean":
@@ -155,6 +165,8 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
         fig.add_trace(go.Scatter(x=[0, 400], y=[0, 400], line=dict(color="#4a4a4a", width=1, dash='dash'),
                                  showlegend=False, mode="lines"))
     elif compare_column_prefix == "read_len_mean":
+        fig.update_xaxes(type="log")
+        fig.update_yaxes(type="log")
         fig.add_trace(go.Scatter(x=[0, 2000], y=[0, 2000], line=dict(color="#4a4a4a", width=1, dash='dash'),
                                  showlegend=False, mode="lines"))
 
@@ -170,12 +182,21 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
     fig.update_layout(template='plotly_white')
 
     fig.show()
-    fig.write_image(f"./testOutputs/{get_dt(for_file=True)}_assessing-{compare_column_prefix}.svg",
+    save_name = f"/{get_dt(for_file=True)}_assessing-{compare_column_prefix}" \
+                f"{'-'+color_column if color_column else ''}_between-{x_key}-{y_key}"
+    fig.write_image("./testOutputs" + save_name + ".svg",
                     width=600, height=600, scale=2)
+    if isinstance(save_dir, str):
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        save_name = save_dir + save_name
+        fig.write_image(save_name + ".png",
+                        width=600, height=600, scale=2)
 
 
 def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str = "",
-                   color_by: str = None, drop_mt_dna: bool = False, drop_gc_less: bool = True):
+                   color_by: str = None, drop_mt_dna: bool = False, drop_gc_less: bool = True,
+                   ols_trend: bool = True, save_dir: str = None,):
     key_list = list(path_dict.keys())
     if one_to_drop:
         subset_list = [i for i in key_list if i != one_to_drop]
@@ -193,7 +214,10 @@ def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str 
                              y=1,
                              compare_column_prefix=prefix,
                              color_by=color_by,
+                             ols_trend=ols_trend,
+                             save_dir=save_dir,
                              )
+
 
 if __name__ == '__main__':
 
@@ -208,7 +232,7 @@ if __name__ == '__main__':
                    3: "read_len_mean",
                    4: "polya_mean"}
     
-    prefix = prefix_dict[4]
+    prefix = prefix_dict[2]
     
     color_by_dict = {0: None,
                      1: "read_len_mean_mean",
@@ -220,23 +244,30 @@ if __name__ == '__main__':
                      7: "is_MtDNA",
                      8: "a_fraction",
                      9: "t_fraction",
+                     10: "tail_length_mean_mean"
                      }
     
     color_by = color_by_dict[0]
     
     drop_mtDNA = False
-    drop_gc_less = True
+    drop_gcLess = True
+    trend_line = False
+    save_directory = f"/home/marcus/Documents/{get_dt(for_file=True)}_plotlyFigures"
     
     if len(pathdict.keys()) == 3:
         for to_drop in pathdict.keys():
             plotter_helper(pathdict, prefix, cutoff, one_to_drop=to_drop,
                            color_by=color_by,
                            drop_mt_dna=drop_mtDNA,
-                           drop_gc_less=drop_gc_less,
+                           drop_gc_less=drop_gcLess,
+                           ols_trend=trend_line,
+                           save_dir=save_directory,
                            )
     else:
         plotter_helper(pathdict, prefix, cutoff,
                        color_by=color_by,
                        drop_mt_dna=drop_mtDNA,
-                       drop_gc_less=drop_gc_less,
+                       drop_gc_less=drop_gcLess,
+                       ols_trend=trend_line,
+                       save_dir=save_directory,
                        )
