@@ -83,9 +83,20 @@ def plotly_read_lengths(lib_keys: [str, str]):
     fig.show()
 
 
+def total_bases_called():
+    from nanoporePipelineCommon import pick_libs_return_paths_dict
+    libs_dict = pick_libs_return_paths_dict([], return_all=True)
+    for lib_name, lib_path in libs_dict.items():
+        lib_df = pd.read_parquet(lib_path)
+        lib_df["read_len"] = lib_df["sequence"].str.len()
+        nt_count = lib_df["read_len"].sum()
+        print(f"{lib_name}: {nt_count} bases called")
+
+
 if __name__ == '__main__':
-    libraries = [
-        "xrn-1",
-        "totalRNA2",
-    ]
-    plotly_read_lengths(libraries)
+    # libraries = [
+    #     "xrn-1",
+    #     "totalRNA2",
+    # ]
+    # plotly_read_lengths(libraries)
+    total_bases_called()
