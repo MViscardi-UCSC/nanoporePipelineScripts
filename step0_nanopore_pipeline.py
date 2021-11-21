@@ -284,9 +284,13 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, *
               f"Use the regenerate tag if you want to rerun calling.\n")
 
 
+def trim_tera_adapters(outputDir, threads, regenerate, **other_kwargs):
+    pass
+
+
 #################################################################################
 # Step2: Nanopolish index, map to genome with minimap2, samtools index/sort, &
-#        Nanopolish calls of polyA tail lengths TODO: split minimap and nanopolish stuff
+#        Nanopolish calls of polyA tail lengths
 #################################################################################
 def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam, regenerate, **other_kwargs):
     import filecmp
@@ -803,7 +807,23 @@ def flair(outputDir, **other_kwargs):
                                      output_to_file=True)
 
 
-def extra_steps(outputDir, genomeDir, df=None, **other_kwargs):
+def extra_steps(outputDir, genomeDir, minimapParam, threads, df=None, **other_kwargs):
+    # adjust_5_ends(df, genomeDir, outputDir)
+    genome_fa_file = glob(f"{genomeDir}/*allChrs.fa")
+    if len(genome_fa_file) != 1:
+        raise NotImplementedError(f"Currently this script only supports having genomeDirs "
+                                  f"with one fa file that ends with 'allChrs.fa'")
+    genome_bed_file = glob(f"{genomeDir}/*.bed")
+    if len(genome_bed_file) != 1:
+        raise NotImplementedError(f"Currently this script only supports having genomeDirs "
+                                  f"with one bed file that ends with '.bed'")
+    call = f"minimap2 -a {minimapParam} {genome_fa_file[0]} {outputDir}/cat_files/cat.fastq " \
+           f"-t {threads} --junc-bed {genome_bed_file[0]} | samtools view -b - -o " \
+           f"{outputDir}/cat_files/cat.bam"
+    print(f"MiniMap2 Call: {call}")
+
+
+def adjust_5_ends(df, genomeDir, outputDir):
     def _flip_neg_strand_genes(chr_position: int, cigar: str, strand: str) -> int:
         import regex as re
         if strand == "+":
@@ -819,7 +839,7 @@ def extra_steps(outputDir, genomeDir, df=None, **other_kwargs):
                     mnd_nums.append(numbers[i])
             read_end = chr_position + sum(mnd_nums)
             return read_end
-    
+
     if not isinstance(df, pd.DataFrame):
         path = find_newest_matching_file(f"{outputDir}/merge_files/*_mergedOnReads.parquet")
         print(f"Dataframe not passed, loading file from: {path}")
@@ -835,19 +855,7 @@ def extra_steps(outputDir, genomeDir, df=None, **other_kwargs):
         print("(saved parquet w/ adjusted read_ends) ", end="")
     merged_df = assign_w_josh_method(reads_df=df, genomeDir=genomeDir)
     merged_df.to_parquet(f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReadsPlus.parquet")
-    # sample_df = df.sample(n=10000)
-    # sample_df["dup"] = sample_df.duplicated(subset="read_id", keep=False).map({True: 1, False: 0})
-    # sample_df["multi"] = (sample_df.bit_flag & 256) == 256
-    # read_ids_of_multis = sample_df[sample_df["multi"]]["read_id"]
-    # sample_df = sample_df[~sample_df["read_id"].isin(read_ids_of_multis.to_list())]
-    # # sample_df = sample_df[sample_df.dup == 1]
-    # sample_df["len"] = sample_df["sequence"].apply(len)
-    # # sample_df["bit_flag"] = sample_df["bit_flag"].apply(str)
-    # # fig = px.box(sample_df, y="mapq", x="bit_flag", notched=True, points="all")
-    # fig = px.parallel_coordinates(sample_df[["dup", "bit_flag", "mapq", "len"]],
-    #                               )
-    # fig.show()
-    # print(sample_df.info())
+
 
 def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
     from standardsAlignment.standardsAssignmentWithMinimap2 import align_standards, plot_value_counts
@@ -866,6 +874,7 @@ def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
         out_file = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet"
         print(f"Saving parquet file to:\n\t{out_file}")
         df.to_parquet(out_file)
+        plot_value_counts(df)
     else:
         print(stds_mini_df)
 
@@ -876,6 +885,7 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
 
     steps_dict = {"G": [guppy_basecall_w_gpu, "Guppy Basecalling"],
                   "A": [alternative_genome_filtering, "Filtering Alt. Genomes (currently pretty rough and slow)"],
+                  "T": [trim_tera_adapters, "Trimming TERA-Seq Adapters"],
                   "M": [minimap2_and_samtools, "Minimap2 and SamTools"],
                   "N": [nanopolish_index_and_polya, "Nanopolish Index and polyA Calling"],
                   "C": [concat_files, "Concatenate Files"],
