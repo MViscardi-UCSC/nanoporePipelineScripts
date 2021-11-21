@@ -27,7 +27,7 @@ from pprint import pprint
 import pandas as pd
 from tqdm import tqdm
 from typing import Union
-from nanoporePipelineCommon import find_newest_matching_file
+from nanoporePipelineCommon import find_newest_matching_file, pick_libs_return_paths_dict
 
 pd.set_option("display.max_columns", None)
 
@@ -267,7 +267,7 @@ def print_alignments_wrapper(adapter_mapped_df,
         _print_adapter_alignments(adapter_seq_dict, **row_dict)
 
 
-if __name__ == '__main__':
+def main():
     # path_to_fa = "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/" \
     #              "output_dir/cat_files/cat.fastq"
     # df = align_standards(fastq_file=path_to_fa)
@@ -275,10 +275,8 @@ if __name__ == '__main__':
                          "output_dir/merge_files/*_mergedOnReads.parquet"
     path_to_compressed = find_newest_matching_file(path_to_compressed)
     df = pd.read_parquet(path_to_compressed)
-
     # I built this wrapper to do below work:
     df = df.merge(align_standards(compressed_df=df, keep_read_id=True, keep_minimap_obj=True), on="read_id")
-
     # This step pulls information from the mapping_obj objects:
     # TODO: This step should probably overwrite information from minimap2 regarding the standards.
     #       Or at least rename the gene_id and all that!
@@ -288,13 +286,20 @@ if __name__ == '__main__':
                                           axis=1).to_list(),
                                  index=df.index)],
                    axis=1)
-
     plot_value_counts(df)
     # Method 1 (current):            17.19 sec / 10,000 lines
     # Method 2 (using df.apply()):   18.62 sec / 10,000 lines
     # TODO: It would be good to have this merge back into the mergedOnReads dataframe!
     #       Probably need to save as a parquet thou!
-
     # Random Stuff:
     # print_alignments_wrapper(df)
     print("Done!")
+
+
+if __name__ == '__main__':
+    path_dict = pick_libs_return_paths_dict(["pTRI-stds"], file_suffix="parquet",
+                                            file_midfix="mergedOnReads.plusStandards")
+    for lib_key, lib_path in path_dict.items():
+        df = pd.read_parquet(lib_path)
+        plot_value_counts(df)
+    
