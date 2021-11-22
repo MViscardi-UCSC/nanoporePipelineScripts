@@ -88,11 +88,16 @@ if __name__ == '__main__':
                                                                 'TERA3': '+',
                                                                 '5TERA': '-'})
     tagged_fastq.df.set_index('read_id', inplace=True)
+    tera_sam = f"{output_dir_path}/cat_files/cat.sorted.mappedAndPrimary.tera.sam"
     with ssam.Reader(open(f"{output_dir_path}/cat_files/cat.sorted.mappedAndPrimary.bam", 'r')) as in_bam:
-        with ssam.Writer(open(f"{output_dir_path}/cat_files/cat.sorted.mappedAndPrimary.tera.sam", 'w'),
+        with ssam.Writer(open(tera_sam, 'w'),
                          in_bam.header) as out_sam:
             row_iterator = tqdm(in_bam)
             for read in row_iterator:
                 row_iterator.set_description(f"Processing {read.qname}")
                 read['t5'], read['t3'] = tagged_fastq.df.loc[read.qname, ['tera5', 'tera3']].tolist()
                 out_sam.write(read)
+    tera_bam = tera_sam.strip('sam') + 'bam'
+    
+    live_cmd_call(f"samtools view -b {tera_sam} > {tera_bam}")
+    live_cmd_call(f"samtools index {tera_bam}")
