@@ -78,13 +78,15 @@ if __name__ == '__main__':
     # Load the fastq with the additional adapter={} comment
     tagged_fastq = FastqFile(output_fastq_path)
     print(tagged_fastq)
+    
+    # \S+ matches any characters up to the first whitespace!
     tagged_fastq.df["adapter"] = tagged_fastq.df.comment.str.extract(r'adapter=(\S+)')
-    tagged_fastq.df["tera5"] = tagged_fastq.df.adapter.replace({'no_adapter': 'N',
-                                                                'TERA3': 'N',
-                                                                '5TERA': 'P'})
-    tagged_fastq.df["tera3"] = tagged_fastq.df.adapter.replace({'no_adapter': 'N',
-                                                                'TERA3': 'P',
-                                                                '5TERA': 'N'})
+    tagged_fastq.df["tera5"] = tagged_fastq.df.adapter.replace({'no_adapter': '-',
+                                                                'TERA3': '-',
+                                                                '5TERA': '+'})
+    tagged_fastq.df["tera3"] = tagged_fastq.df.adapter.replace({'no_adapter': '-',
+                                                                'TERA3': '+',
+                                                                '5TERA': '-'})
     tagged_fastq.df.set_index('read_id', inplace=True)
     with ssam.Reader(open(f"{output_dir_path}/cat_files/cat.sorted.mappedAndPrimary.bam", 'r')) as in_bam:
         with ssam.Writer(open(f"{output_dir_path}/cat_files/cat.sorted.mappedAndPrimary.tera.sam", 'w'),
