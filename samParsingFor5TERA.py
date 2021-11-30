@@ -30,8 +30,15 @@ Goal here is to test out parsing sam files and adding a new TAG that I can use
             they note that custom tags starting with X, Y, Z, or any lowercase letters
             are reserved for local use and should not have formally defined counterparts
             (this is to avoid overlaps!).
-           -Additionally I think I'll do 'A' for if the (A)dapter is present or N for if the
-           adapter is (N)ot present.
+           -Additionally I think I'll do '+' for if the adapter is present or '-' for if
+           the adapter is not present.
+    
+    11/30/21: Only real issue with the above plan is that it cannot be something like the
+    other steps of the pipeline because it needs to happen both before and after some other
+    steps. I think it will be best to put step 1 & 2 into their own section that is more
+    like the current pipeline format, but also have a second input of the adapters. If those
+    adapter variables are present, then in the merge_results step it can also pull the
+    adapter information from the cat.fastq. It could also do the tag adding to the bams!
     
 """
 import simplesam as ssam
