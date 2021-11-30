@@ -285,6 +285,9 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, *
 
 
 def trim_tera_adapters(outputDir, threads, regenerate, **other_kwargs):
+    # This will likely need to be before and/or after several steps, meaning it will need to happen
+    #   in more than a single method. Best bet is probably to have a independent flag that is passed
+    #   to all of the necessary scripts that add additional functionality as needed.
     pass
 
 
