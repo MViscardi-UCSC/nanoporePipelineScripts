@@ -600,7 +600,6 @@ def concat_files(outputDir, tera3adapter, tera5adapter, **other_kwargs):
         #   so if re-tagging doesn't happen we still need to make the sam file!
         live_cmd_call(f"samtools view {outputDir}/cat_files/cat.sorted.bam "
                       f"> {outputDir}/cat_files/cat.sorted.sam")
-    # TODO: Add stuff for adapter tagging here? and BAM indexing!
 
     # Most of this is much less necessary as we are not getting the nested files that came out of Roach's gridION!
     calls = [f"samtools view -b -F 0x904 {original_bam_file} > {bam_file_for_feature_counts}",
@@ -707,7 +706,7 @@ def merge_results(**other_kwargs):
 
         # Set dataframe column datatypes!
         # datatypes to use:
-        o = "object"  # TODO: this could eventually be pd.StringDtype
+        o = "object"  # this could eventually be pd.StringDtype
         c = "category"
         ui8 = "uint8"
         ui16 = "uint16"
