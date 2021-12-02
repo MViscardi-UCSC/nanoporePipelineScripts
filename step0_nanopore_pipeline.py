@@ -401,7 +401,7 @@ def trim_tera_adapters(outputDir, threads, regenerate, tera3adapter, tera5adapte
     with open(f'{outputDir}/cat_files/cat.fastq', 'r') as fastq_file:
         first_line = fastq_file.readline()
         cutadapt_was_run = 'adapter' in first_line
-    if regenerate or not cutadapt_was_run:
+    if not cutadapt_was_run:
         cutadapt_call = None
         if isinstance(tera5adapter, str) and isinstance(tera3adapter, str):
             cutadapt_call = f"cutadapt --action=trim -j {threads} " \
@@ -577,14 +577,14 @@ def __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter):
     output_sam = f'{outputDir}/cat_files/cat.sorted.sam'
     print(f'Starting sam file tagging with TERA-seq adapter information @ {get_dt(for_print=True)}:')
     with ssam.Reader(open(input_bam, 'r')) as in_bam:
-        with ssam.Writer(open(output_sam, 'w')) as out_sam:
+        with ssam.Writer(open(output_sam, 'w'), in_bam.header) as out_sam:
             row_iterator = tqdm(in_bam)
             for read in row_iterator:
-                row_iterator.set_description(f"Processing {read.qname}")
+                row_iterator.set_description(f"Tagging {read.qname}")
                 read['t5'], read['t3'] = tagged_fastq_df.loc[read.qname, ['t5', 't3']].tolist()
                 out_sam.write(read)
     print(f'Finished sam file tagging with TERA-seq adapter information @ {get_dt(for_print=True)}:')
-    # Finally we'll overwrite the old bam with the new, tagged samfile, and index it:
+    # Finally we'll overwrite the old bam with the new, tagged sam file, and index it:
     call = f'samtools view -b {output_sam} -o {input_bam}'
     live_cmd_call(call)
     return None
@@ -1050,5 +1050,5 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
 
 
 if __name__ == '__main__':
-    args = meshSetsAndArgs()
-    main_output = main(**args)
+    arguments = meshSetsAndArgs()
+    main_output = main(**arguments)
