@@ -30,19 +30,27 @@ My recent nanopore run took about ~160hr of CPU time to get to 30%. That
 New GPU based calling is WAY better. . . Why did I ever run with CPU?!
 """
 # TODO: add regen tag whenever a upstream file is missing!
-from os import path, listdir, mkdir
+from os import path, listdir, mkdir, environ
 from argparse import ArgumentParser
 from subprocess import Popen, CalledProcessError, PIPE
 from typing import List
 from glob import glob
+import warnings
 
 from tqdm import tqdm
 
-from nanoporePipelineCommon import find_newest_matching_file, get_dt, minimap_bam_to_df,\
+from nanoporePipelineCommon import find_newest_matching_file, get_dt, minimap_bam_to_df, \
     FastqFile, gene_names_to_gene_ids, assign_w_josh_method
 
 import pandas as pd
 import numpy as np
+
+# This is also in my .bashrc but that doesn't always seem to trigger,
+#   ie. if I run the script from inside pycharm.
+# If the HDF5 path isn't specified nanopolish freaks out, this solution is based on:
+#   https://stackoverflow.com/questions/5971312/how-to-set-environment-variables-in-python
+environ['HDF5_PLUGIN_PATH'] = '/usr/local/hdf5/lib/plugin'
+
 
 pd.set_option("display.max_columns", None)
 
@@ -98,9 +106,9 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                             type=str, default=None,
                             help="Steps to run within the pipeline: (G)uppy basecalling, "
                                  "(M)inimap, (N)anopolish, (F)eature counts, (C)oncat files, "
-                                 "merge with (P)andas, use f(L)air to ID transcripts "
-                                 "(not default behavior), map pTRI nanopore (S)tandards, "
-                                 "and/or random e(X)tra steps (plotting). [GMNFCPS]")
+                                 "merge with (P)andas, use f(L)air to ID transcripts, "
+                                 "map pTRI nanopore (S)tandards, and/or random e(X)tra "
+                                 "steps (plotting). [GMNCFPS]")
         parser.add_argument('--sampleID', metavar='sampleID',
                             type=int, default=None,
                             help="sampleID to pass to FLAIR [sample1]")
@@ -111,6 +119,12 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                             type=str, default=None,
                             help="Arguments to pass to minimap2. If used on the command line, "
                                  "be sure to surround in double-quotes! [\"-x splice -uf -k14\"]")
+        parser.add_argument('--tera3adapter', metavar='tera3adapter',
+                            type=int, default=None,
+                            help="Adapter to be trimmed for TERA3 [None]")
+        parser.add_argument('--tera5adapter', metavar='tera5adapter',
+                            type=int, default=None,
+                            help="Adapter to be trimmed for 5TERA [None]")
         # Flag Arguments
         parser.add_argument('-p', '--printArgs', action='store_true',
                             help="Boolean flag to show how arguments are overwritten/accepted")
@@ -183,7 +197,9 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                            sampleID="sample1",
                            condition="conditionA",
                            minimapParam="-x splice -uf -k14",
-                           guppyConfig="rna_r9.4.1_70bps_hac.cfg")
+                           guppyConfig="rna_r9.4.1_70bps_hac.cfg",
+                           tera3adapter=False,
+                           tera5adapter=False)
     if skip_cli_dict:
         argDict = skip_cli_dict
     else:
@@ -263,6 +279,8 @@ def guppy_basecall_w_docker(dataDir, outputDir, threads, guppyConfig, regenerate
 
 
 def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, **other_kwargs):
+    # TODO: I may need to change the --trim_strategy for TERA3!! add an param here for tera3adapter,
+    #       if that param is not None, than I'll probably want to add the '--trim_strategy none'!!
     prev_cat_fastq = path.exists(f"{outputDir}/cat_files/cat.fastq")
     if regenerate or not prev_cat_fastq:
         guppy_log = f"{outputDir}/logs/{get_dt()}_guppy.log"
@@ -282,13 +300,6 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, *
     else:
         print(f"\n\nCalling already occurred. Based on file at:\n\t{outputDir}/cat_files/cat.fastq\n"
               f"Use the regenerate tag if you want to rerun calling.\n")
-
-
-def trim_tera_adapters(outputDir, threads, regenerate, **other_kwargs):
-    # This will likely need to be before and/or after several steps, meaning it will need to happen
-    #   in more than a single method. Best bet is probably to have a independent flag that is passed
-    #   to all of the necessary scripts that add additional functionality as needed.
-    pass
 
 
 #################################################################################
@@ -335,6 +346,7 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
         print(f"\n\nBacking up of cat.fastq file already happened. Based on file at:"
               f"\n\t{outputDir}/cat_files/cat.pre_altGenome.fastq\n"
               f"Use the regenerate tag if you want to rerun.\n")
+
     alt_filtering_flag = regenerate or filecmp.cmp(f"{outputDir}/cat_files/cat.pre_altGenome.fastq",
                                                    f"{outputDir}/cat_files/cat.fastq")
     if alt_filtering_flag:
@@ -342,7 +354,7 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
         #   The below call might break if minimap2 passed headers!
         print(f"Starting to load alt genome called sam file from: {outputDir}/cat_files/cat.altGenome.sam . . .")
         header_lines = 0
-        with open(f"{outputDir}/cat_files/cat.altGenome.sam", 'r')as sam_file_quick:
+        with open(f"{outputDir}/cat_files/cat.altGenome.sam", 'r') as sam_file_quick:
             for line in sam_file_quick:
                 if line.startswith('@'):
                     header_lines += 1
@@ -367,6 +379,66 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
     # TODO: Add fastq file filtering based off what ends up in the cat.altGenome_hits.sam
     #       First copy the current cat.fastq to "cat.preAltGenome.fastq".
     #       Then make a new "cat.fastq" with only the reads that didn't map to the altGenome
+
+
+def trim_tera_adapters(outputDir, threads, regenerate, tera3adapter, tera5adapter, **other_kwargs):
+    # First step is to backup the original fastq file:
+    fastq_backup_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.untrimmed.fastq")
+    if fastq_backup_flag:
+        # First backup the fastq file that the real minimap2 call will need:
+        call = f"cp {outputDir}/cat_files/cat.fastq {outputDir}/cat_files/cat.untrimmed.fastq"
+        print(f"Starting fastq backup at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
+        live_cmd_call(call)
+        print(f"\n\nFinished fastq backup at {get_dt(for_print=True)}")
+    else:
+        print(f"\n\nBacking up of cat.fastq file already happened. Based on file at:"
+              f"\n\t{outputDir}/cat_files/cat.untrimmed.fastq\n"
+              f"Use the regenerate tag if you want to rerun.\n")
+
+    # Then, we will want to check that adapter trimming hasn't already happened.
+    #   This isn't quite as simple, and the easiest way I can think of will be to parse
+    #   the first line of the fastq and check if 'adapter=' is in there:
+    with open(f'{outputDir}/cat_files/cat.fastq', 'r') as fastq_file:
+        first_line = fastq_file.readline()
+        cutadapt_was_run = 'adapter' in first_line
+    if regenerate or not cutadapt_was_run:
+        cutadapt_call = None
+        if isinstance(tera5adapter, str) and isinstance(tera3adapter, str):
+            cutadapt_call = f"cutadapt --action=trim -j {threads} " \
+                            f"-g TERA5={'X' + tera5adapter} --overlap 31 --error-rate 0.29 " \
+                            "--rename '{id} adapter5={adapter_name} {comment}' " \
+                            f"{outputDir}/cat_files/cat.untrimmed.fastq | " \
+                            f"cutadapt --action=trim -j {threads} " \
+                            f"-g TERA3={tera3adapter} --overlap 16 --error-rate 0.18 " \
+                            "--rename '{id} adapter3={adapter_name} {comment}' " \
+                            f"- > {outputDir}/cat_files/cat.fastq"
+        elif isinstance(tera5adapter, str):
+            cutadapt_call = f"cutadapt --action=trim -j {threads} " \
+                            f"-g TERA5={'X' + tera5adapter} --overlap 31 --error-rate 0.29 " \
+                            "--rename '{id} adapter5={adapter_name} {comment}' " \
+                            f"{outputDir}/cat_files/cat.untrimmed.fastq > {outputDir}/cat_files/cat.fastq"
+        elif isinstance(tera3adapter, str):
+            cutadapt_call = f"cutadapt --action=trim -j {threads} " \
+                            f"-a TERA3={tera3adapter} --overlap 16 --error-rate 0.18 " \
+                            "--rename '{id} adapter3={adapter_name} {comment}' " \
+                            f"{outputDir}/cat_files/cat.untrimmed.fastq > {outputDir}/cat_files/cat.fastq"
+        else:
+            warnings.warn(f"Please provide 5TERA and/or TERA3 adapters as strings!! "
+                          f"You passed: {tera5adapter} and {tera3adapter}",
+                          UserWarning)
+            print(f"Skipping cutadapt, and moving backup file back to cat.fastq")
+            call = f"mv {outputDir}/cat_files/cat.untrimmed.fastq {outputDir}/cat_files/cat.fastq"
+            print(f"Starting undo of fastq backup at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
+            live_cmd_call(call)
+            print(f"\n\nFinished undo of fastq backup at {get_dt(for_print=True)}")
+
+        if isinstance(cutadapt_call, str):
+            print(f"Starting cutadapt at {get_dt(for_print=True)}\nUsing call:\t{cutadapt_call}\n")
+            live_cmd_call(cutadapt_call)
+            print(f"\n\nFinished cutadapt at {get_dt(for_print=True)}")
+    else:
+        print(f"Skipping cutadapt for TERA-seq based on adapter comment(s) already being found in "
+              f"cat.fastq file @ {outputDir}/cat_files/cat.fastq")
 
 
 def minimap2_and_samtools(genomeDir, outputDir, threads, regenerate, minimapParam, **other_kwargs):
@@ -465,9 +537,70 @@ def nanopolish_index_and_polya(genomeDir, dataDir, outputDir, threads, regenerat
 # Step4: Concatenate files (less important for single MinIon runs), and create
 #        a single file that contains information from all the tools I am using
 #################################################################################
-def concat_files(outputDir, **other_kwargs):
+def __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter):
+    import simplesam as ssam
+    fastq_path = f'{outputDir}/cat_files/cat.fastq'
+    with open(fastq_path, 'r') as f:
+        first_line = f.readline()
+        # Check if each of the cutadapt comments were added, save for below.
+        tera3_was_run = 'adapter3' in first_line
+        tera5_was_run = 'adapter5' in first_line
+        
+        # If neither were run, just skip the rest of this method!
+        if not tera3_was_run and not tera5_was_run:
+            warnings.warn(f'Adapter comment not found in {fastq_path}, '
+                          f'skipping adding TERA-seq tag to bam/sam files!')
+            live_cmd_call(f"samtools view {outputDir}/cat_files/cat.sorted.bam "
+                          f"> {outputDir}/cat_files/cat.sorted.sam")
+            return None
+    
+    # If the adapter tag IS found in the cat.fastq, we'll add it to the bam/sam files!:
+    tagged_fastq_df = FastqFile(fastq_path).df
+    
+    # For the two adapters, either extract the info if it's there, or default to false if not.
+    if tera5_was_run:
+        tagged_fastq_df['t5'] = tagged_fastq_df.comment.str.extract(r'adapter5=(\S+)').replace({'no_adapter': '-',
+                                                                                                'TERA5': '+'})
+    else:
+        tagged_fastq_df['t5'] = '-'
+    
+    if tera3_was_run:
+        tagged_fastq_df['t3'] = tagged_fastq_df.comment.str.extract(r'adapter3=(\S+)').replace({'no_adapter': '-',
+                                                                                                'TERA3': '+'})
+    else:
+        tagged_fastq_df['t3'] = '-'
+    
+    # Finally we'll load and iterate through the bam file, creating a new sam file along the
+    #   way and adding in the new tags!!
+    tagged_fastq_df.set_index('read_id', inplace=True)
+    input_bam = f'{outputDir}/cat_files/cat.sorted.bam'
+    output_sam = f'{outputDir}/cat_files/cat.sorted.sam'
+    print(f'Starting sam file tagging with TERA-seq adapter information @ {get_dt(for_print=True)}:')
+    with ssam.Reader(open(input_bam, 'r')) as in_bam:
+        with ssam.Writer(open(output_sam, 'w')) as out_sam:
+            row_iterator = tqdm(in_bam)
+            for read in row_iterator:
+                row_iterator.set_description(f"Processing {read.qname}")
+                read['t5'], read['t3'] = tagged_fastq_df.loc[read.qname, ['t5', 't3']].tolist()
+                out_sam.write(read)
+    print(f'Finished sam file tagging with TERA-seq adapter information @ {get_dt(for_print=True)}:')
+    # Finally we'll overwrite the old bam with the new, tagged samfile, and index it:
+    call = f'samtools view -b {output_sam} -o {input_bam}'
+    live_cmd_call(call)
+    return None
+
+
+def concat_files(outputDir, tera3adapter, tera5adapter, **other_kwargs):
     original_bam_file = f"{outputDir}/cat_files/cat.sorted.bam"
     bam_file_for_feature_counts = f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam"
+    if isinstance(tera3adapter, str) or isinstance(tera5adapter, str):
+        __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter)
+    else:
+        # The below step has to happen in coordinance w/ re-tagging,
+        #   so if re-tagging doesn't happen we still need to make the sam file!
+        live_cmd_call(f"samtools view {outputDir}/cat_files/cat.sorted.bam "
+                      f"> {outputDir}/cat_files/cat.sorted.sam")
+    # TODO: Add stuff for adapter tagging here? and BAM indexing!
 
     # Most of this is much less necessary as we are not getting the nested files that came out of Roach's gridION!
     calls = [f"samtools view -b -F 0x904 {original_bam_file} > {bam_file_for_feature_counts}",
@@ -475,10 +608,9 @@ def concat_files(outputDir, **other_kwargs):
              #    0x004, UNMAP           =   reads who's sequence didn't align to the genome
              #    0x100, SECONDARY       =   reads that are secondary alignments
              #    0x800, SUPPLEMENTARY   =   reads that are supplemental alignments
+             f"samtools index {bam_file_for_feature_counts}",
              f"samtools view {outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam "
              f"> {outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam",
-             f"samtools view {outputDir}/cat_files/cat.sorted.bam "
-             f"> {outputDir}/cat_files/cat.sorted.sam",
              ]
     print(f"Starting final cleanup at {get_dt(for_print=True)}\n")
     for num, call in enumerate(calls):
@@ -492,8 +624,8 @@ def concat_files(outputDir, **other_kwargs):
 #        we have per gene
 #################################################################################
 def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
-    feature_counts_flag = regenerate or \
-                          not path.exists(f"{outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.featureCounts")
+    feature_counts_flag = regenerate or not path.exists(f"{outputDir}/featureCounts/"
+                                                        f"cat.sorted.mappedAndPrimary.bam.featureCounts")
     if feature_counts_flag:
         genome_gtf_file = glob(f"{genomeDir}/*.gtf")
         if len(genome_gtf_file) != 1:
@@ -886,6 +1018,7 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
     return_value = None
     buildOutputDirs(stepsToRun, **kwargs)
 
+    # Current default is [GMNCFPS]
     steps_dict = {"G": [guppy_basecall_w_gpu, "Guppy Basecalling"],
                   "A": [alternative_genome_filtering, "Filtering Alt. Genomes (currently pretty rough and slow)"],
                   "T": [trim_tera_adapters, "Trimming TERA-Seq Adapters"],
