@@ -54,19 +54,28 @@ class FastqFile:
 
 
 class SamOrBamFile:
-    def __init__(self, path, iterative=False, max_cols=27, subsample=None):
+    def __init__(self, path, header_source=None, max_cols=27, subsample=None):
         from subprocess import check_output
 
         self.path = path
-        self.iterative = iterative  # To be implemented...
         self.max_cols = max_cols  # Probably shouldn't need to be edited!
-
-        self.header = check_output(f"samtools view --no-PG -H {path}", shell=True).decode("utf-8")
-        self.header_lines = len(self.header.split('\n')) - 1  # -2 b/c the view call adds a header line and \n!
+        
+        if isinstance(header_source, str):
+            self.header = check_output(f"samtools view -H {header_source}", shell=True).decode("utf-8")
+            read_file_header = check_output(f"samtools view --no-PG -H {path}", shell=True).decode("utf-8")
+            self.header_lines = len(read_file_header.split('\n')) - 1
+        else:
+            self.header = check_output(f"samtools view --no-PG -H {path}", shell=True).decode("utf-8")
+            self.header_lines = len(self.header.split('\n')) - 1
         if isinstance(subsample, int):
             self.subsample = subsample
         else:
             self.subsample = None
+
+        # TODO: Change below to iterative.
+        #    It'll likely be just as fast (read: slow)
+        #    but it will also provide the opportunity
+        #    to have a loading bar!
         self.df = self.__build_df__()
 
     def __build_df__(self):
@@ -355,12 +364,12 @@ def save_sorted_bam_obj(bam_obj: BamHeadersAndDf, output_path: str,
 
 
 if __name__ == '__main__':
-    test_sam_path = "./testInputs/pTRI_test.sorted.bam"
-    # test_sam_path = "/data16/marcus/working/211101_nanoporeSoftLinks/" \
-    #                 "211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/" \
-    #                 "output_dir/cat_files/cat.sorted.mappedAndPrimary.sam"
-    sam = SamOrBamFile(test_sam_path)
-    sam.to_sam('/data16/marcus/scripts/nanoporePipelineScripts/testInputs/pTRI_test.sorted.resave.sam', escape_char="~")
+    # test_sam_path = "./testInputs/pTRI_test.sorted.bam"
+    test_sam_path = "/data16/marcus/working/211101_nanoporeSoftLinks/" \
+                    "211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/" \
+                    "output_dir/cat_files/cat.sorted.mappedAndPrimary.sam"
+    sam = SamOrBamFile(test_sam_path, header_source=test_sam_path.rstrip('.sam')+'.bam')
+    sam.to_sam(test_sam_path + '.resave.sam', escape_char="~")
     print(sam)
     # fastq = FastqFile("./testOutputs/in.fastq")
     # fastq.save_to_fastq("./testOutputs/out.fastq")
