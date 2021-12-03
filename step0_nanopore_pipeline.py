@@ -382,9 +382,11 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
 
 
 def trim_tera_adapters(outputDir, threads, regenerate, tera3adapter, tera5adapter, **other_kwargs):
+    # TODO: There is an error hear that is leading to rerunning on already cutadapt'ed fastqs!!
+    
     # First step is to backup the original fastq file:
-    fastq_backup_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.untrimmed.fastq")
-    if fastq_backup_flag:
+    fastq_backed_up = path.exists(f"{outputDir}/cat_files/cat.untrimmed.fastq")
+    if not fastq_backed_up:
         # First backup the fastq file that the real minimap2 call will need:
         call = f"cp {outputDir}/cat_files/cat.fastq {outputDir}/cat_files/cat.untrimmed.fastq"
         print(f"Starting fastq backup at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
@@ -396,31 +398,32 @@ def trim_tera_adapters(outputDir, threads, regenerate, tera3adapter, tera5adapte
               f"Use the regenerate tag if you want to rerun.\n")
 
     # Then, we will want to check that adapter trimming hasn't already happened.
-    #   This isn't quite as simple, and the easiest way I can think of will be to parse
-    #   the first line of the fastq and check if 'adapter=' is in there:
+    #   This isn't quite as simple as file checking, but the easiest way I can
+    #   think of will be to parse the first line of the fastq and check if
+    #   'adapter' is in there:
     with open(f'{outputDir}/cat_files/cat.fastq', 'r') as fastq_file:
         first_line = fastq_file.readline()
-        cutadapt_was_run = 'adapter' in first_line
+        cutadapt_was_run = 'TERAADAPTER' in first_line
     if not cutadapt_was_run:
         cutadapt_call = None
         if isinstance(tera5adapter, str) and isinstance(tera3adapter, str):
             cutadapt_call = f"cutadapt --action=trim -j {threads} " \
                             f"-g TERA5={'X' + tera5adapter} --overlap 31 --error-rate 0.29 " \
-                            "--rename '{id} adapter5={adapter_name} {comment}' " \
+                            "--rename '{id} TERAADAPTER5={adapter_name} {comment}' " \
                             f"{outputDir}/cat_files/cat.untrimmed.fastq | " \
                             f"cutadapt --action=trim -j {threads} " \
                             f"-g TERA3={tera3adapter} --overlap 16 --error-rate 0.18 " \
-                            "--rename '{id} adapter3={adapter_name} {comment}' " \
+                            "--rename '{id} TERAADAPTER3={adapter_name} {comment}' " \
                             f"- > {outputDir}/cat_files/cat.fastq"
         elif isinstance(tera5adapter, str):
             cutadapt_call = f"cutadapt --action=trim -j {threads} " \
                             f"-g TERA5={'X' + tera5adapter} --overlap 31 --error-rate 0.29 " \
-                            "--rename '{id} adapter5={adapter_name} {comment}' " \
+                            "--rename '{id} TERAADAPTER5={adapter_name} {comment}' " \
                             f"{outputDir}/cat_files/cat.untrimmed.fastq > {outputDir}/cat_files/cat.fastq"
         elif isinstance(tera3adapter, str):
             cutadapt_call = f"cutadapt --action=trim -j {threads} " \
                             f"-a TERA3={tera3adapter} --overlap 16 --error-rate 0.18 " \
-                            "--rename '{id} adapter3={adapter_name} {comment}' " \
+                            "--rename '{id} TERAADAPTER3={adapter_name} {comment}' " \
                             f"{outputDir}/cat_files/cat.untrimmed.fastq > {outputDir}/cat_files/cat.fastq"
         else:
             warnings.warn(f"Please provide 5TERA and/or TERA3 adapters as strings!! "
@@ -543,8 +546,8 @@ def __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter):
     with open(fastq_path, 'r') as f:
         first_line = f.readline()
         # Check if each of the cutadapt comments were added, save for below.
-        tera3_was_run = 'adapter3' in first_line
-        tera5_was_run = 'adapter5' in first_line
+        tera3_was_run = 'TERAADAPTER3' in first_line
+        tera5_was_run = 'TERAADAPTER5' in first_line
         
         # If neither were run, just skip the rest of this method!
         if not tera3_was_run and not tera5_was_run:
@@ -558,17 +561,17 @@ def __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter):
     tagged_fastq_df = FastqFile(fastq_path).df
     
     # For the two adapters, either extract the info if it's there, or default to false if not.
-    if tera5_was_run:
-        tagged_fastq_df['t5'] = tagged_fastq_df.comment.str.extract(r'adapter5=(\S+)').replace({'no_adapter': '-',
+    if tera3_was_run:  # Parse out TERA3 adapter if it existed
+        tagged_fastq_df['t3'] = tagged_fastq_df.comment.str.extract(r'TERAADAPTER3=(\S+)').replace({'no_adapter': '-',
+                                                                                                    'TERA3': '+'})
+    else:
+        tagged_fastq_df['t3'] = '-'
+    
+    if tera5_was_run:  # Parse out TERA5 adapter if it existed
+        tagged_fastq_df['t5'] = tagged_fastq_df.comment.str.extract(r'TERAADAPTER5=(\S+)').replace({'no_adapter': '-',
                                                                                                 'TERA5': '+'})
     else:
         tagged_fastq_df['t5'] = '-'
-    
-    if tera3_was_run:
-        tagged_fastq_df['t3'] = tagged_fastq_df.comment.str.extract(r'adapter3=(\S+)').replace({'no_adapter': '-',
-                                                                                                'TERA3': '+'})
-    else:
-        tagged_fastq_df['t3'] = '-'
     
     # Finally we'll load and iterate through the bam file, creating a new sam file along the
     #   way and adding in the new tags!!
@@ -597,7 +600,7 @@ def concat_files(outputDir, tera3adapter, tera5adapter, **other_kwargs):
         __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter)
     else:
         # The below step has to happen in coordinance w/ re-tagging,
-        #   so if re-tagging doesn't happen we still need to make the sam file!
+        #   so if re-tagging doesn't happen we still want to make the sam file!
         live_cmd_call(f"samtools view {outputDir}/cat_files/cat.sorted.bam "
                       f"> {outputDir}/cat_files/cat.sorted.sam")
 
