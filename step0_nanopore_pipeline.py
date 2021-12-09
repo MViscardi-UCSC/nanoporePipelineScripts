@@ -28,6 +28,9 @@ My recent nanopore run took about ~160hr of CPU time to get to 30%. That
     extrapolates out to >500 CPU hours to call a single (long) minIon run!!
     
 New GPU based calling is WAY better. . . Why did I ever run with CPU?!
+
+Late 2021:
+    Added features to incorporate TERA-Seq into this main pipeline!
 """
 # TODO: add regen tag whenever a upstream file is missing!
 from os import path, listdir, mkdir, environ
