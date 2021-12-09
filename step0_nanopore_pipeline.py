@@ -570,7 +570,7 @@ def __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter):
     
     if tera5_was_run:  # Parse out TERA5 adapter if it existed
         tagged_fastq_df['t5'] = tagged_fastq_df.comment.str.extract(r'TERAADAPTER5=(\S+)').replace({'no_adapter': '-',
-                                                                                                'TERA5': '+'})
+                                                                                                    'TERA5': '+'})
     else:
         tagged_fastq_df['t5'] = '-'
     
@@ -588,7 +588,7 @@ def __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter):
                 read['t5'], read['t3'] = tagged_fastq_df.loc[read.qname, ['t5', 't3']].tolist()
                 out_sam.write(read)
     print(f'Finished sam file tagging with TERA-seq adapter information @ {get_dt(for_print=True)}:')
-    # Finally we'll overwrite the old bam with the new, tagged sam file, and index it:
+    # Finally, we'll overwrite the old bam with the new, tagged sam file, and index it:
     call = f'samtools view -b {output_sam} -o {input_bam}'
     live_cmd_call(call)
     return None
