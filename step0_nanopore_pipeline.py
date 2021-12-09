@@ -259,25 +259,6 @@ def buildOutputDirs(stepsToRun, **kwargs) -> None:
 # Step1: Trigger Docker Container which will do the actual guppy base-calling
 #        (eventually I'll want to have this function outside of docker!)
 #################################################################################
-def guppy_basecall_w_docker(dataDir, outputDir, threads, guppyConfig, regenerate, **other_kwargs):
-    prev_cat_fastq = path.exists(f"{outputDir}/cat_files/cat.fastq")
-    if regenerate or not prev_cat_fastq:
-        # TODO: do some math here instead of just splitting into 3
-        callers = 3
-        threads_per_caller = int(threads / callers)
-        live_cmd_call(rf"""sudo docker run """
-                      rf"""-v {dataDir}:/usr/src/prefix/data_dir """
-                      rf"""-v {outputDir}:/usr/src/prefix/output_dir """
-                      rf"""-it nanopore_empty """
-                      rf"""guppy_basecaller --num_callers {callers} --cpu_threads_per_caller {threads_per_caller} """
-                      rf"""-c {guppyConfig} -i /usr/src/prefix/data_dir/fast5 -s /usr/src/prefix/output_dir/fastqs """
-                      rf"""2>&1 | tee {outputDir}/logs/{get_dt()}_guppy.log""")
-        live_cmd_call(rf"cat {outputDir}/fastqs/*.fastq > {outputDir}/cat_files/cat.fastq")
-    else:
-        print(f"\n\nCalling already occurred. Based on file at:\n\t{outputDir}/cat_files/cat.fastq\n"
-              f"Use the regenerate tag if you want to rerun calling.\n")
-
-
 def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, **other_kwargs):
     # TODO: I may need to change the --trim_strategy for TERA3!! add an param here for tera3adapter,
     #       if that param is not None, than I'll probably want to add the '--trim_strategy none'!!
