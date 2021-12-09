@@ -5,6 +5,7 @@ Marcus Viscardi,    September 22, 2021
 A common location for some often used methods.
 """
 import pandas as pd
+import os
 
 pd.set_option('display.width', 400)
 pd.set_option('display.max_columns', None)
@@ -54,12 +55,61 @@ class FastqFile:
 
 
 class SamOrBamFile:
-    def __init__(self, path, header_source=None, max_cols=27, subsample=None):
+    def __init__(self, path, header_source=None, subsample=None):
         from subprocess import check_output
 
         self.path = path
-        self.max_cols = max_cols  # Probably shouldn't need to be edited!
-        
+        if not os.path.exists(self.path):
+            raise FileNotFoundError(f"Could not find file: {self.path}")
+        self.max_cols = 30  # Probably shouldn't need to be changeable...
+
+        self.file_type = self.path.split('.')[-1]
+        if self.file_type not in ['bam', 'sam']:
+            raise NotImplementedError(f"Please provide a file that ends with bam/sam, "
+                                      f"your file ends in: {self.file_type}")
+        self.sam_main_columns = ["read_id",
+                                 "bit_flag",
+                                 "chr_id",
+                                 "chr_pos",
+                                 "mapq",
+                                 "cigar",
+                                 "r_next",
+                                 "p_next",
+                                 "len",
+                                 "sequence",
+                                 "phred_qual"]
+        # Anything not included below will either stay as a string/object,
+        #   or whatever the simplesam decided to store it as (for tags):
+        self.dtype_dict = {'bit_flag': 'uint16',
+                           'chr_id': 'category',
+                           'chr_pos': 'uint32',
+                           'mapq': 'uint8',
+                           'NM': 'uint16',
+                           'ms': 'uint32',
+                           'AS': 'uint32',
+                           'nn': 'uint32',
+                           'ts': 'category',
+                           'tp': 'category',
+                           'cm': 'uint32',
+                           'rl': 'uint32',
+                           't5': 'category',
+                           't3': 'category'}
+        self.tag_type_dict = {'NM': 'i',
+                              'ms': 'i',
+                              'AS': 'i',
+                              'nn': 'i',
+                              'ts': 'A',
+                              'tp': 'A',
+                              'cm': 'i',
+                              's1': 'i',
+                              's2': 'i',
+                              'de': 'f',
+                              'rl': 'i',
+                              't5': 'A',
+                              't3': 'A',
+                              'SA': 'Z',
+                              }
+
         if isinstance(header_source, str):
             self.header = check_output(f"samtools view -H {header_source}", shell=True).decode("utf-8")
             read_file_header = check_output(f"samtools view --no-PG -H {path}", shell=True).decode("utf-8")
@@ -67,83 +117,118 @@ class SamOrBamFile:
         else:
             self.header = check_output(f"samtools view --no-PG -H {path}", shell=True).decode("utf-8")
             self.header_lines = len(self.header.split('\n')) - 1
+
         if isinstance(subsample, int):
             self.subsample = subsample
         else:
             self.subsample = None
 
-        # TODO: Change below to iterative.
-        #    It'll likely be just as fast (read: slow)
-        #    but it will also provide the opportunity
-        #    to have a loading bar!
         self.df = self.__build_df__()
 
+    # def __build_df__(self):
+    #     from subprocess import check_output
+    #     from io import BytesIO
+    #     initial_read_cols = list(range(self.max_cols))
+    # 
+    #     # These numbered headers are the variably placed tags! Parse 'em later!
+    #     sam_header_names = self.sam_main_columns + list(range(11, self.max_cols))
+    # 
+    #     print(f"{get_dt(for_print=True)}: Starting to load sam file from: {self.path}")
+    #     if self.path.endswith('.bam'):
+    #         # First read the bam file into a tab-seperated string object:
+    #         output = check_output(f"samtools view {self.path}", shell=True)
+    # 
+    #         # Use pandas to load this string object into a dataframe
+    #         temp_df = pd.read_csv(BytesIO(output),
+    #                               encoding='utf8',
+    #                               sep="\t", names=initial_read_cols,
+    #                               low_memory=False, index_col=False,
+    #                               nrows=self.subsample,
+    #                               quotechar='\0',
+    #                               )
+    #     else:
+    #         temp_df = pd.read_csv(self.path, sep="\t", names=initial_read_cols,
+    #                               low_memory=False, index_col=False,
+    #                               skiprows=self.header_lines,
+    #                               nrows=self.subsample,
+    #                               quotechar='\0',
+    #                               )
+    #     print(f"SAM file loaded into a dataframe, starting tag parsing at {get_dt(for_print=True)}")
+    #     temp_df = temp_df.rename(columns=dict(enumerate(sam_header_names)))
+    #     temp_df = temp_df.fillna("*")
+    #     temp_df['tags_list'] = temp_df[list(range(11, self.max_cols))].values.tolist()
+    #     tags_df = temp_df['tags_list'].apply(lambda row: dict([(f"sam_tag|{tag_items[0]}:{tag_items[1]}", tag_items[2])
+    #                                                            for tag_items in
+    #                                                            [tag.split(':') for tag in row if tag != '*']])
+    #                                          ).apply(pd.Series)
+    #     final_df = pd.concat([temp_df.drop(['tags_list'], axis=1), tags_df],
+    #                          axis=1).drop(list(range(11, self.max_cols)), axis=1)
+    #     columns = list(final_df.columns)
+    #     new_columns = columns[:-2] + [columns[-1]] + [columns[-2]]
+    #     final_df = final_df.reindex(columns=new_columns)
+    #     print(f"Completed tag parsing at {get_dt(for_print=True)}")
+    #     return final_df
+
     def __build_df__(self):
-        from subprocess import check_output
-        from io import BytesIO
-        initial_read_cols = list(range(self.max_cols))
-        sam_header_names = ["read_id",
-                            "bit_flag",
-                            "chr_id",
-                            "chr_pos",
-                            "mapq",
-                            "cigar",
-                            "r_next",
-                            "p_next",
-                            "len",
-                            "sequence",
-                            "phred_qual"]
+        import simplesam as ssam
+        from tqdm import tqdm
+        from collections import ChainMap
 
-        # These numbered headers are the variably placed tags! Parse 'em later!
-        sam_header_names += list(range(11, self.max_cols))
-        print(f"{get_dt(for_print=True)}: Starting to load sam file from: {self.path}")
-        if self.path.endswith('.bam'):
-            # First read the bam file into a tab-seperated string object:
-            output = check_output(f"samtools view {self.path}", shell=True)
-
-            # Use pandas to load this string object into a dataframe
-            temp_df = pd.read_csv(BytesIO(output),
-                                  encoding='utf8',
-                                  sep="\t", names=initial_read_cols,
-                                  low_memory=False, index_col=False,
-                                  nrows=self.subsample,
-                                  quotechar='\0',
-                                  )
-        else:
-            temp_df = pd.read_csv(self.path, sep="\t", names=initial_read_cols,
-                                  low_memory=False, index_col=False,
-                                  skiprows=self.header_lines,
-                                  nrows=self.subsample,
-                                  quotechar='\0',
-                                  )
-        print(f"SAM file loaded into a dataframe, starting tag parsing at {get_dt(for_print=True)}")
-        temp_df = temp_df.rename(columns=dict(enumerate(sam_header_names)))
-        temp_df = temp_df.fillna("*")
-        temp_df['tags_list'] = temp_df[list(range(11, self.max_cols))].values.tolist()
-        tags_df = temp_df['tags_list'].apply(lambda row: dict([(f"sam_tag|{tag_items[0]}:{tag_items[1]}", tag_items[2])
-                                                               for tag_items in
-                                                               [tag.split(':') for tag in row if tag != '*']])
-                                             ).apply(pd.Series)
-        final_df = pd.concat([temp_df.drop(['tags_list'], axis=1), tags_df],
-                             axis=1).drop(list(range(11, self.max_cols)), axis=1)
-        columns = list(final_df.columns)
-        new_columns = columns[:-2] + [columns[-1]] + [columns[-2]]
-        final_df = final_df.reindex(columns=new_columns)
-        print(f"Completed tag parsing at {get_dt(for_print=True)}")
+        print(f"{get_dt(for_print=True)}: Starting to load {self.file_type} file from: {self.path}")
+        sam_list_of_dicts = []
+        with ssam.Reader(open(self.path, 'r')) as in_sam:
+            to_subsample = isinstance(self.subsample, int)
+            if to_subsample:
+                max_to_load = self.subsample
+            else:
+                if self.file_type == 'bam':
+                    max_to_load = len(in_sam)
+                else:
+                    max_to_load = sum(1 for line in open(self.path))
+            sam_iterator = tqdm(enumerate(in_sam), total=max_to_load)
+            for i, read in sam_iterator:
+                sam_iterator.set_description(f"Processing {read.qname}")
+                main_info_list = read.__str__().split('\t')[0:11]
+                main_info = dict(zip(self.sam_main_columns, main_info_list))
+                tag_info = read.tags
+                all_info = dict(ChainMap(main_info, tag_info))
+                sam_list_of_dicts.append(all_info)
+                if to_subsample and i > self.subsample:
+                    break
+        final_df = pd.DataFrame(sam_list_of_dicts)
+        self.tag_columns = [col for col in final_df if col not in self.sam_main_columns]
+        final_df = final_df[self.sam_main_columns + self.tag_columns]
+        
+        # Filter the datatype dictionary, so we don't get errors from
+        #   trying to retype columns that don't exist!
+        self.dtype_dict = {k: v for k, v in self.dtype_dict.items() if k in list(final_df.columns)}
+        # Adjust any datatypes we want:
+        final_df = final_df.astype(self.dtype_dict)
+        print(f"{get_dt(for_print=True)}: Finished loading {self.file_type} file!")
         return final_df
 
-    def to_sam(self, output_path, escape_char="|", to_bam=False):
+    def to_sam(self, output_path=None, escape_char="|", to_bam=False,
+               infer_tag_types=False):
+        import simplesam as ssam
         from subprocess import run
         from csv import QUOTE_NONE
         if escape_char not in "~}|":
             raise NotImplementedError("escape_char has to be |, }, or ~. Everything else is in the Phred Quals!")
         save_df = self.df.copy()
-        sam_tag_cols = [col for col in list(save_df.columns) if col.startswith("sam_tag|")]
-        for column in sam_tag_cols:
-            save_df[column] = column.split("|")[1] + ":" + save_df[column]
-        save_df["tags"] = save_df[sam_tag_cols].values.tolist()
-        save_df["tags"] = save_df["tags"].apply(lambda row: '\t'.join([x for x in row if str(x) != 'nan']))
-        save_df = save_df.drop(sam_tag_cols, axis=1)
+        if infer_tag_types:
+            print(f"Inferring tag datatypes is sorta broken... Use at your own risk!")
+            for col in self.tag_columns:
+                save_df[col] = save_df[col].apply(lambda x: ssam.encode_tag(col, x))
+        else:
+            for col in self.tag_columns:
+                try:
+                    save_df[col] = col + ':' + self.tag_type_dict[col] + ':' + save_df[col].astype(str)
+                except KeyError:
+                    print(f"{col} not found in tag_type_dict and caused a KeyError??")
+                    save_df[col] = col + ':Z:' + save_df[col].map(str)
+        save_df["tags"] = save_df[self.tag_columns].values.tolist()
+        save_df["tags"] = save_df["tags"].apply(lambda row: '\t'.join([x for x in row if not str(x).endswith('nan')]))
+        save_df = save_df.drop(self.tag_columns, axis=1)
 
         temp_header = self.header + f"@CO\t{get_dt(for_print=True)}: Introduced edits with python . . . " \
                                     f"More info hopefully added to this later!\n"
@@ -154,15 +239,47 @@ class SamOrBamFile:
                                               escapechar=escape_char,
                                               quotechar='\0').replace(escape_char, '')
         # subprocess.run accepts the input param to pass to the bash call!
-        if to_bam:
-            run(f"samtools view -h --no-PG -b - > {output_path}",
-                input=buffer.encode('utf-8'), shell=True)
+        if output_path:
+            if to_bam:
+                run(f"samtools view -h --no-PG -b - > {output_path}",
+                    input=buffer.encode('utf-8'), shell=True)
+            else:
+                run(f"samtools view -h --no-PG - > {output_path}",
+                    input=buffer.encode('utf-8'), shell=True)
         else:
-            run(f"samtools view -h --no-PG - > {output_path}",
-                input=buffer.encode('utf-8'), shell=True)
+            print(save_df)
+        return save_df
+
+    # def to_sam(self, output_path, escape_char="|", to_bam=False):
+    #     from subprocess import run
+    #     from csv import QUOTE_NONE
+    #     if escape_char not in "~}|":
+    #         raise NotImplementedError("escape_char has to be |, }, or ~. Everything else is in the Phred Quals!")
+    #     save_df = self.df.copy()
+    #     sam_tag_cols = [col for col in list(save_df.columns) if col.startswith("sam_tag|")]
+    #     for column in sam_tag_cols:
+    #         save_df[column] = column.split("|")[1] + ":" + save_df[column]
+    #     save_df["tags"] = save_df[sam_tag_cols].values.tolist()
+    #     save_df["tags"] = save_df["tags"].apply(lambda row: '\t'.join([x for x in row if str(x) != 'nan']))
+    #     save_df = save_df.drop(sam_tag_cols, axis=1)
+    #     temp_header = self.header + f"@CO\t{get_dt(for_print=True)}: Introduced edits with python . . . " \
+    #                                 f"More info hopefully added to this later!\n"
+    #     buffer = temp_header + save_df.to_csv(sep="\t",
+    #                                           header=False,
+    #                                           index=False,
+    #                                           quoting=QUOTE_NONE,
+    #                                           escapechar=escape_char,
+    #                                           quotechar='\0').replace(escape_char, '')
+    #     # subprocess.run accepts the input param to pass to the bash call!
+    #     if to_bam:
+    #         run(f"samtools view -h --no-PG -b - > {output_path}",
+    #             input=buffer.encode('utf-8'), shell=True)
+    #     else:
+    #         run(f"samtools view -h --no-PG - > {output_path}",
+    #             input=buffer.encode('utf-8'), shell=True)
 
     def to_bam(self, output_path):
-        self.to_sam(output_path, to_bam=True)
+        self.to_sam(output_path=output_path, to_bam=True)
 
 
 def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", file_midfix="mergedOnReads",
@@ -364,12 +481,15 @@ def save_sorted_bam_obj(bam_obj: BamHeadersAndDf, output_path: str,
 
 
 if __name__ == '__main__':
-    # test_sam_path = "./testInputs/pTRI_test.sorted.bam"
-    test_sam_path = "/data16/marcus/working/211101_nanoporeSoftLinks/" \
-                    "211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/" \
-                    "output_dir/cat_files/cat.sorted.mappedAndPrimary.sam"
-    sam = SamOrBamFile(test_sam_path, header_source=test_sam_path.rstrip('.sam')+'.bam')
-    sam.to_sam(test_sam_path + '.resave.sam', escape_char="~")
+    test_sam_path = "./testInputs/pTRI_test.sorted.bam"
+    # test_sam_path = "/data16/marcus/working/211101_nanoporeSoftLinks/" \
+    #                 "211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/" \
+    #                 "output_dir/cat_files/cat.sorted.mappedAndPrimary.sam"
+    sam = SamOrBamFile(test_sam_path,
+                       # subsample=50000,
+                       )
+    # sam.to_sam(test_sam_path + '.resave.sam', escape_char="~")
+    sam.to_sam(output_path=test_sam_path.rstrip('.sam') + '.resave.sam')
     print(sam)
     # fastq = FastqFile("./testOutputs/in.fastq")
     # fastq.save_to_fastq("./testOutputs/out.fastq")
