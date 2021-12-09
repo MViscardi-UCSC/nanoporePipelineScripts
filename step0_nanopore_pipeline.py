@@ -40,7 +40,7 @@ import warnings
 from tqdm import tqdm
 
 from nanoporePipelineCommon import find_newest_matching_file, get_dt, minimap_bam_to_df, \
-    FastqFile, gene_names_to_gene_ids, assign_w_josh_method
+    FastqFile, gene_names_to_gene_ids, assign_w_josh_method, SamOrBamFile
 
 import pandas as pd
 import numpy as np
@@ -656,84 +656,13 @@ def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
 def merge_results(**other_kwargs):
     def create_merge_df(outputDir, keep_multimaps=False, print_info=False, **kwargs) -> pd.DataFrame:
         # First lets get the biggest one out of the way, importing the concatenated sam file:
-        if not keep_multimaps:  # Pull the sam file that already had missed or secondaries dropped
-            print(f"Starting to load SAM file from: {outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam . . .",
-                  end="")
-            sam_df = pd.read_csv(f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam",
-                                 sep="\t", names=range(22), low_memory=False, index_col=False)
-        else:  # Otherwise: load the bam file that did not have those other reads dropped
-            # Loading the bam with my function is slightly slower, but at least hides
-            #   a good amount of the complicated bits!
-            print(f"Starting to load BAM file from: {outputDir}/cat_files/cat.sorted.bam . . .",
-                  end="")
-            sam_df = minimap_bam_to_df(f"{outputDir}/cat_files/cat.sorted.bam",
-                                       name_columns=False,
-                                       drop_secondaries_and_unmapped=False).df
-        print(f" Done!")
-        # And lets rename columns!
-        sam_header_names = ["read_id",  # string
-                            "bit_flag",  # uint16
-                            "chr_id",  # category
-                            "chr_pos",  # uint32
-                            "mapq",  # uint8
-                            "cigar",  # string
-                            "r_next",
-                            "p_next",
-                            "len",
-                            "sequence",  # string
-                            "phred_qual",  # string
-                            ]
-        extra_columns = ["num_mismatches",  # Keep, string
-                         "best_dp_score",
-                         "dp_score",
-                         "num_ambiguous_bases",
-                         "transcript_strand",  # Keep, string
-                         "type_of_alignment",  # Keep, category (by the end)
-                         "num_minimizes",
-                         "chain_score",  # This column onwards is inconsistent,
-                         "chain_score_top_secondary",  # b/c these are optional flags!
-                         "gap_compressed_divergence",
-                         "len_of_query_w_repeats"]
-        sam_header_names += extra_columns
-        sam_df = sam_df.rename(columns=dict(enumerate(sam_header_names)))
-
-        for minimap_flag_column in ["type_of_alignment", "transcript_strand", "num_mismatches"]:
-            sam_df[minimap_flag_column] = sam_df[minimap_flag_column].str.split(":").str[-1]
-
-        # Make a list of columns to drop:
-        extra_columns_to_drop = extra_columns + ["r_next", "p_next", "len"]
-        # Remove the columns I want to keep from this "drop list"
-        for col_to_keep in ["type_of_alignment", "transcript_strand", "num_mismatches"]:
-            extra_columns_to_drop.remove(col_to_keep)
-        # Drop the unsaved columns!
-        sam_df = sam_df.drop(extra_columns_to_drop, axis=1)
-
-        # Set dataframe column datatypes!
-        # datatypes to use:
-        o = "object"  # this could eventually be pd.StringDtype
-        c = "category"
-        ui8 = "uint8"
-        ui16 = "uint16"
-        ui32 = "uint32"
-
-        df_dtypes = {"read_id": o,  # string
-                     "bit_flag": ui16,  # uint16
-                     "chr_id": c,  # category
-                     "chr_pos": ui32,  # uint32
-                     "mapq": ui8,  # uint8
-                     "cigar": o,  # string
-                     "sequence": o,  # string
-                     "phred_qual": o,  # string
-                     "num_mismatches": ui32,  # uint32, after parsing
-                     "transcript_strand": c,  # category, after parsing. I don't really know what this column is...
-                     #                              ALL of the values here are "+"?
-                     "type_of_alignment": c,  # category, after parsing
-                     }
-        sam_df = sam_df.astype(df_dtypes)
+        # 12/09/21: New SamOrBam class makes this wayyyy easier. Only downside is that
+        #           it keeps all the flags I couldn't care less about!!
+        sam_df = SamOrBamFile(f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam").df
 
         # Pull the 16 bit flag to get strand information (important for merge w/ featC later)
         sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-", 0: "+"})
-        sam_df = sam_df.astype({"strand": c})
+        sam_df = sam_df.astype({'strand': 'category'})
 
         if keep_multimaps:
             # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
@@ -798,6 +727,8 @@ def merge_results(**other_kwargs):
         merge_df = merge_df[merge_df["sequence"] != "*"]
         # Dropping terrible mapq scored reads, I don't think there are very many of these at all(?)
         merge_df = merge_df[merge_df["mapq"] != 0]
+        
+        merge_df['read_length'] = merge_df['sequence'].str.apply(len)
         if print_info:
             print("\n\n")
             print("#" * 100)
@@ -814,7 +745,8 @@ def merge_results(**other_kwargs):
                           output_to_file=True, **kwargs) -> pd.DataFrame:
         # This creates a pandas "groupby" object that can be used to extract info compressed on gene_ids
         print("\nMerging information from Minimap2, featureCounts and Nanopolish-PolyA:")
-        merged_df["read_length"] = merged_df["sequence"].str.len()
+        if 'read_length' not in list(merged_df.columns):
+            merged_df["read_length"] = merged_df["sequence"].str.len()
         grouped_genes = merged_df.groupby("gene_id")
 
         gene_df = grouped_genes["read_id"].apply(len).to_frame(name="read_hits")
