@@ -38,8 +38,8 @@ import numpy as np
 import pandas as pd
 import regex as re
 
-from step0_nanopore_pipeline import find_newest_matching_file, get_dt, gene_names_to_gene_ids
-from nanoporePipelineCommon import find_newest_matching_file, get_dt, assign_w_josh_method
+from nanoporePipelineCommon import find_newest_matching_file, get_dt, assign_w_josh_method,\
+    gene_names_to_gene_ids, load_read_assignment_allChrs_txt
 
 
 def load_reads_parquet(read_parquet, head=None) -> pd.DataFrame:
@@ -76,42 +76,6 @@ def _flip_neg_strand_genes(chr_position: int, cigar: str, strand: str) -> int:
                 mnd_nums.append(numbers[i])
         read_end = chr_position + sum(mnd_nums)
         return read_end
-
-
-def load_read_assignment_tsv(assignment_file_tsv, save_file=True) -> pd.DataFrame:
-    print(f"Loading read assignment file from: {assignment_file_tsv} ", end="")
-    df = pd.read_csv(assignment_file_tsv, sep="\t",
-                     names=["chr_pos", "gene_id_strand", "transcript_ids"])
-    print(". ", end="")
-    df[["chr_id", "chr_pos"]] = df["chr_pos"].str.split("_", expand=True)
-    print(". ", end="")
-    df[["gene_id", "strand"]] = df["gene_id_strand"].str.split(":", expand=True)
-    print(". ", end="")
-    df.drop(columns="gene_id_strand", inplace=True)
-    print(". ", end="")
-    df["transcript_id"] = df["transcript_ids"].str.split("|")
-    print(". ", end="")
-    df = df.explode("transcript_id", ignore_index=True)
-    print(". ", end="")
-    df.drop(columns="transcript_ids", inplace=True)
-    print(". ", end="")
-    df[["transcript_id", "to_start", "to_stop"]] = df["transcript_id"].str.split(":", expand=True)
-    print(". ", end="")
-    df = df.astype({"chr_pos": "int32",
-                    "to_start": "int32",
-                    "to_stop": "int32",
-                    "strand": "category",
-                    "chr_id": "category",
-                    })
-    print(". ", end="")
-    df = df[["chr_id", "chr_pos", "gene_id", "strand", "transcript_id", "to_start", "to_stop"]]
-    print(". ", end="")
-    if save_file:
-        parquet_path = assignment_file_tsv.rstrip(".txt") + ".parquet"
-        df.to_parquet(parquet_path)
-        print("(saved parquet) ", end="")
-    print(". ")
-    return df
 
 
 def plotly_cdf(cdf_values, x_values):

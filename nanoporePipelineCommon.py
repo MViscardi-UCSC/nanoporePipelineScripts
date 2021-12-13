@@ -282,6 +282,19 @@ class SamOrBamFile:
         self.to_sam(output_path=output_path, to_bam=True)
 
 
+def sam_or_bam_class_testing():
+    test_sam_path = "./testInputs/pTRI_test.sorted.bam"
+    # test_sam_path = "/data16/marcus/working/211101_nanoporeSoftLinks/" \
+    #                 "211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/" \
+    #                 "output_dir/cat_files/cat.sorted.mappedAndPrimary.sam"
+    sam = SamOrBamFile(test_sam_path,
+                       # subsample=50000,
+                       )
+    # sam.to_sam(test_sam_path + '.resave.sam', escape_char="~")
+    sam.to_sam(output_path=test_sam_path.rstrip('.sam') + '.resave.sam')
+    print(sam)
+
+
 def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", file_midfix="mergedOnReads",
                                 output_dir_folder="merge_files", return_all: bool = False) -> dict:
     output_dir_dict = {
@@ -295,6 +308,8 @@ def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", fi
         "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/output_dir",
         "xrn-1-5tera": "/data16/marcus/working/211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/output_dir",
         "pTRI-stds": "/data16/marcus/working/211121_nanoporeRun_pTRIstds/output_dir",
+        "xrn-1-5tera-smg-6": "/data16/marcus/working/211210_nanoporeRun_totalRNA_2102_xrn-1-KD_5TERA/output_dir",
+        "pTRI-stds-tera3": "/data16/marcus/working/211212_nanoporeRun_pTRIstds_TERA3",
     }
     if return_all:
         lib_list = output_dir_dict.keys()
@@ -325,11 +340,20 @@ def assign_w_josh_method(reads_df, genomeDir):
     def merge_on_chr_pos(read_assignment_df: pd.DataFrame, reads_df: pd.DataFrame) -> pd.DataFrame:
         print(f"Merging read assignments and reads at {get_dt(for_print=True)}")
         merge_df = reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
-                                  how="left", suffixes=("_fromReads",
-                                                        "_fromAssign"))
+                                  how="left", suffixes=("_fromFeatureCounts",
+                                                        ""))
         # merge_df = merge_df[~(merge_df.gene_id_fromReads.isna() & merge_df.gene_id_fromAssign.isna())]
         # below call drops reads that don't get assigned by Josh's tool
-        merge_df = merge_df[~merge_df.gene_id_fromAssign.isna()]
+        print(f"Reads unassigned by Josh method: {merge_df[~merge_df.gene_id.isna()].shape[0]} "
+              f"/{merge_df.shape[0]}, [Dropping these!]")
+        merge_df = merge_df[~merge_df.gene_id.isna()]
+        
+        print(f"Reads with different assignments between Josh method and FeatureCounts: "
+              f"{merge_df[merge_df.strand_fromReads != merge_df.strand_fromAssign].shape[0]} "
+              f"/{merge_df.shape[0]}, [Dropping these!]")
+        print(f"Reads with the same assignments between Josh method and FeatureCounts: "
+              f"{merge_df[merge_df.strand_fromReads == merge_df.strand_fromAssign].shape[0]} "
+              f"/{merge_df.shape[0]}, [Dropping these!]")
         merge_df = merge_df[merge_df.strand_fromReads == merge_df.strand_fromAssign]
         print(f"Done merging at {get_dt(for_print=True)}")
         return merge_df
@@ -480,17 +504,44 @@ def save_sorted_bam_obj(bam_obj: BamHeadersAndDf, output_path: str,
         run(f'samtools index {output_path}.sorted.bam', shell=True)
 
 
+def load_read_assignment_allChrs_txt(assignment_file_txt, save_file=True) -> pd.DataFrame:
+    # Script to load josh's read assignment file from the *.allChrs.txt format,
+    # it can return a dataframe, but it will also (optionally) save a new parquet file!
+    print(f"Loading read assignment file from: {assignment_file_txt} ", end="")
+    df = pd.read_csv(assignment_file_txt, sep="\t",
+                     names=["chr_pos", "gene_id_strand", "transcript_ids"])
+    print(". ", end="")
+    df[["chr_id", "chr_pos"]] = df["chr_pos"].str.split("_", expand=True)
+    print(". ", end="")
+    df[["gene_id", "strand"]] = df["gene_id_strand"].str.split(":", expand=True)
+    print(". ", end="")
+    df.drop(columns="gene_id_strand", inplace=True)
+    print(". ", end="")
+    df["transcript_id"] = df["transcript_ids"].str.split("|")
+    print(". ", end="")
+    df = df.explode("transcript_id", ignore_index=True)
+    print(". ", end="")
+    df.drop(columns="transcript_ids", inplace=True)
+    print(". ", end="")
+    df[["transcript_id", "to_start", "to_stop"]] = df["transcript_id"].str.split(":", expand=True)
+    print(". ", end="")
+    df = df.astype({"chr_pos": "int32",
+                    "to_start": "int32",
+                    "to_stop": "int32",
+                    "strand": "category",
+                    "chr_id": "category",
+                    })
+    print(". ", end="")
+    df = df[["chr_id", "chr_pos", "gene_id", "strand", "transcript_id", "to_start", "to_stop"]]
+    print(". ", end="")
+    if save_file:
+        parquet_path = assignment_file_txt.rstrip(".txt") + ".parquet"
+        df.to_parquet(parquet_path)
+        print("(saved parquet) ", end="")
+    print(". ")
+    return df
+
+
 if __name__ == '__main__':
-    test_sam_path = "./testInputs/pTRI_test.sorted.bam"
-    # test_sam_path = "/data16/marcus/working/211101_nanoporeSoftLinks/" \
-    #                 "211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/" \
-    #                 "output_dir/cat_files/cat.sorted.mappedAndPrimary.sam"
-    sam = SamOrBamFile(test_sam_path,
-                       # subsample=50000,
-                       )
-    # sam.to_sam(test_sam_path + '.resave.sam', escape_char="~")
-    sam.to_sam(output_path=test_sam_path.rstrip('.sam') + '.resave.sam')
-    print(sam)
-    # fastq = FastqFile("./testOutputs/in.fastq")
-    # fastq.save_to_fastq("./testOutputs/out.fastq")
-    # print(fastq)
+    load_read_assignment_allChrs_txt('/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/'
+                                     '210928_allChrs_plus-pTRI.allChrs.txt')
