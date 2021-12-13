@@ -357,8 +357,8 @@ def assign_w_josh_method(reads_df, genomeDir):
         merge_df = merge_df[merge_df.strand_fromReads == merge_df.strand_fromAssign]
         print(f"Done merging at {get_dt(for_print=True)}")
         return merge_df
-
-    read_assignments_df = load_read_assignments(f"{genomeDir}/Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
+    read_assignments_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
+    read_assignments_df = load_read_assignments(read_assignments_path)
     print("Finished loading files!")
     # for df in [reads_df, read_assignments_df]:
     #     print(df.info())
@@ -366,10 +366,10 @@ def assign_w_josh_method(reads_df, genomeDir):
     return merged_df
 
 
-def gene_names_to_gene_ids(tsv_path: str = "/data16/marcus/genomes/elegansRelease100"
+def gene_names_to_gene_ids(parquet_path: str = "/data16/marcus/genomes/elegansRelease100"
                                            "/Caenorhabditis_elegans.WBcel235.100.gtf"
-                                           ".tsv") -> pd.DataFrame:
-    df = pd.read_csv(tsv_path, sep="\t")[["gene_name", "gene_id"]].drop_duplicates(ignore_index=True)
+                                           ".parquet") -> pd.DataFrame:
+    df = pd.read_parquet(parquet_path)[["gene_name", "gene_id"]].drop_duplicates(ignore_index=True)
     return df
 
 
