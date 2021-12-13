@@ -128,6 +128,9 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
         parser.add_argument('--tera5adapter', metavar='tera5adapter',
                             type=int, default=None,
                             help="Adapter to be trimmed for 5TERA [None]")
+        parser.add_argument('--extraGuppyOptions', metavar='extraGuppyOptions',
+                            type=int, default=None,
+                            help="String flags/options to be added to the gupy_basecaller call [None]")
         # Flag Arguments
         parser.add_argument('-p', '--printArgs', action='store_true',
                             help="Boolean flag to show how arguments are overwritten/accepted")
@@ -137,6 +140,9 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
         parser.add_argument('-r', '--regenerate', action='store_true',
                             help="Boolean flag to ignore previously produced files "
                                  "and generate all files anew")
+        parser.add_argument('--callWithJoshMethod', action='store_true',
+                            help="Boolean flag to use Josh's read assignment method, rather"
+                                 "than FeatureCounts")
         # parser.add_argument('-A', '--altGenomeProcessing', action='store_true',
         #                     help="Boolean flag to ")
 
@@ -202,7 +208,9 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                            minimapParam="-x splice -uf -k14",
                            guppyConfig="rna_r9.4.1_70bps_hac.cfg",
                            tera3adapter=False,
-                           tera5adapter=False)
+                           tera5adapter=False,
+                           extraGuppyOptions=False,
+                           callWithJoshMethod=False)
     if skip_cli_dict:
         argDict = skip_cli_dict
     else:
@@ -217,10 +225,10 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
 
     # Absolute defaults overwritten by settings.txt then overwritten by CLI args
     for key, arg in finalArgDict.items():
-        print(f"\t{key} = {arg}")
-        if finalArgDict[key] == "True":
+        print(f"\t{key} = {arg}\t->", end="\t")
+        if finalArgDict[key] == "True" or finalArgDict[key] is True:
             finalArgDict[key] = True
-        elif finalArgDict[key] == "False":
+        elif finalArgDict[key] == "False" or finalArgDict[key] is False:
             finalArgDict[key] = False
         elif key == "altGenomeDirs":
             finalArgDict[key] = list(arg)
@@ -229,6 +237,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                 finalArgDict[key] = int(arg)
             except ValueError or TypeError:
                 finalArgDict[key] = str(arg)
+        print(f"{key} = {arg}")
     return finalArgDict
 
 
@@ -262,13 +271,17 @@ def buildOutputDirs(stepsToRun, **kwargs) -> None:
 # Step1: Trigger Docker Container which will do the actual guppy base-calling
 #        (eventually I'll want to have this function outside of docker!)
 #################################################################################
-def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, **other_kwargs):
+def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, extraGuppyOptions, **other_kwargs):
     # TODO: I may need to change the --trim_strategy for TERA3!! add an param here for tera3adapter,
     #       if that param is not None, than I'll probably want to add the '--trim_strategy none'!!
     prev_cat_fastq = path.exists(f"{outputDir}/cat_files/cat.fastq")
     if regenerate or not prev_cat_fastq:
         guppy_log = f"{outputDir}/logs/{get_dt()}_guppy.log"
-        call = rf"""guppy_basecaller -x "cuda:0" --num_callers 12 --gpu_runners_per_device 8 """ \
+        if isinstance(extraGuppyOptions, str):
+            extra_guppy_options = extraGuppyOptions + " "
+        else:
+            extra_guppy_options = ""
+        call = rf"""guppy_basecaller -x "cuda:0" {extra_guppy_options}--num_callers 12 --gpu_runners_per_device 8 """ \
                rf"""-c {guppyConfig} -i {dataDir}/fast5 -s {outputDir}/fastqs """ \
                rf"""2>&1 | tee {guppy_log}"""
         print(f"Starting Guppy Basecalling with GPU @ {get_dt(for_print=True)}. . .\n"
@@ -638,7 +651,9 @@ def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
 
 
 def merge_results(**other_kwargs):
-    def create_merge_df(outputDir, keep_multimaps=False, print_info=False, **kwargs) -> pd.DataFrame:
+    def create_merge_df(outputDir, callWithJoshMethod, stepsToRun,
+                        keep_multimaps=False, print_info=False,
+                        **kwargs) -> pd.DataFrame:
         # First lets get the biggest one out of the way, importing the concatenated sam file:
         # 12/09/21: New SamOrBam class makes this wayyyy easier. Only downside is that
         #           it keeps all the flags I couldn't care less about!!
@@ -654,16 +669,18 @@ def merge_results(**other_kwargs):
         else:
             # This shouldn't be dropping AS MANY reads now because I dumped secondary alignments with samtools
             sam_df = sam_df[~sam_df.duplicated(subset="read_id", keep=False)]
-
-        # Next lets pull in the featureCounts results
-        featc_df = pd.read_csv(f"{outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts",
-                               sep="\t", names=["read_id", "qc_tag_featc", "qc_pass_featc", "gene_id"])
-        # Some reads will be ambiguously assigned to two different genes, for now I will drop these assignments (~1%):
-        featc_df = featc_df.drop_duplicates()
-        featc_df = featc_df[~featc_df.read_id.duplicated(keep=False)]  # The ~ inverts the filter :)
-        # We can also load the gene_names dataframe and add it to the featureCounts one
-        names_df = gene_names_to_gene_ids()
-        featc_df = featc_df.merge(names_df, on="gene_id", how="left")
+        
+        if 'F' in stepsToRun:
+            # Next lets pull in the featureCounts results
+            featc_df = pd.read_csv(f"{outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts",
+                                   sep="\t", names=["read_id", "qc_tag_featc", "qc_pass_featc", "gene_id"])
+            # Some reads will be ambiguously assigned to two different genes,
+            #   for now I will drop these assignments (~1%):
+            featc_df = featc_df.drop_duplicates()
+            featc_df = featc_df[~featc_df.read_id.duplicated(keep=False)]  # The ~ inverts the filter :)
+            # We can also load the gene_names dataframe and add it to the featureCounts one
+            names_df = gene_names_to_gene_ids()
+            featc_df = featc_df.merge(names_df, on="gene_id", how="left")
 
         # Load up nanopolish polyA results (also a population of duplicates here!!)
         polya_df = pd.read_csv(f"{outputDir}/nanopolish/polya.passed.tsv", sep="\t")
@@ -677,8 +694,9 @@ def merge_results(**other_kwargs):
             print("#" * 100)
             print(f"\n\nSAM Dataframe info:")
             print(sam_df.info())
-            print(f"\n\nfeatureCounts Dataframe info:")
-            print(featc_df.info())
+            if 'F' in stepsToRun:
+                print(f"\n\nfeatureCounts Dataframe info:")
+                print(featc_df.info())
             print(f"\n\nPolyA Dataframe info:")
             print(polya_df.info())
         # LETS SMOOSH THEM ALL TOGETHER!!!
@@ -705,38 +723,50 @@ def merge_results(**other_kwargs):
         # These steps now retain reads w/out gene assignments or polyA tail calls!
         #   This filtering should be easy to do in later scripts.
         sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
-        merge_df = sam_featc_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
-        merge_df = merge_df.drop_duplicates()
+        merge_reads_df = sam_featc_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
+        merge_reads_df = merge_reads_df.drop_duplicates()
         # Dropping unmapped reads, after the addition of the -F 0x904 with samtools this should do nothing
-        merge_df = merge_df[merge_df["sequence"] != "*"]
+        merge_reads_df = merge_reads_df[merge_reads_df["sequence"] != "*"]
         # Dropping terrible mapq scored reads, I don't think there are very many of these at all(?)
-        merge_df = merge_df[merge_df["mapq"] != 0]
+        merge_reads_df = merge_reads_df[merge_reads_df["mapq"] != 0]
         
-        merge_df['read_length'] = merge_df['sequence'].str.apply(len)
+        if callWithJoshMethod:
+            print(f"Using Josh's read assignment method w/ 5'ends!")
+            read_assignment_df = pd.read_parquet(f"/data16/marcus/genomes/elegansRelease100/"
+                                                 f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
+            merge_reads_df = merge_reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
+                                                  how="left", suffixes=["_fromFeatureCounts",
+                                                                        ""])
+            print(f"Reads that have matching ")
+        
+        merge_reads_df['read_length'] = merge_reads_df['sequence'].apply(len)
         if print_info:
             print("\n\n")
             print("#" * 100)
             print(f"\n\nMerged Dataframe info:")
-            print(merge_df.info())
+            print(merge_reads_df.info())
         merge_out_file = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads"
         print(f"Saving compressed on reads files to:\n\t{merge_out_file} + .parquet/.tsv")
-        merge_df.to_csv(merge_out_file + ".tsv", sep="\t", index=False)
+        merge_reads_df.to_csv(merge_out_file + ".tsv", sep="\t", index=False)
         # Added 10/28/2021: Parquet files are SOOOOOO much lighter and faster
-        merge_df.to_parquet(merge_out_file + ".parquet")
-        return merge_df
+        merge_reads_df.to_parquet(merge_out_file + ".parquet")
+        return merge_reads_df
 
-    def compress_on_genes(merged_df, outputDir, dropGeneWithHitsLessThan=None,
-                          output_to_file=True, **kwargs) -> pd.DataFrame:
+    def compress_on_genes(merged_df, outputDir, callWithJoshMethod,
+                          dropGeneWithHitsLessThan=None, output_to_file=True,
+                          **kwargs) -> pd.DataFrame:
         # This creates a pandas "groupby" object that can be used to extract info compressed on gene_ids
         print("\nMerging information from Minimap2, featureCounts and Nanopolish-PolyA:")
         if 'read_length' not in list(merged_df.columns):
             merged_df["read_length"] = merged_df["sequence"].str.len()
-        grouped_genes = merged_df.groupby("gene_id")
+        for adapter_col in ['t5', 't3']:
+            if adapter_col in merged_df.columns:
+                merged_df[adapter_col].replace({'+': 1, '-': 0}, inplace=True)
+        grouped_genes = merged_df.groupby(["gene_id", "gene_name"])
 
         gene_df = grouped_genes["read_id"].apply(len).to_frame(name="read_hits")
         gene_df["read_ids"] = grouped_genes["read_id"].apply(list).to_frame(name="read_ids")
 
-        merged_df["read_length"] = merged_df["sequence"].str.len()
         gene_df["read_len_mean"] = grouped_genes["read_length"].apply(np.mean).to_frame(name="read_len_mean")
         gene_df["read_len_std"] = grouped_genes["read_length"].apply(np.std).to_frame(name="read_len_std")
         gene_df["read_lengths"] = grouped_genes["read_length"].apply(list).to_frame(name="read_lengths")
@@ -747,6 +777,10 @@ def merge_results(**other_kwargs):
 
         gene_df["genomic_starts"] = grouped_genes["chr_pos"].apply(list).to_frame(name="genomic_starts")
         gene_df["cigars"] = grouped_genes["cigar"].apply(list).to_frame(name="cigars")
+
+        for adapter_col in ['t5', 't3']:
+            if adapter_col in merged_df.columns:
+                gene_df[f"{adapter_col}_fraction"] = grouped_genes[adapter_col].sum() / grouped_genes[adapter_col].apply(list).apply(len)
 
         if dropGeneWithHitsLessThan:
             print(f"Dropping any genes with less than {dropGeneWithHitsLessThan} read hits")
@@ -936,6 +970,7 @@ def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
 def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
     return_value = None
     buildOutputDirs(stepsToRun, **kwargs)
+    kwargs['stepsToRun'] = stepsToRun
 
     # Current default is [GMNCFPS]
     steps_dict = {"G": [guppy_basecall_w_gpu, "Guppy Basecalling"],
