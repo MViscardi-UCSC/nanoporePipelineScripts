@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
 
-from nanoporePipelineCommon import pick_libs_return_paths_dict, gene_names_to_gene_ids
+from nanoporePipelineCommon import pick_libs_return_paths_dict, gene_names_to_gene_ids, load_ski_pelo_targets
 
 import pandas as pd
 
@@ -38,7 +38,7 @@ def quick_test():
     print("Done!")
 
 
-def load_libraries(per_gene_cutoff=25):
+def load_libraries(per_gene_cutoff=25, ski_pelo_col=True):
     smg_6 = "xrn-1-5tera-smg-6"
     wt = "xrn-1-5tera"
     decode_dict = {smg_6: "smg-6",
@@ -65,6 +65,10 @@ def load_libraries(per_gene_cutoff=25):
     merge_df['t5_read_count_6'] = merge_df['t5_fraction_6'] * merge_df['read_hits_6']
     merge_df['t5_total_reads'] = merge_df['t5_read_count_wt'] + merge_df['t5_read_count_6']
     merge_df['fraction_of_t5_from_wt'] = merge_df['t5_read_count_wt'] / merge_df['t5_total_reads']
+    
+    if ski_pelo_col:
+        ski_pelo_list = load_ski_pelo_targets()
+        merge_df['ski_pelo_targ'] = merge_df.gene_id.isin(ski_pelo_list)
     
     for suffix in ("_6", "_wt"):
         merge_df = merge_df[merge_df[f'read_hits{suffix}'] >= per_gene_cutoff]
@@ -165,9 +169,9 @@ def with_dash_for_click_to_copy():
         plot_df = merge_df[merge_df["read_hits_wt"] >= min_hits]
         plot_df = plot_df[plot_df["read_hits_6"] >= min_hits]
         fig = px.scatter(plot_df,
-                         # x="total_read_counts", y="t5_fraction_diff",
-                         x='t5_total_reads', y='fraction_of_t5_from_wt',
-                         color="t5_fraction_mean",
+                         x="total_read_counts", y="t5_fraction_diff",
+                         # x='t5_total_reads', y='fraction_of_t5_from_wt',
+                         color="ski_pelo_targ",
                          hover_name="gene_name", hover_data=["gene_id",
                                                              "read_hits_6",
                                                              "read_hits_wt",
@@ -190,7 +194,8 @@ def with_dash_for_click_to_copy():
             return "No points selected"
         return_data = []
         for point_dict in selectedData['points']:
-            gene_id, gene_name, x_counts, y_counts, _, _, _ = point_dict['customdata']
+            gene_id, gene_name = point_dict['customdata'][0:2]
+            print(point_dict['customdata'])
             return_data.append({'Gene Name': gene_name,
                                 'Gene ID': gene_id})
         return json.dumps(return_data, indent=2)
@@ -202,7 +207,7 @@ def with_dash_for_click_to_copy():
          Input('btn-nclicks-3', 'n_clicks'),
          Input('primary-scatter', 'figure'),
          Input('primary-scatter', 'selectedData')])
-    def save_button_click(pop_gene_id, pop_gene_name, open_worm_base, scatter_fig, selectedData):
+    def button_click(gene_id, gene_name, open_worm_base, scatter_fig, selectedData):
         changed_id = [p['prop_id'] for p in callback_context.triggered][0]
         if not selectedData:
             return_data = {'gene_name': [],
@@ -211,17 +216,17 @@ def with_dash_for_click_to_copy():
             return_data = {'gene_name': [],
                            'gene_id': []}
             for point_dict in selectedData['points']:
-                gene_id, gene_name, _, _, _, _, _ = point_dict['customdata']
+                gene_id, gene_name = point_dict['customdata'][0:2]
                 return_data["gene_name"].append(gene_name)
                 return_data["gene_id"].append(gene_id)
-        if 'btn-nclicks-1' in changed_id:
+        if 'btn-nclicks-2' in changed_id:
             msg = 'Copy gene_id'
             # print(scatter_fig)
             if len(return_data['gene_name']) == 1:
                 pyperclip.copy(return_data['gene_name'][0])
             elif len(return_data['gene_name']) > 1:
                 pyperclip.copy(', '.join(return_data['gene_name']))
-        elif 'btn-nclicks-2' in changed_id:
+        elif 'btn-nclicks-1' in changed_id:
             msg = 'Copy gene_name'
             if len(return_data['gene_id']) == 1:
                 pyperclip.copy(return_data['gene_id'][0])
