@@ -221,18 +221,18 @@ def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str 
 
 if __name__ == '__main__':
 
-    run_with = ["polyA2", "totalRNA2", "polyA"]
+    run_with = ["xrn-1-5tera-smg-6", "xrn-1-5tera"]
 
     pathdict = pick_libs_return_paths_dict(run_with, file_suffix="parquet", file_midfix="compressedOnGenes_simple")
 
-    cutoff = 40
+    cutoff = 25
 
     prefix_dict = {1: "read_hits",
                    2: "hits_rank",
                    3: "read_len_mean",
                    4: "polya_mean"}
     
-    prefix = prefix_dict[2]
+    prefix = prefix_dict[1]
     
     color_by_dict = {0: None,
                      1: "read_len_mean_mean",
@@ -247,11 +247,11 @@ if __name__ == '__main__':
                      10: "tail_length_mean_mean"
                      }
     
-    color_by = color_by_dict[0]
+    color_by = color_by_dict[9]
     
     drop_mtDNA = False
-    drop_gcLess = True
-    trend_line = False
+    drop_gcLess = False
+    trend_line = True
     save_directory = f"/home/marcus/Documents/{get_dt(for_file=True)}_plotlyFigures"
     
     if len(pathdict.keys()) == 3:
