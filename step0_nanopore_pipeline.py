@@ -140,7 +140,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
         parser.add_argument('-r', '--regenerate', action='store_true',
                             help="Boolean flag to ignore previously produced files "
                                  "and generate all files anew")
-        parser.add_argument('--callWithJoshMethod', action='store_true',
+        parser.add_argument('-j', '--callWithJoshMethod', action='store_true',
                             help="Boolean flag to use Josh's read assignment method, rather"
                                  "than FeatureCounts")
         # parser.add_argument('-A', '--altGenomeProcessing', action='store_true',
@@ -645,13 +645,13 @@ def feature_counts(genomeDir, outputDir, regenerate, threads, **other_kwargs):
         live_cmd_call(filter_call)
         print(f"\n\nFinished filtering at {get_dt(for_print=True)}")
     else:
-        print(f"\n\nPost calling processing already occurred. Based on file at:"
+        print(f"\n\nfeatureCounts already occurred. Based on file at:"
               f"\n\t{outputDir}/featureCounts/[...]\n"
               f"Use the regenerate tag if you want to rerun featureCounts.\n")
 
 
 def merge_results(**other_kwargs):
-    def create_merge_df(outputDir, callWithJoshMethod, stepsToRun,
+    def create_merge_df(outputDir, callWithJoshMethod, stepsToRun, genomeDir,
                         keep_multimaps=False, print_info=False,
                         **kwargs) -> pd.DataFrame:
         # First lets get the biggest one out of the way, importing the concatenated sam file:
@@ -662,7 +662,7 @@ def merge_results(**other_kwargs):
         # Pull the 16 bit flag to get strand information (important for merge w/ featC later)
         sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-", 0: "+"})
         sam_df = sam_df.astype({'strand': 'category'})
-
+        sam_df = adjust_5_ends(sam_df, genomeDir, outputDir, save_file=False)
         if keep_multimaps:
             # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
             sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
@@ -722,8 +722,11 @@ def merge_results(**other_kwargs):
 
         # These steps now retain reads w/out gene assignments or polyA tail calls!
         #   This filtering should be easy to do in later scripts.
-        sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
-        merge_reads_df = sam_featc_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
+        if "F" in stepsToRun:
+            sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
+            merge_reads_df = sam_featc_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
+        else:
+            merge_reads_df = sam_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
         merge_reads_df = merge_reads_df.drop_duplicates()
         # Dropping unmapped reads, after the addition of the -F 0x904 with samtools this should do nothing
         merge_reads_df = merge_reads_df[merge_reads_df["sequence"] != "*"]
@@ -732,12 +735,26 @@ def merge_results(**other_kwargs):
         
         if callWithJoshMethod:
             print(f"Using Josh's read assignment method w/ 5'ends!")
-            read_assignment_df = pd.read_parquet(f"/data16/marcus/genomes/elegansRelease100/"
-                                                 f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
+            read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
+            read_assignment_df = pd.read_parquet(read_assignment_path)
+            names_df = gene_names_to_gene_ids()
+            read_assignment_df = read_assignment_df.merge(names_df, on="gene_id", how="left")
+            # The below step is very important as it removes the transcript_id info,
+            #   which helps to prevent multiple assignments for the same read position!!
+            read_assignment_df = read_assignment_df.drop(columns=['transcript_id',
+                                                                  'to_start',
+                                                                  'to_stop']).drop_duplicates()
             merge_reads_df = merge_reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
                                                   how="left", suffixes=["_fromFeatureCounts",
                                                                         ""])
-            print(f"Reads that have matching ")
+            if 'F' in stepsToRun:
+                print(f"Reads that have matching assignments: "
+                      f"{merge_reads_df[merge_reads_df.gene_id == merge_reads_df.gene_id_fromFeatureCounts].shape[0]}/"
+                      f"{merge_reads_df.shape[0]}")
+            print(f"Reads without Josh assignments: "
+                  f"{merge_reads_df[merge_reads_df.gene_id.isna()].shape[0]}/"
+                  f"{merge_reads_df.shape[0]}")
+            print(f"For now (as of 12/13/2021) I'm keeping all of the above!")
         
         merge_reads_df['read_length'] = merge_reads_df['sequence'].apply(len)
         if print_info:
@@ -745,6 +762,9 @@ def merge_results(**other_kwargs):
             print("#" * 100)
             print(f"\n\nMerged Dataframe info:")
             print(merge_reads_df.info())
+        if "gene_id" not in merge_reads_df.columns:
+            raise NotImplementedError(f"Not genes_ids mapped! Please either run featureCounts,"
+                                      f"or use the -j option to allow for using Josh's read assignment method!")
         merge_out_file = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads"
         print(f"Saving compressed on reads files to:\n\t{merge_out_file} + .parquet/.tsv")
         merge_reads_df.to_csv(merge_out_file + ".tsv", sep="\t", index=False)
@@ -764,7 +784,8 @@ def merge_results(**other_kwargs):
                 merged_df[adapter_col].replace({'+': 1, '-': 0}, inplace=True)
         grouped_genes = merged_df.groupby(["gene_id", "gene_name"])
 
-        gene_df = grouped_genes["read_id"].apply(len).to_frame(name="read_hits")
+        # This next step now uses set rather than list, to ensure we count each read only once!!
+        gene_df = grouped_genes["read_id"].apply(set).apply(len).to_frame(name="read_hits")
         gene_df["read_ids"] = grouped_genes["read_id"].apply(list).to_frame(name="read_ids")
 
         gene_df["read_len_mean"] = grouped_genes["read_length"].apply(np.mean).to_frame(name="read_len_mean")
@@ -787,6 +808,7 @@ def merge_results(**other_kwargs):
             gene_df = gene_df[gene_df["read_hits"] >= dropGeneWithHitsLessThan]
         gene_df.sort_values("read_hits", ascending=False, inplace=True)
         # print(f"Mean PolyA Length: {gene_df['polya_mean'].mean():.3f}")
+        gene_df.reset_index(inplace=True)
 
         if output_to_file:
             filename = f"{get_dt(for_file=True)}_compressedOnGenes"
@@ -808,9 +830,9 @@ def merge_results(**other_kwargs):
     merge_df = create_merge_df(**other_kwargs)
     print(f"\n\nFinished merging all data at {get_dt(for_print=True)}")
     print(f"Starting to compress data on genes at {get_dt(for_print=True)}\n")
-    gene_df = compress_on_genes(merge_df, **other_kwargs)
+    genes_df = compress_on_genes(merge_df, **other_kwargs)
     print(f"\n\nFinished compressing data on genes at {get_dt(for_print=True)}")
-    return merge_df, gene_df
+    return merge_df, genes_df
 
 
 def flair(outputDir, **other_kwargs):
@@ -911,7 +933,7 @@ def extra_steps(outputDir, genomeDir, minimapParam, threads, df=None, **other_kw
     print(f"MiniMap2 Call: {call}")
 
 
-def adjust_5_ends(df, genomeDir, outputDir):
+def adjust_5_ends(df, genomeDir, outputDir, save_file=True):
     def _flip_neg_strand_genes(chr_position: int, cigar: str, strand: str) -> int:
         import regex as re
         if strand == "+":
@@ -934,15 +956,17 @@ def adjust_5_ends(df, genomeDir, outputDir):
         df = pd.read_parquet(path)
         print("Loaded.")
     if "original_chr_pos" not in df.columns.to_list():
-        print(f"\nMaking adjustments for 5' ends")
+        print(f"\nMaking adjustments for 5' ends (this is currently very, very slow...)")
         df["original_chr_pos"] = df["chr_pos"]
         df["chr_pos"] = df.apply(lambda read: _flip_neg_strand_genes(read["original_chr_pos"],
                                                                      read["cigar"],
                                                                      read["strand"]),
                                  axis=1)
-        print("(saved parquet w/ adjusted read_ends) ", end="")
-    merged_df = assign_w_josh_method(reads_df=df, genomeDir=genomeDir)
-    merged_df.to_parquet(f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReadsPlus.parquet")
+    if save_file:
+        print("Saving parquet w/ adjusted read_ends . . .")
+        merged_df = assign_w_josh_method(reads_df=df, genomeDir=genomeDir)
+        merged_df.to_parquet(f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReadsPlus.parquet")
+    return df
 
 
 def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):

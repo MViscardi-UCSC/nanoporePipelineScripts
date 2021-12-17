@@ -5,6 +5,7 @@ Marcus Viscardi,    September 22, 2021
 A common location for some often used methods.
 """
 import pandas as pd
+import numpy as np
 import os
 
 pd.set_option('display.width', 400)
@@ -125,50 +126,6 @@ class SamOrBamFile:
 
         self.df = self.__build_df__()
 
-    # def __build_df__(self):
-    #     from subprocess import check_output
-    #     from io import BytesIO
-    #     initial_read_cols = list(range(self.max_cols))
-    # 
-    #     # These numbered headers are the variably placed tags! Parse 'em later!
-    #     sam_header_names = self.sam_main_columns + list(range(11, self.max_cols))
-    # 
-    #     print(f"{get_dt(for_print=True)}: Starting to load sam file from: {self.path}")
-    #     if self.path.endswith('.bam'):
-    #         # First read the bam file into a tab-seperated string object:
-    #         output = check_output(f"samtools view {self.path}", shell=True)
-    # 
-    #         # Use pandas to load this string object into a dataframe
-    #         temp_df = pd.read_csv(BytesIO(output),
-    #                               encoding='utf8',
-    #                               sep="\t", names=initial_read_cols,
-    #                               low_memory=False, index_col=False,
-    #                               nrows=self.subsample,
-    #                               quotechar='\0',
-    #                               )
-    #     else:
-    #         temp_df = pd.read_csv(self.path, sep="\t", names=initial_read_cols,
-    #                               low_memory=False, index_col=False,
-    #                               skiprows=self.header_lines,
-    #                               nrows=self.subsample,
-    #                               quotechar='\0',
-    #                               )
-    #     print(f"SAM file loaded into a dataframe, starting tag parsing at {get_dt(for_print=True)}")
-    #     temp_df = temp_df.rename(columns=dict(enumerate(sam_header_names)))
-    #     temp_df = temp_df.fillna("*")
-    #     temp_df['tags_list'] = temp_df[list(range(11, self.max_cols))].values.tolist()
-    #     tags_df = temp_df['tags_list'].apply(lambda row: dict([(f"sam_tag|{tag_items[0]}:{tag_items[1]}", tag_items[2])
-    #                                                            for tag_items in
-    #                                                            [tag.split(':') for tag in row if tag != '*']])
-    #                                          ).apply(pd.Series)
-    #     final_df = pd.concat([temp_df.drop(['tags_list'], axis=1), tags_df],
-    #                          axis=1).drop(list(range(11, self.max_cols)), axis=1)
-    #     columns = list(final_df.columns)
-    #     new_columns = columns[:-2] + [columns[-1]] + [columns[-2]]
-    #     final_df = final_df.reindex(columns=new_columns)
-    #     print(f"Completed tag parsing at {get_dt(for_print=True)}")
-    #     return final_df
-
     def __build_df__(self):
         import simplesam as ssam
         from tqdm import tqdm
@@ -198,7 +155,7 @@ class SamOrBamFile:
         final_df = pd.DataFrame(sam_list_of_dicts)
         self.tag_columns = [col for col in final_df if col not in self.sam_main_columns]
         final_df = final_df[self.sam_main_columns + self.tag_columns]
-        
+
         # Filter the datatype dictionary, so we don't get errors from
         #   trying to retype columns that don't exist!
         self.dtype_dict = {k: v for k, v in self.dtype_dict.items() if k in list(final_df.columns)}
@@ -249,34 +206,6 @@ class SamOrBamFile:
         else:
             print(save_df)
         return save_df
-
-    # def to_sam(self, output_path, escape_char="|", to_bam=False):
-    #     from subprocess import run
-    #     from csv import QUOTE_NONE
-    #     if escape_char not in "~}|":
-    #         raise NotImplementedError("escape_char has to be |, }, or ~. Everything else is in the Phred Quals!")
-    #     save_df = self.df.copy()
-    #     sam_tag_cols = [col for col in list(save_df.columns) if col.startswith("sam_tag|")]
-    #     for column in sam_tag_cols:
-    #         save_df[column] = column.split("|")[1] + ":" + save_df[column]
-    #     save_df["tags"] = save_df[sam_tag_cols].values.tolist()
-    #     save_df["tags"] = save_df["tags"].apply(lambda row: '\t'.join([x for x in row if str(x) != 'nan']))
-    #     save_df = save_df.drop(sam_tag_cols, axis=1)
-    #     temp_header = self.header + f"@CO\t{get_dt(for_print=True)}: Introduced edits with python . . . " \
-    #                                 f"More info hopefully added to this later!\n"
-    #     buffer = temp_header + save_df.to_csv(sep="\t",
-    #                                           header=False,
-    #                                           index=False,
-    #                                           quoting=QUOTE_NONE,
-    #                                           escapechar=escape_char,
-    #                                           quotechar='\0').replace(escape_char, '')
-    #     # subprocess.run accepts the input param to pass to the bash call!
-    #     if to_bam:
-    #         run(f"samtools view -h --no-PG -b - > {output_path}",
-    #             input=buffer.encode('utf-8'), shell=True)
-    #     else:
-    #         run(f"samtools view -h --no-PG - > {output_path}",
-    #             input=buffer.encode('utf-8'), shell=True)
 
     def to_bam(self, output_path):
         self.to_sam(output_path=output_path, to_bam=True)
@@ -331,8 +260,12 @@ def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", fi
 
 def load_read_assignments(assignment_file_parquet_path) -> pd.DataFrame:
     print(f"Loading read assignment file from: {assignment_file_parquet_path} ", end="")
-    read_assignment_df = pd.read_parquet(assignment_file_parquet_path)
-    print(". ")
+    try:
+        read_assignment_df = pd.read_parquet(assignment_file_parquet_path)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Couldn't find parquet file! Maybe try to run the method: "
+                                f"parse_read_assignment_allChrs_txt in nanoporePipelineCommon.py or "
+                                f"first: prepareReadAssignmentFily3.py in the ArribereLab git!!")
     return read_assignment_df
 
 
@@ -367,8 +300,8 @@ def assign_w_josh_method(reads_df, genomeDir):
 
 
 def gene_names_to_gene_ids(parquet_path: str = "/data16/marcus/genomes/elegansRelease100"
-                                           "/Caenorhabditis_elegans.WBcel235.100.gtf"
-                                           ".parquet") -> pd.DataFrame:
+                                               "/Caenorhabditis_elegans.WBcel235.100.gtf"
+                                               ".parquet") -> pd.DataFrame:
     df = pd.read_parquet(parquet_path)[["gene_name", "gene_id"]].drop_duplicates(ignore_index=True)
     return df
 
@@ -504,44 +437,83 @@ def save_sorted_bam_obj(bam_obj: BamHeadersAndDf, output_path: str,
         run(f'samtools index {output_path}.sorted.bam', shell=True)
 
 
-def load_read_assignment_allChrs_txt(assignment_file_txt, save_file=True) -> pd.DataFrame:
+def parse_read_assignment_allChrs_txt(assignment_file_txt, multi_row_isoforms=False,
+                                      save_file=True) -> pd.DataFrame:
     # Script to load josh's read assignment file from the *.allChrs.txt format,
-    # it can return a dataframe, but it will also (optionally) save a new parquet file!
-    print(f"Loading read assignment file from: {assignment_file_txt} ", end="")
+    #   it can return a dataframe, but it will also (optionally) save a new parquet file!
+    # Majorly rewritten on 12/14/2021, will now save a parquet with lists holding transcript/
+    #   isoform information. Easily expanded with the df.explode() function!
+    
+    print(f"Loading read assignment file from: {assignment_file_txt}")
     df = pd.read_csv(assignment_file_txt, sep="\t",
-                     names=["chr_pos", "gene_id_strand", "transcript_ids"])
-    print(". ", end="")
+                     names=["chr_pos", "gene_id_strand", "transcript_info"])
+    print(f"\tLoaded file to dataframe.")
+    
     df[["chr_id", "chr_pos"]] = df["chr_pos"].str.split("_", expand=True)
-    print(". ", end="")
+    print(f"\tParsed chr_id and chr_pos info.")
+    
     df[["gene_id", "strand"]] = df["gene_id_strand"].str.split(":", expand=True)
-    print(". ", end="")
     df.drop(columns="gene_id_strand", inplace=True)
-    print(". ", end="")
-    df["transcript_id"] = df["transcript_ids"].str.split("|")
-    print(". ", end="")
-    df = df.explode("transcript_id", ignore_index=True)
-    print(". ", end="")
-    df.drop(columns="transcript_ids", inplace=True)
-    print(". ", end="")
-    df[["transcript_id", "to_start", "to_stop"]] = df["transcript_id"].str.split(":", expand=True)
-    print(". ", end="")
-    df = df.astype({"chr_pos": "int32",
-                    "to_start": "int32",
-                    "to_stop": "int32",
-                    "strand": "category",
-                    "chr_id": "category",
-                    })
-    print(". ", end="")
+    print(f"\tParsed gene_id and strand info.")
+
+    # The below section is CRAZY, but allow me to 'quickly' refactor
+    #   the transcript/start/stop information to lists: >>>
+    df['transcript_info'] = df.transcript_info.str.split('|')  # First just split up multi-isoform spots
+    print(f"\tSplit isoform info.")
+    # Then split each isoform into the: trans_id, start, & stop information:
+    df['transcript_info'] = df.transcript_info.apply(lambda tran_list:
+                                                     np.array([tran.split(':') for tran in tran_list]).T)
+    print(f"\tExtracted transcript, to_start and to_stop info.")
+    # Then convert these nested listed into three columns of lists
+    df[['transcript_id', 'to_start', 'to_stop']] = pd.DataFrame.from_records(df.transcript_info.to_numpy(),
+                                                                             index=df.index,
+                                                                             columns=['transcript_id',
+                                                                                      'to_start',
+                                                                                      'to_stop'])
+    print(f"\tSaved transcript, to_start and to_stop info to new columns.")
+    if multi_row_isoforms:
+        # If we want each isoform to have it's own row, we can use explode!!
+        df = df.explode(['transcript_id', 'to_start', 'to_stop'])
+        additional_tag = ".isoformsAsRows"
+        dtypes = {
+            "chr_pos": "uint32",
+            "to_start": "int32",
+            "to_stop": "int32",
+            "strand": "category",
+            "chr_id": "category",
+        }
+        print(f"\tExpanded transcript, to_start and to_stop info to individual rows.")
+    else:
+        additional_tag = ""
+        dtypes = {
+            "chr_pos": "uint32",
+            "to_start": "object",
+            "to_stop": "object",
+            "strand": "category",
+            "chr_id": "category",
+        }
+        print(f"\tSkipping expansion of transcript, to_start and to_stop info to individual rows.")
+    # <<< Maybe not that bad...? \s
+    # Change datatypes:
+    df = df.astype(dtypes)
+    # Reorder columns:
     df = df[["chr_id", "chr_pos", "gene_id", "strand", "transcript_id", "to_start", "to_stop"]]
     print(". ", end="")
     if save_file:
-        parquet_path = assignment_file_txt.rstrip(".txt") + ".parquet"
+        parquet_path = assignment_file_txt.rstrip(".txt") + additional_tag + ".parquet"
         df.to_parquet(parquet_path)
-        print("(saved parquet) ", end="")
-    print(". ")
+        print(f"Saved parquet to: {parquet_path}")
     return df
 
 
 if __name__ == '__main__':
-    load_read_assignment_allChrs_txt('/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/'
-                                     '210928_allChrs_plus-pTRI.allChrs.txt')
+    original_genome = '/data16/marcus/genomes/elegansRelease100/' \
+                      'Caenorhabditis_elegans.WBcel235.100.allChrs.txt'
+    pTRI_genome = '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/' \
+                  '210928_allChrs_plus-pTRI.allChrs.txt'
+    test_df = parse_read_assignment_allChrs_txt(original_genome,
+                                                save_file=True)
+    test_df2 = parse_read_assignment_allChrs_txt(pTRI_genome,
+                                                 save_file=True)
+    print(test_df)
+    print(test_df2)

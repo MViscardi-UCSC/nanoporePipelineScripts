@@ -39,7 +39,7 @@ import pandas as pd
 import regex as re
 
 from nanoporePipelineCommon import find_newest_matching_file, get_dt, assign_w_josh_method,\
-    gene_names_to_gene_ids, load_read_assignment_allChrs_txt
+    gene_names_to_gene_ids, parse_read_assignment_allChrs_txt
 
 
 def load_reads_parquet(read_parquet, head=None) -> pd.DataFrame:
