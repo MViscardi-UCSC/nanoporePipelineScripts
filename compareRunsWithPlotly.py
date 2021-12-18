@@ -232,7 +232,7 @@ if __name__ == '__main__':
                    3: "read_len_mean",
                    4: "polya_mean"}
     
-    prefix = prefix_dict[1]
+    prefix = prefix_dict[4]
     
     color_by_dict = {0: None,
                      1: "read_len_mean_mean",
