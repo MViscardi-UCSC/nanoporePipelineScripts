@@ -4,14 +4,13 @@ Marcus Viscardi,    December 12, 2021
 
 Goal is to make a scatter between the two 5TERA libs
 """
-import seaborn as sea
-import matplotlib.pyplot as plt
 import plotly.express as px
-import plotly.graph_objects as go
+import scipy.stats
 
 from nanoporePipelineCommon import pick_libs_return_paths_dict, gene_names_to_gene_ids, load_ski_pelo_targets
 
 import pandas as pd
+import numpy as np
 
 pd.set_option('display.width', 400)
 pd.set_option('display.max_columns', None)
@@ -54,8 +53,9 @@ def load_libraries(per_gene_cutoff=25, ski_pelo_col=True):
             df = df.merge(names_df, on='gene_id')
         df = df[["gene_id", "gene_name", "read_hits", "t5_fraction"]]
         df_dict[lib] = df
-    # print(df_dict)
-    merge_df = pd.merge(df_dict["smg-6"], df_dict["wt"], on=["gene_id", "gene_name"], suffixes=("_6", "_wt"))
+    print(df_dict['wt'].columns)
+    merge_df = pd.merge(df_dict["smg-6"], df_dict["wt"], on=["gene_id", "gene_name"],
+                        suffixes=("_6", "_wt"))
     merge_df['total_read_counts'] = merge_df['read_hits_6'] + merge_df['read_hits_wt']
     merge_df['t5_fraction_diff'] = (merge_df['t5_fraction_wt'] - merge_df['t5_fraction_6'])
     merge_df['t5_fraction_mean'] = (merge_df['t5_fraction_wt'] + merge_df['t5_fraction_6']) / 2
@@ -64,7 +64,19 @@ def load_libraries(per_gene_cutoff=25, ski_pelo_col=True):
     merge_df['t5_read_count_wt'] = merge_df['t5_fraction_wt'] * merge_df['read_hits_wt']
     merge_df['t5_read_count_6'] = merge_df['t5_fraction_6'] * merge_df['read_hits_6']
     merge_df['t5_total_reads'] = merge_df['t5_read_count_wt'] + merge_df['t5_read_count_6']
-    merge_df['fraction_of_t5_from_wt'] = merge_df['t5_read_count_wt'] / merge_df['t5_total_reads']
+    merge_df['fraction_of_t5_from_6'] = merge_df['t5_read_count_wt'] / merge_df['t5_total_reads']
+
+    t5_total_wt = merge_df['t5_read_count_wt'].sum()
+    t5_total_6 = merge_df['t5_read_count_6'].sum()
+    total_fraction_t5 = t5_total_wt / (t5_total_wt + t5_total_6)
+    merge_df['bionomial_test'] = merge_df.apply(lambda row: scipy.stats.binom_test(x=row['t5_read_count_wt'],
+                                                                                   n=row['t5_total_reads'],
+                                                                                   p=total_fraction_t5),
+                                                axis=1)
+    merge_df['bionomial_test_nlog10'] = np.log10(merge_df['bionomial_test']) * -1
+    print(t5_total_wt, t5_total_6, total_fraction_t5)
+    
+    
     
     if ski_pelo_col:
         ski_pelo_list = load_ski_pelo_targets()
@@ -82,8 +94,6 @@ def with_dash_for_click_to_copy():
     from dash import dcc, html, callback_context
     import dash_bootstrap_components as dbc
     from dash.dependencies import Input, Output
-    import dash_daq as daq
-    import plotly.io as pio
     import pyperclip
     from webbrowser import open as open_webpage
     # pyperclip.copy('The text to be copied to the clipboard.')
@@ -158,20 +168,18 @@ def with_dash_for_click_to_copy():
     )
 
     @app.callback(Output('primary-scatter', 'figure'),
-                  [Input('min-hits-slider', 'value'),
-                   Input('selected-data', 'children')])
-    def main_plot(min_hits, selectedData):
-        if selectedData != "No points selected":
-            selected_gene_ids = [hit["Gene ID"] for hit in json.loads(selectedData)]
-            selected_gene_names = [hit["Gene Name"] for hit in json.loads(selectedData)]
-        else:
-            selected_gene_ids, selected_gene_names = [], []
-        plot_df = merge_df[merge_df["read_hits_wt"] >= min_hits]
+                  [Input('min-hits-slider', 'value')])
+    def main_plot(min_hits):
+        plot_df = merge_df[merge_df["read_hits_wt"] >= min_hits].copy(deep=True)
         plot_df = plot_df[plot_df["read_hits_6"] >= min_hits]
+        print(plot_df)
         fig = px.scatter(plot_df,
-                         x="total_read_counts", y="t5_fraction_diff",
-                         # x='t5_total_reads', y='fraction_of_t5_from_wt',
-                         color="ski_pelo_targ",
+                         x="total_read_counts",
+                         y='bionomial_test_nlog10',
+                         # y="t5_fraction_diff",
+                         # x='t5_total_reads', y='fraction_of_t5_from_6',
+                         color="fraction_of_t5_from_6",
+                         color_continuous_scale='Bluered',
                          hover_name="gene_name", hover_data=["gene_id",
                                                              "read_hits_6",
                                                              "read_hits_wt",
@@ -195,7 +203,7 @@ def with_dash_for_click_to_copy():
         return_data = []
         for point_dict in selectedData['points']:
             gene_id, gene_name = point_dict['customdata'][0:2]
-            print(point_dict['customdata'])
+            # print(point_dict['customdata'])
             return_data.append({'Gene Name': gene_name,
                                 'Gene ID': gene_id})
         return json.dumps(return_data, indent=2)
