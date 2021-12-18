@@ -42,11 +42,13 @@ import warnings
 
 from tqdm import tqdm
 
-from nanoporePipelineCommon import find_newest_matching_file, get_dt, minimap_bam_to_df, \
-    FastqFile, gene_names_to_gene_ids, assign_w_josh_method, SamOrBamFile
+from nanoporePipelineCommon import find_newest_matching_file, get_dt, \
+    gene_names_to_gene_ids, assign_w_josh_method, SamOrBamFile, FastqFile
 
-import pandas as pd
 import numpy as np
+import pandas as pd
+pd.set_option('display.width', 400)
+pd.set_option('display.max_columns', None)
 
 # This is also in my .bashrc but that doesn't always seem to trigger,
 #   ie. if I run the script from inside pycharm.
