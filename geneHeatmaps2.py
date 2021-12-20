@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 import regex as re
 
-from nanoporePipelineCommon import find_newest_matching_file, get_dt, assign_w_josh_method,\
+from nanoporePipelineCommon import find_newest_matching_file, get_dt, assign_with_josh_method,\
     gene_names_to_gene_ids, parse_read_assignment_allChrs_txt
 
 
@@ -129,32 +129,29 @@ def plotly_imshow_heatmap(extra_annotation, output_name, plotter_df, title, x_ax
     fig.show()
 
 
+def manual_cdf(stop_distances: list, min_x: int, max_x: int) -> np.array:
+    man_cdf = [0]
+    stop_distances.sort(reverse=False)
+    np_stop_dists = np.array(stop_distances)
+    # Min and Max could also just be the bounds that get fed in here.
+    #   Anything outside those bounds would just get rounded in?
+    for x in range(min_x, max_x + 1):
+        if x == min_x:  # If first number, sum all below
+            hits_at_x = np.count_nonzero(np_stop_dists <= x)
+        elif x == max_x:  # If last number, sum all above
+            hits_at_x = np.count_nonzero(np_stop_dists >= x)
+        else:  # Otherwise, store sum of values at that point
+            hits_at_x = np.count_nonzero(np_stop_dists == x)
+        sum_to_x = man_cdf[-1]
+        sum_w_x = sum_to_x + hits_at_x
+        man_cdf.append(sum_w_x)
+    norm_sum = man_cdf[-1]
+    normalized_cdf = np.array([x / norm_sum for x in man_cdf])
+    return normalized_cdf
+
+
 def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-300, 300),
                  title=None, extra_annotation=None, output_name="cdfHeatmap"):
-    def manual_cdf(stop_distances: list, min_x: int, max_x: int) -> np.array:
-        man_cdf = [0]
-        stop_distances.sort(reverse=False)
-        np_stop_dists = np.array(stop_distances)
-        # Min and Max could also just be the bounds that get fed in here.
-        #   Anything outside those bounds would just get rounded in?
-        for x in range(min_x, max_x + 1):
-            if x == min_x:
-                hits_at_x = np.count_nonzero(np_stop_dists <= x)
-            elif x == max_x:
-                hits_at_x = np.count_nonzero(np_stop_dists >= x)
-            else:
-                hits_at_x = np.count_nonzero(np_stop_dists == x)
-            sum_to_x = man_cdf[-1]
-            sum_w_x = sum_to_x + hits_at_x
-            man_cdf.append(sum_w_x)
-        norm_sum = man_cdf[-1]
-        normalized_cdf = np.array([x / norm_sum for x in man_cdf])
-        # rank_index = np.where(normalized_cdf >= 0.5)[0][0]  # try to find where each hits halfway? Maybe hacky?
-        # return_tuple = [normalized_cdf.tolist(), rank_index]
-        # if not rank_index:
-        #     breakpoint()
-        # return return_tuple
-        return normalized_cdf
 
     print("\n\n")
     # I hope I can use these max distances to act as max bounds for my heatmaps
@@ -268,7 +265,7 @@ def load_tsv_and_assign_w_josh_method(library_str, genome_dir="/data16/marcus/ge
     reads_df = load_reads_parquet(find_newest_matching_file(f"{working_dir}/output_dir/merge_files/"
                                                             f"*_mergedOnReads.parquet"),
                                   head=nrows)
-    merged_df = assign_w_josh_method(reads_df, genome_dir)
+    merged_df = assign_with_josh_method(reads_df, genome_dir, keepMultipleTranscriptInfo=True)
     return merged_df, working_dir
 
 
