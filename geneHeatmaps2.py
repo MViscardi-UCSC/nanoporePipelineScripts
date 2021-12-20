@@ -158,6 +158,9 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-300, 300),
     #   I'd introduce 0s anywhere I don't get hits
     smallish_df['max_dist'] = smallish_df["stop_distances"].apply(max)
     smallish_df['min_dist'] = smallish_df["stop_distances"].apply(min)
+
+    # Because of some massive outliers, this min-max setup doesn't really work!!
+    #   Since this I just changed to passing bounds!
     total_max = smallish_df['max_dist'].max()
     total_min = smallish_df['min_dist'].min()
 
@@ -165,7 +168,6 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-300, 300),
     print("Min distance from stop codon:", total_min)
     plotter_df = pd.DataFrame()
     plotter_df["gene_name"] = smallish_df["identifier"]
-    # Because of some massive outliers, this min-max setup doesn't really work!!
     plotter_df["norm_cdf"] = smallish_df.apply(lambda x: manual_cdf(x["stop_distances"],
                                                                     bounds[0],
                                                                     bounds[1]),
