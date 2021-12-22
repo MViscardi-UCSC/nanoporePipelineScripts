@@ -47,6 +47,7 @@ from nanoporePipelineCommon import find_newest_matching_file, get_dt, \
 
 import numpy as np
 import pandas as pd
+
 pd.set_option('display.width', 400)
 pd.set_option('display.max_columns', None)
 
@@ -55,7 +56,6 @@ pd.set_option('display.max_columns', None)
 # If the HDF5 path isn't specified nanopolish freaks out, this solution is based on:
 #   https://stackoverflow.com/questions/5971312/how-to-set-environment-variables-in-python
 environ['HDF5_PLUGIN_PATH'] = '/usr/local/hdf5/lib/plugin'
-
 
 pd.set_option("display.max_columns", None)
 
@@ -383,7 +383,7 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
 def trim_tera_adapters(outputDir, threads, regenerate, tera3adapter, tera5adapter, **other_kwargs):
     # TODO: There is an error hear that is leading to rerunning on already cutadapt'ed fastqs!!
     #  maybe solved w/ dropping the regen flag......
-    
+
     # First step is to backup the original fastq file:
     fastq_backed_up = path.exists(f"{outputDir}/cat_files/cat.untrimmed.fastq")
     if not fastq_backed_up:
@@ -548,7 +548,7 @@ def __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter):
         # Check if each of the cutadapt comments were added, save for below.
         tera3_was_run = 'TERAADAPTER3' in first_line
         tera5_was_run = 'TERAADAPTER5' in first_line
-        
+
         # If neither were run, just skip the rest of this method!
         if not tera3_was_run and not tera5_was_run:
             warnings.warn(f'Adapter comment not found in {fastq_path}, '
@@ -556,23 +556,23 @@ def __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter):
             live_cmd_call(f"samtools view {outputDir}/cat_files/cat.sorted.bam "
                           f"> {outputDir}/cat_files/cat.sorted.sam")
             return None
-    
+
     # If the adapter tag IS found in the cat.fastq, we'll add it to the bam/sam files!:
     tagged_fastq_df = FastqFile(fastq_path).df
-    
+
     # For the two adapters, either extract the info if it's there, or default to false if not.
     if tera3_was_run:  # Parse out TERA3 adapter if it existed
         tagged_fastq_df['t3'] = tagged_fastq_df.comment.str.extract(r'TERAADAPTER3=(\S+)').replace({'no_adapter': '-',
                                                                                                     'TERA3': '+'})
     else:
         tagged_fastq_df['t3'] = '-'
-    
+
     if tera5_was_run:  # Parse out TERA5 adapter if it existed
         tagged_fastq_df['t5'] = tagged_fastq_df.comment.str.extract(r'TERAADAPTER5=(\S+)').replace({'no_adapter': '-',
                                                                                                     'TERA5': '+'})
     else:
         tagged_fastq_df['t5'] = '-'
-    
+
     # Finally we'll load and iterate through the bam file, creating a new sam file along the
     #   way and adding in the new tags!!
     tagged_fastq_df.set_index('read_id', inplace=True)
@@ -664,14 +664,14 @@ def merge_results(**other_kwargs):
         # Pull the 16 bit flag to get strand information (important for merge w/ featC later)
         sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-", 0: "+"})
         sam_df = sam_df.astype({'strand': 'category'})
-        sam_df = adjust_5_ends(sam_df, genomeDir, outputDir, save_file=False)
+        sam_df = adjust_5_ends(sam_df, genomeDir, outputDir)
         if keep_multimaps:
             # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
             sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
         else:
             # This shouldn't be dropping AS MANY reads now because I dumped secondary alignments with samtools
             sam_df = sam_df[~sam_df.duplicated(subset="read_id", keep=False)]
-        
+
         if 'F' in stepsToRun:
             # Next lets pull in the featureCounts results
             featc_df = pd.read_csv(f"{outputDir}/featureCounts/cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts",
@@ -734,21 +734,9 @@ def merge_results(**other_kwargs):
         merge_reads_df = merge_reads_df[merge_reads_df["sequence"] != "*"]
         # Dropping terrible mapq scored reads, I don't think there are very many of these at all(?)
         merge_reads_df = merge_reads_df[merge_reads_df["mapq"] != 0]
-        
+
         if callWithJoshMethod:
-            print(f"Using Josh's read assignment method w/ 5'ends!")
-            read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
-            read_assignment_df = pd.read_parquet(read_assignment_path)
-            names_df = gene_names_to_gene_ids()
-            read_assignment_df = read_assignment_df.merge(names_df, on="gene_id", how="left")
-            # The below step is very important as it removes the transcript_id info,
-            #   which helps to prevent multiple assignments for the same read position!!
-            read_assignment_df = read_assignment_df.drop(columns=['transcript_id',
-                                                                  'to_start',
-                                                                  'to_stop']).drop_duplicates()
-            merge_reads_df = merge_reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
-                                                  how="left", suffixes=["_fromFeatureCounts",
-                                                                        ""])
+            merge_reads_df = assign_with_josh_method(merge_reads_df, genomeDir)
             if 'F' in stepsToRun:
                 print(f"Reads that have matching assignments: "
                       f"{merge_reads_df[merge_reads_df.gene_id == merge_reads_df.gene_id_fromFeatureCounts].shape[0]}/"
@@ -757,7 +745,7 @@ def merge_results(**other_kwargs):
                   f"{merge_reads_df[merge_reads_df.gene_id.isna()].shape[0]}/"
                   f"{merge_reads_df.shape[0]}")
             print(f"For now (as of 12/13/2021) I'm keeping all of the above!")
-        
+
         merge_reads_df['read_length'] = merge_reads_df['sequence'].apply(len)
         if print_info:
             print("\n\n")
@@ -803,7 +791,8 @@ def merge_results(**other_kwargs):
 
         for adapter_col in ['t5', 't3']:
             if adapter_col in merged_df.columns:
-                gene_df[f"{adapter_col}_fraction"] = grouped_genes[adapter_col].sum() / grouped_genes[adapter_col].apply(list).apply(len)
+                gene_df[f"{adapter_col}_fraction"] = grouped_genes[adapter_col].sum() / grouped_genes[
+                    adapter_col].apply(list).apply(len)
 
         if dropGeneWithHitsLessThan:
             print(f"Dropping any genes with less than {dropGeneWithHitsLessThan} read hits")
@@ -933,42 +922,6 @@ def extra_steps(outputDir, genomeDir, minimapParam, threads, df=None, **other_kw
            f"-t {threads} --junc-bed {genome_bed_file[0]} | samtools view -b - -o " \
            f"{outputDir}/cat_files/cat.bam"
     print(f"MiniMap2 Call: {call}")
-
-
-def adjust_5_ends(df, genomeDir, outputDir, save_file=True):
-    def _flip_neg_strand_genes(chr_position: int, cigar: str, strand: str) -> int:
-        import regex as re
-        if strand == "+":
-            read_end = chr_position
-            return read_end
-        else:
-            numbers = list(map(int, re.findall(rf'(\d+)[MDNSI]', cigar)))
-            cigar_chars = re.findall(rf'\d+([MDNSI])', cigar)
-            mnd_nums, mnd_chars = [], []
-            for i, cigar_char in enumerate(cigar_chars):
-                if cigar_char in "MND":
-                    mnd_chars.append(cigar_char)
-                    mnd_nums.append(numbers[i])
-            read_end = chr_position + sum(mnd_nums)
-            return read_end
-
-    if not isinstance(df, pd.DataFrame):
-        path = find_newest_matching_file(f"{outputDir}/merge_files/*_mergedOnReads.parquet")
-        print(f"Dataframe not passed, loading file from: {path}")
-        df = pd.read_parquet(path)
-        print("Loaded.")
-    if "original_chr_pos" not in df.columns.to_list():
-        print(f"\nMaking adjustments for 5' ends (this is currently very, very slow...)")
-        df["original_chr_pos"] = df["chr_pos"]
-        df["chr_pos"] = df.apply(lambda read: _flip_neg_strand_genes(read["original_chr_pos"],
-                                                                     read["cigar"],
-                                                                     read["strand"]),
-                                 axis=1)
-    if save_file:
-        print("Saving parquet w/ adjusted read_ends . . .")
-        merged_df = assign_w_josh_method(reads_df=df, genomeDir=genomeDir)
-        merged_df.to_parquet(f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReadsPlus.parquet")
-    return df
 
 
 def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
