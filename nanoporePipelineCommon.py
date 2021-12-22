@@ -182,7 +182,9 @@ class SamOrBamFile:
                     save_df[col] = col + ':' + self.tag_type_dict[col] + ':' + save_df[col].astype(str)
                 except KeyError:
                     print(f"{col} not found in tag_type_dict and caused a KeyError??")
-                    save_df[col] = col + ':Z:' + save_df[col].map(str)
+                    print(f"For now, we are going to use simplesam to infer the correct type!")
+                    save_df[col] = save_df[col].apply(lambda x: ssam.encode_tag(col, x))
+                    # save_df[col] = col + ':Z:' + save_df[col].map(str)
         save_df["tags"] = save_df[self.tag_columns].values.tolist()
         save_df["tags"] = save_df["tags"].apply(lambda row: '\t'.join([x for x in row if not str(x).endswith('nan')]))
         save_df = save_df.drop(self.tag_columns, axis=1)
@@ -224,6 +226,8 @@ def sam_or_bam_class_testing():
     print(sam)
 
 
+# "riboD", "totalRNA", "totalRNA2", "polyA", "polyA2",
+# "xrn-1", "xrn-1-5tera", "pTRI-stds", "xrn-1-5tera-smg-6", "pTRI-stds-tera3"
 def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", file_midfix="mergedOnReads",
                                 output_dir_folder="merge_files", return_all: bool = False) -> dict:
     output_dir_dict = {
@@ -269,7 +273,7 @@ def load_read_assignments(assignment_file_parquet_path) -> pd.DataFrame:
     return read_assignment_df
 
 
-def assign_w_josh_method(reads_df, genomeDir):
+def old_assign_w_josh_method(reads_df, genomeDir):
     def merge_on_chr_pos(read_assignment_df: pd.DataFrame, reads_df: pd.DataFrame) -> pd.DataFrame:
         print(f"Merging read assignments and reads at {get_dt(for_print=True)}")
         merge_df = reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
@@ -297,6 +301,57 @@ def assign_w_josh_method(reads_df, genomeDir):
     #     print(df.info())
     merged_df = merge_on_chr_pos(read_assignments_df, reads_df)
     return merged_df
+
+
+def assign_with_josh_method(merged_on_reads_df: pd.DataFrame, genomeDir: str,
+                            keepMultipleTranscriptInfo=False, save_it=False,
+                            add_names=False) -> pd.DataFrame:
+    # merged_on_reads_df = adjust_5_ends(merged_on_reads_df)
+    print(f"Using Josh's read assignment method w/ 5'ends!")
+    if keepMultipleTranscriptInfo:
+        read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
+    else:
+        read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
+                                                      # (f"{genomeDir}/*.allChrsLite.parquet")
+    print(f"Loading readAssignment file from {read_assignment_path}")
+    read_assignment_df = pd.read_parquet(read_assignment_path)
+    print(f"Loaded  readAssignment file from {read_assignment_path}")
+    
+    print(f"Starting merge of dataframes to make assignments")
+    merged_on_reads_and_assigned_df = merged_on_reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
+                                                               how="left", suffixes=("_fromFeatureCounts",
+                                                                                     ""))
+    print(f"Finished merge of dataframes to make assignments")
+    return merged_on_reads_and_assigned_df
+
+
+def adjust_5_ends(df: pd.DataFrame):
+    def _flip_neg_strand_genes(chr_position: int, cigar: str, strand: str) -> int:
+        import regex as re
+        if strand == "+":
+            read_end = chr_position
+            return read_end
+        else:
+            numbers = list(map(int, re.findall(rf'(\d+)[MDNSI]', cigar)))
+            cigar_chars = re.findall(rf'\d+([MDNSI])', cigar)
+            mnd_nums, mnd_chars = [], []
+            for i, cigar_char in enumerate(cigar_chars):
+                if cigar_char in "MND":
+                    mnd_chars.append(cigar_char)
+                    mnd_nums.append(numbers[i])
+            read_end = chr_position + sum(mnd_nums)
+            return read_end
+
+    if "original_chr_pos" not in df.columns.to_list():
+        print(f"\nMaking adjustments for 5' ends (this is currently very, very slow...)")
+        df["original_chr_pos"] = df["chr_pos"]
+        df["chr_pos"] = df.apply(lambda read: _flip_neg_strand_genes(read["original_chr_pos"],
+                                                                     read["cigar"],
+                                                                     read["strand"]),
+                                 axis=1)
+    else:
+        print(f"'original_chr_pos' column already found in dataframe, skipping adjustment for 5'ends!")
+    return df
 
 
 def gene_names_to_gene_ids(parquet_path: str = "/data16/marcus/genomes/elegansRelease100"
@@ -427,13 +482,21 @@ def parse_read_assignment_allChrs_txt(assignment_file_txt, multi_row_isoforms=Fa
 
 
 if __name__ == '__main__':
-    original_genome = '/data16/marcus/genomes/elegansRelease100/' \
-                      'Caenorhabditis_elegans.WBcel235.100.allChrs.txt'
-    pTRI_genome = '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/' \
-                  '210928_allChrs_plus-pTRI.allChrs.txt'
-    test_df = parse_read_assignment_allChrs_txt(original_genome,
-                                                save_file=True)
-    test_df2 = parse_read_assignment_allChrs_txt(pTRI_genome,
-                                                 save_file=True)
-    print(test_df)
-    print(test_df2)
+    # original_genome = '/data16/marcus/genomes/elegansRelease100/' \
+    #                   'Caenorhabditis_elegans.WBcel235.100.allChrs.txt'
+    # pTRI_genome = '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/' \
+    #               '210928_allChrs_plus-pTRI.allChrs.txt'
+    # test_df = parse_read_assignment_allChrs_txt(original_genome,
+    #                                             save_file=True)
+    # test_df2 = parse_read_assignment_allChrs_txt(pTRI_genome,
+    #                                              save_file=True)
+    # print(test_df)
+    # print(test_df2)
+    assign_with_josh_method("", '/data16/marcus/genomes/elegansRelease100/',
+                            keepMultipleTranscriptInfo=True, save_it=True, add_names=True)
+    assign_with_josh_method("", '/data16/marcus/genomes/elegansRelease100/',
+                            keepMultipleTranscriptInfo=False, save_it=True)
+    assign_with_josh_method("", '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/',
+                            keepMultipleTranscriptInfo=True, save_it=True, add_names=True)
+    assign_with_josh_method("", '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/',
+                            keepMultipleTranscriptInfo=False, save_it=True)
