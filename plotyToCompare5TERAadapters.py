@@ -60,28 +60,34 @@ def load_libraries(per_gene_cutoff=25, ski_pelo_col=True):
     merge_df['t5_fraction_diff'] = (merge_df['t5_fraction_wt'] - merge_df['t5_fraction_6'])
     merge_df['t5_fraction_mean'] = (merge_df['t5_fraction_wt'] + merge_df['t5_fraction_6']) / 2
     merge_df['t5_fraction_abs_diff'] = merge_df['t5_fraction_diff'].abs()
-    
+
     merge_df['t5_read_count_wt'] = merge_df['t5_fraction_wt'] * merge_df['read_hits_wt']
     merge_df['t5_read_count_6'] = merge_df['t5_fraction_6'] * merge_df['read_hits_6']
     merge_df['t5_total_reads'] = merge_df['t5_read_count_wt'] + merge_df['t5_read_count_6']
     merge_df['fraction_of_t5_from_6'] = merge_df['t5_read_count_wt'] / merge_df['t5_total_reads']
+    merge_df['per_gene_p_value'] = merge_df['read_hits_wt'] / merge_df['total_read_counts']
 
     t5_total_wt = merge_df['t5_read_count_wt'].sum()
     t5_total_6 = merge_df['t5_read_count_6'].sum()
     total_fraction_t5 = t5_total_wt / (t5_total_wt + t5_total_6)
-    merge_df['bionomial_test'] = merge_df.apply(lambda row: scipy.stats.binom_test(x=row['t5_read_count_wt'],
-                                                                                   n=row['t5_total_reads'],
-                                                                                   p=total_fraction_t5),
+    merge_df['bionomial_test'] = merge_df.apply(lambda row: scipy.stats.binom_test(
+        x=row['t5_read_count_wt'],
+        n=row['t5_total_reads'],
+        p=total_fraction_t5),
                                                 axis=1)
+    merge_df['bionomial_test_per_gene_p'] = merge_df.apply(lambda row: scipy.stats.binom_test(
+        x=row['t5_read_count_wt'],
+        n=row['t5_total_reads'],
+        p=row['per_gene_p_value']),
+                                                           axis=1)
     merge_df['bionomial_test_nlog10'] = np.log10(merge_df['bionomial_test']) * -1
+    merge_df['bionomial_test_nlog10_per_gene_p'] = np.log10(merge_df['bionomial_test_per_gene_p']) * -1
     print(t5_total_wt, t5_total_6, total_fraction_t5)
-    
-    
-    
+
     if ski_pelo_col:
         ski_pelo_list = load_ski_pelo_targets()
         merge_df['ski_pelo_targ'] = merge_df.gene_id.isin(ski_pelo_list)
-    
+
     for suffix in ("_6", "_wt"):
         merge_df = merge_df[merge_df[f'read_hits{suffix}'] >= per_gene_cutoff]
     print(merge_df.query("gene_id == 'WBGene00001340'"))
@@ -119,6 +125,14 @@ def with_dash_for_click_to_copy():
                                 marks={str(n): str(n) for n in range(5, 105, 5)},
                                 step=None
                             ),
+                            dcc.Dropdown(
+                                id='x_col',
+                                options=[{'label': i, 'value': i} for i in merge_df.columns],
+                                value="total_read_counts"),
+                            dcc.Dropdown(
+                                id='y_col',
+                                options=[{'label': i, 'value': i} for i in merge_df.columns],
+                                value="fraction_of_t5_from_6"),
                         ],
                         width=8,
                         style={'height': '100%'}
@@ -161,21 +175,25 @@ def with_dash_for_click_to_copy():
                               }
                               ),
                 ],
-                className='h-80',
+                className='h-60',
             ),
         ],
-        style={'height': '100vh'},
+        style={'height': '100%', 'width': '100%'},
     )
 
     @app.callback(Output('primary-scatter', 'figure'),
-                  [Input('min-hits-slider', 'value')])
-    def main_plot(min_hits):
+                  [Input('min-hits-slider', 'value'),
+                   Input('x_col', 'value'),
+                   Input('y_col', 'value'), ])
+    def main_plot(min_hits, x_col, y_col):
         plot_df = merge_df[merge_df["read_hits_wt"] >= min_hits].copy(deep=True)
         plot_df = plot_df[plot_df["read_hits_6"] >= min_hits]
         print(plot_df)
         fig = px.scatter(plot_df,
-                         x="total_read_counts",
-                         y='bionomial_test_nlog10',
+                         x=x_col,
+                         y=y_col,
+                         # x="total_read_counts",
+                         # y='bionomial_test_nlog10',
                          # y="t5_fraction_diff",
                          # x='t5_total_reads', y='fraction_of_t5_from_6',
                          color="fraction_of_t5_from_6",
