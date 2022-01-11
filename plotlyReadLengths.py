@@ -246,7 +246,7 @@ def main_plot_ecdfs(path_dict: dict, plotly_or_seaborn: str):
 
 
 def plot_ecdf_211109(libs):
-    from dashForClickAndView import load_and_merge_lib_parquets
+    from dashForClickAndViewPolyATails import load_and_merge_lib_parquets
     reads_df, compressed_df = load_and_merge_lib_parquets(libs)
     seaborn_lib_ecdfs(reads_df)
     return reads_df, compressed_df
