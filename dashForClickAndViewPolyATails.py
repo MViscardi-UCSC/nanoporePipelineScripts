@@ -1,5 +1,5 @@
 """
-dashForClickAndView.py
+dashForClickAndViewPolyATails.py
 Marcus Viscardi,    November 08, 2021
 
 Trying to use dash to be able to quickly take genes that
@@ -190,6 +190,7 @@ def distributions_of_polya_tails(libs):
     import dash
     import json
     from dash import dcc, html, callback_context
+    import dash_bootstrap_components as dbc
     from dash.dependencies import Input, Output
     import dash_daq as daq
     import plotly.express as px
@@ -213,59 +214,87 @@ def distributions_of_polya_tails(libs):
 
     app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
-    app.layout = html.Div([
-        # Option to change the libraries at the top of the plot
-        html.Div([
-            dcc.Markdown("""
-                **Select X and Y libraries**"""),
-            dcc.Dropdown(
-                id='xaxis-lib',
-                options=[{'label': i, 'value': i} for i in lib_list],
-                value=lib_list[0]),
-            dcc.Dropdown(
-                id='yaxis-lib',
-                options=[{'label': i, 'value': i} for i in lib_list],
-                value=lib_list[1]),
-            html.Div([
-                dcc.Markdown("""
-                **Select minimum reads/gene to allow**"""),
-                dcc.Slider(
-                    id='min-hits-slider',
-                    min=5, max=100,
-                    value=40,
-                    marks={str(n): str(n) for n in range(5, 105, 5)},
-                    step=None),
-                daq.BooleanSwitch(id='trendline-switch', on=False,
-                                  label="Trendline for scatter:"),
-            ]),
-        ]),
-        # Plots row
-        html.Div([
-            html.Div([
-                # First plot with title and 8/12 width space
-                html.H3('Rocket Plot of Mean Tail Lengths'),
-                dcc.Graph(id='primary-scatter',
-                          hoverData={'points': [{'customdata': ['WBGene00010964', 'ctc-1', 'lots', 'lots']}]})
-            ], className="six columns", style={'display': 'inline-block'}),
+    app.layout = html.Div(
+        [
+            # Option to change the libraries at the top of the plot
+            html.Div(
+                [
+                    dcc.Markdown(
+                        """**Select X and Y libraries**"""
+                    ),
+                    dcc.Dropdown(
+                        id='xaxis-lib',
+                        options=[{'label': i, 'value': i} for i in lib_list],
+                        value=lib_list[0]
+                    ),
+                    dcc.Dropdown(
+                        id='yaxis-lib',
+                        options=[{'label': i, 'value': i} for i in lib_list],
+                        value=lib_list[1]
+                    ),
+                    html.Div(
+                        [
+                            dcc.Markdown(
+                                """**Select minimum reads/gene to allow**"""
+                            ),
+                            dcc.Slider(
+                                id='min-hits-slider',
+                                min=5, max=100,
+                                value=40,
+                                marks={str(n): str(n) for n in range(5, 105, 5)},
+                                step=None
+                            ),
+                            daq.BooleanSwitch(
+                                id='trendline-switch', on=False,
+                                label="Trendline for scatter:"
+                            ),
+                        ]
+                    ),
+                ]
+            ),
+            # Plots row
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            # First plot with title and 8/12 width space
+                            html.H3(
+                                'Rocket Plot of Mean Tail Lengths'
+                            ),
+                            dcc.Graph(
+                                id='primary-scatter',
+                                hoverData={'points': [{'customdata': ['WBGene00010964', 'ctc-1', 'lots', 'lots']}]}
+                            )
+                        ],
+                        className="six columns", style={'display': 'inline-block'}
+                    ),
 
-            html.Div([
-                # Second plot with less fo the width space
-                html.H3('Violin Plot of Selected Data'),
-                dcc.Graph(id='violin-plot')
-            ], className="six columns", style={'display': 'inline-block'}),
-        ], className='row'),
-        # Info and Button Row
-        html.Div(className='row', children=[
-            html.Div([
-                dcc.Markdown("""
-                **Hover Data**
-
-                Mouse over values in the graph.
-            """),
-                html.Pre(id='hover-data', style=styles['pre'])
-            ], className='four columns'),
-            html.Div([
-                dcc.Markdown("""
+                    html.Div(
+                        [
+                            # Second plot with less for the width space
+                            html.H3(
+                                'Violin Plot of Selected Data'
+                            ),
+                            dcc.Graph(
+                                id='violin-plot'
+                            )
+                        ],
+                        className="six columns", style={'display': 'inline-block'}
+                    ),
+                ],
+                className='row'
+            ),
+            # Info and Button Row
+            html.Div(
+                className='row',
+                children=[
+                    html.Div([
+                        dcc.Markdown("""**Hover Data**
+                    Mouse over values in the graph."""),
+                        html.Pre(id='hover-data', style=styles['pre'])
+                    ], className='four columns'),
+                    html.Div([
+                        dcc.Markdown("""
                 **Selection Data**
 
                 Click points to select data.
@@ -273,19 +302,23 @@ def distributions_of_polya_tails(libs):
                 Shift+click, or choose the lasso/rectangle select tool in the graph's menu
                 bar and then select points in the graph.
             """),
-                html.Pre(id='selected-data', style=styles['pre']),
-            ], className='four columns'),
-            html.Div([
-                html.Div([
-                    html.Button('Popout Scatter', id='btn-nclicks-1', n_clicks=0),
-                    html.Button('Popout Violin', id='btn-nclicks-2', n_clicks=0)]),
-                html.Div([
-                    html.Button('Save Scatter', id='btn-nclicks-3', n_clicks=0),
-                    html.Button('Save Violin', id='btn-nclicks-4', n_clicks=0)]),
-                html.Div(id='container-button-timestamp'),
-            ])
-        ])
-    ])
+                        html.Pre(id='selected-data', style=styles['pre']),
+                    ], className='four columns'),
+                    html.Div(
+                        [
+                            html.Div([
+                                html.Button('Popout Scatter', id='btn-nclicks-1', n_clicks=0),
+                                html.Button('Popout Violin', id='btn-nclicks-2', n_clicks=0)]),
+                            html.Div([
+                                html.Button('Save Scatter', id='btn-nclicks-3', n_clicks=0),
+                                html.Button('Save Violin', id='btn-nclicks-4', n_clicks=0)]),
+                            html.Div(id='container-button-timestamp'),
+                        ]
+                    )
+                ]
+            )
+        ]
+    )
 
     @app.callback(
         Output('primary-scatter', 'figure'),
@@ -318,9 +351,9 @@ def distributions_of_polya_tails(libs):
         plot_df = pd.merge(x_axis_df, y_axis_df, on=["gene_id", "gene_name"],
                            suffixes=(f"_{xaxis_library}",
                                      f"_{yaxis_library}"))
-        
+
         if trendline_switch:
-            trend ="ols"
+            trend = "ols"
         else:
             trend = None
         fig = px.scatter(plot_df, x=f"mean_polya_length_{xaxis_library}", y=f"mean_polya_length_{yaxis_library}",
@@ -522,7 +555,7 @@ def distributions_of_polya_tails(libs):
 
 if __name__ == '__main__':
     from sys import argv
-    
+
     # TODO: Add drop down to select plot column!
     libraries_to_run = argv[1:]
     print(f"Running w/ libraries: {libraries_to_run}")
