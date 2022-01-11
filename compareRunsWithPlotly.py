@@ -192,6 +192,8 @@ def plotly_from_triple_merge(merged_df, key_list, cutoff=None,
         save_name = save_dir + save_name
         fig.write_image(save_name + ".png",
                         width=600, height=600, scale=2)
+        fig.write_image(save_name + ".svg",
+                        width=600, height=600, scale=2)
 
 
 def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str = "",
@@ -221,7 +223,8 @@ def plotter_helper(path_dict: dict, prefix: str, cut_off: int, one_to_drop: str 
 
 if __name__ == '__main__':
 
-    run_with = ["xrn-1-5tera-smg-6", "xrn-1-5tera"]
+    # run_with = ["xrn-1-5tera-smg-6", "xrn-1-5tera"]
+    run_with = ["polyA", "polyA2", "totalRNA2"]
 
     pathdict = pick_libs_return_paths_dict(run_with, file_suffix="parquet", file_midfix="compressedOnGenes_simple")
 
@@ -232,7 +235,7 @@ if __name__ == '__main__':
                    3: "read_len_mean",
                    4: "polya_mean"}
     
-    prefix = prefix_dict[4]
+    prefix = prefix_dict[1]
     
     color_by_dict = {0: None,
                      1: "read_len_mean_mean",
@@ -247,7 +250,7 @@ if __name__ == '__main__':
                      10: "tail_length_mean_mean"
                      }
     
-    color_by = color_by_dict[9]
+    color_by = color_by_dict[0]
     
     drop_mtDNA = False
     drop_gcLess = False
