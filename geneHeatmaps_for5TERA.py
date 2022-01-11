@@ -70,7 +70,7 @@ def make_dataframes_for_heatmaps(lib):
     # print(df)
     df_transcripts = compress_on_transcripts(df, 5)
     print(df_transcripts.query("t5 == '+'"))
-    df_transcripts = df_transcripts.sort_values('transcriot_hits')
+    df_transcripts = df_transcripts.sort_values('transcript_hits')
     return df, df_transcripts
 
 
@@ -84,8 +84,12 @@ def main(libs):
     for lib, df in compressed_df_dict.items():
         # TODO: major error here due to stop_distances being lists of strings!! not numbers! WTF man...
         #       This is likely due to how the are currently stored in the damn readAssignment parquet!!!
-        df['cdf'] = df.apply(lambda row: np_cdf_from_hits(row['stop_distances'], (-300, 300)), axis=1)
+        #                                                              VV Super hacky fix for now:
+        df = df.query("t5 == '+'").query("chr != 'MtDNA'")
+        df['cdf'] = df.apply(lambda row: np_cdf_from_hits([int(i) for i in row['stop_distances']], (-300, 300)), axis=1)
         print(df.cdf)
+        compressed_df_dict[lib] = df
+    print(compressed_df_dict)
 
 
 if __name__ == '__main__':
