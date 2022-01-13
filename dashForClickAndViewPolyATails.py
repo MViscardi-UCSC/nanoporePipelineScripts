@@ -121,11 +121,12 @@ def my_first_attempt():
 
 
 def load_and_merge_lib_parquets(lib_list, drop_unassigned=True, drop_failed_polya=True,
-                                drop_sub_n=5, keep_transcript_info=False) -> [pd.DataFrame, pd.DataFrame]:
+                                drop_sub_n=5, keep_transcript_info=False,
+                                subset_first_load=False) -> [pd.DataFrame, pd.DataFrame]:
     read_assignment_df = pd.read_parquet(f"/data16/marcus/genomes/elegansRelease100/"
                                          f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
     # Loop through each library name in the list and for each:
-    #   1. Load the TSV
+    #   1. Load the Parquet
     #   2. Merge this w/ Josh's assign reads based on chr_pos
     #   3. Create a column to retain the library identity
     #   3. Concatenate these dataframe into one large dataframe
@@ -155,11 +156,31 @@ def load_and_merge_lib_parquets(lib_list, drop_unassigned=True, drop_failed_poly
                              "chr_pos",
                              "gene_id",
                              "gene_name",
+                             "cigar",
                              "sequence",
+                             "num_mismatches",
                              "polya_length",
                              "strand_fromFeatureCounts",
                              "strand",
                              ]].drop_duplicates()
+    else:
+        super_df = super_df[["lib",
+                             "read_id",
+                             "chr_id",
+                             "chr_pos",
+                             "gene_id",
+                             "gene_name",
+                             "cigar",
+                             "sequence",
+                             "num_mismatches",
+                             "polya_length",
+                             "strand_fromFeatureCounts",
+                             "strand",
+                             "transcript_id",
+                             "to_start",
+                             "to_stop",
+                             ]].drop_duplicates()
+
     if drop_failed_polya:
         print(f"\nRead counts pre-failed-polyA call drop:   {super_df.shape[0]}")
         super_df = super_df[~super_df["polya_length"].isna()]
@@ -174,10 +195,24 @@ def load_and_merge_lib_parquets(lib_list, drop_unassigned=True, drop_failed_poly
     super_df["read_length"] = super_df["sequence"].apply(len)
 
     # Create the groupby dataframe:
-    groupby_obj = super_df.groupby(["lib", "chr_id", "gene_id", "gene_name"])
+    if not keep_transcript_info:
+        groupby_obj = super_df.groupby(["lib", "chr_id", "gene_id", "gene_name"])
+    else:
+        groupby_obj = super_df.groupby(["lib", "chr_id", "gene_id", "gene_name", "transcript_id"])
     compressed_df = groupby_obj["read_id"].apply(len).to_frame(name="gene_hits")
     compressed_df["mean_polya_length"] = groupby_obj["polya_length"].mean()
     compressed_df["mean_read_length"] = groupby_obj["read_length"].mean()
+    
+    # RPM and fractional hits calculations
+    compressed_df["gene_rpm"] = pd.NA
+    compressed_df["gene_frac_hits"] = pd.NA
+    for lib in compressed_df.index.unique(level='lib').to_list():
+        norm_factor = compressed_df.query(f"lib == '{lib}'").gene_hits.sum()
+        rpm_norm_factor = norm_factor / 1000000
+        gene_rpm_series = compressed_df.query(f"lib == '{lib}'").gene_hits / rpm_norm_factor
+        compressed_df["gene_rpm"] = compressed_df['gene_rpm'].fillna(value=gene_rpm_series)
+        gene_frac_hits_series = compressed_df.query(f"lib == '{lib}'").gene_hits / norm_factor
+        compressed_df["gene_frac_hits"] = compressed_df['gene_frac_hits'].fillna(value=gene_frac_hits_series)
     if isinstance(drop_sub_n, int):
         print(f"Gene counts pre sub-{drop_sub_n} gene-hits drop:  {compressed_df.shape[0]}")
         compressed_df = compressed_df[compressed_df["gene_hits"] >= drop_sub_n]
