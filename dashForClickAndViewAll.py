@@ -18,6 +18,7 @@ From dashForClickAndViewPolyATails.py:
     https://community.plotly.com/t/generate-another-plot-from-data-obtained-from-hovering-over-the-one-graph-and-a-pandas-dataframe/51848/4
 """
 import os
+from pprint import pprint
 
 from nanoporePipelineCommon import get_dt, find_newest_matching_file
 from dashForClickAndViewPolyATails import load_and_merge_lib_parquets
@@ -28,6 +29,7 @@ pd.set_option('display.max_columns', None)
 
 
 def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
+    global COMPRESSED_DF, PLOT_DF
     import dash
     import json
     from dash import dcc, html, callback_context
@@ -37,7 +39,6 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
     import plotly.express as px
     import plotly.graph_objects as go
     import plotly.io as pio
-    import tempfile
 
     from math import log10
 
@@ -48,17 +49,19 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
         search_path = f"./testInputs/*_{'_'.join(libs)}.compressed.parquet"
         try:
             compressed_parquet_path = find_newest_matching_file(search_path)
-            compressed_df = pd.read_parquet(compressed_parquet_path)
+            COMPRESSED_DF = pd.read_parquet(compressed_parquet_path)
         except ValueError:
             print(f"Couldn't find pre-processed file at: {search_path}\nGoing to load from library files!")
             force_compressed_df_build = True
     if force_compressed_df_build:
-        reads_df, compressed_df = load_and_merge_lib_parquets(libs, drop_sub_n=abs_min_cutoff)
+        reads_df, COMPRESSED_DF = load_and_merge_lib_parquets(libs, drop_sub_n=abs_min_cutoff)
         save_path = f"./testInputs/{get_dt(for_file=True)}_{'_'.join(libs)}.compressed.parquet"
-        compressed_df.to_parquet(save_path)
+        COMPRESSED_DF.to_parquet(save_path)
         print(f"Saved new compressed file to: {save_path}")
-    lib_list = compressed_df.lib.unique().tolist()
-    plottable_columns = compressed_df.select_dtypes(include='number').columns.to_list()
+    lib_list = COMPRESSED_DF.lib.unique().tolist()
+    plottable_columns = COMPRESSED_DF.select_dtypes(include='number').columns.to_list()
+
+    PLOT_DF = pd.DataFrame()
 
     app = dash.Dash(__name__)
 
@@ -212,7 +215,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
             selected_gene_ids, selected_gene_names = [], []
 
         # Below tries to make some "smart" bounds around the plot!
-        min_hit_df = compressed_df[compressed_df['gene_hits'] >= min_hits]
+        min_hit_df = COMPRESSED_DF[COMPRESSED_DF['gene_hits'] >= min_hits]
 
         max_plot_x = min_hit_df[min_hit_df['lib'] == xaxis_library][xaxis_col].max()
         min_plot_x = min_hit_df[min_hit_df['lib'] == xaxis_library][xaxis_col].min()
@@ -224,7 +227,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
         x_axis_df = min_hit_df[min_hit_df.lib == xaxis_library].drop(columns='lib')
         y_axis_df = min_hit_df[min_hit_df.lib == yaxis_library].drop(columns='lib')
 
-        plot_df = pd.merge(x_axis_df, y_axis_df, on=["gene_id", "gene_name", "chr_id"],
+        PLOT_DF = pd.merge(x_axis_df, y_axis_df, on=["gene_id", "gene_name", "chr_id"],
                            suffixes=(f"_{xaxis_library}",
                                      f"_{yaxis_library}"))
 
@@ -236,7 +239,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
             color_by = 'chr_id'
         else:
             color_by = None
-        fig = px.scatter(plot_df,
+        fig = px.scatter(PLOT_DF,
                          x=extended_xaxis_col,
                          y=extended_yaxis_col,
                          custom_data=["gene_id", "gene_name"],
@@ -269,7 +272,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
             else:
                 print(f"Diagonal doesn't really make sense unless you are comparing the same metric between libs!")
         if selectedData != "No points selected":
-            selected_df = plot_df[plot_df["gene_id"].isin(selected_gene_ids)]
+            selected_df = PLOT_DF[PLOT_DF["gene_id"].isin(selected_gene_ids)]
             fig.add_trace(go.Scatter(mode='markers',
                                      x=selected_df[extended_xaxis_col],
                                      y=selected_df[extended_yaxis_col],
@@ -321,18 +324,19 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
         return_data = []
         if select_by_name != '':
             try:
-                selected_df = compressed_df.loc[compressed_df.gene_name == select_by_name].reset_index().set_index(
+                selected_df = COMPRESSED_DF.loc[COMPRESSED_DF.gene_name == select_by_name].reset_index().set_index(
                     'lib')
                 return_data = [{'Gene Name': select_by_name,
                                 'Gene ID': selected_df.loc[x_lib, 'gene_id'],
                                 f'{x_lib} hits': str(selected_df.loc[x_lib, 'gene_hits']),
                                 f'{y_lib} hits': str(selected_df.loc[y_lib, 'gene_hits'])}]
             except KeyError:
-                print(f"Could not find {select_by_name} in compressed_df!!")
+                print(f"Could not find {select_by_name} in COMPRESSED_DF!!")
                 return_data = []
                 if not selectedData:
                     return "No points selected"
         if selectedData:
+            # pprint(selectedData)
             for point_dict in selectedData['points']:
                 gene_id, gene_name, x_counts, y_counts = point_dict['customdata']
                 if gene_name != select_by_name:
