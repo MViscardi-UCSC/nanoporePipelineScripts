@@ -336,7 +336,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                 if not selectedData:
                     return "No points selected"
         if selectedData:
-            # pprint(selectedData)
+            pprint(selectedData)
             for point_dict in selectedData['points']:
                 gene_id, gene_name, x_counts, y_counts = point_dict['customdata']
                 if gene_name != select_by_name:
