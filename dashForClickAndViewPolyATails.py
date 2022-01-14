@@ -585,14 +585,12 @@ def distributions_of_polya_tails(libs):
             msg = '*None of the buttons*'
         return html.Div(f"{msg} was most recently clicked")
 
-    app.run_server(debug=False, dev_tools_hot_reload=False)
+    app.run_server(debug=False, dev_tools_hot_reload=False, host='127.0.0.1', port=8000)
 
 
 if __name__ == '__main__':
     from sys import argv
 
-    # TODO: Add drop down to select plot column!
     libraries_to_run = argv[1:]
     print(f"Running w/ libraries: {libraries_to_run}")
-    # libraries_to_run = ["totalRNA2", "polyA2"]
     distributions_of_polya_tails(libraries_to_run)
