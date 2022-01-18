@@ -29,10 +29,10 @@ pd.set_option('display.max_columns', None)
 
 
 def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
-    global COMPRESSED_DF, PLOT_DF
+    global COMPRESSED_DF, PLOT_DF, SELECTED_DF
     import dash
     import json
-    from dash import dcc, html, callback_context
+    from dash import dcc, html, callback_context, dash_table
     import dash_bootstrap_components as dbc
     from dash.dependencies import Input, Output
     import dash_daq as daq
@@ -44,7 +44,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
 
     if len(libs) < 2:
         raise ValueError(f"Please provide 2 or more libraries, only {len(libs)} given.")
-    
+
     if not force_compressed_df_build:
         search_path = f"./testInputs/*_{'_'.join(libs)}.compressed.parquet"
         try:
@@ -60,8 +60,6 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
         print(f"Saved new compressed file to: {save_path}")
     lib_list = COMPRESSED_DF.lib.unique().tolist()
     plottable_columns = COMPRESSED_DF.select_dtypes(include='number').columns.to_list()
-
-    PLOT_DF = pd.DataFrame()
 
     app = dash.Dash(__name__)
 
@@ -89,7 +87,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                                 persistence=True, persistence_type='local',
                                 labelStyle={'display': 'inline-block', 'text-align': 'justify'},
                             ),
-                        ], style={'padding': 10, 'flex': 4}
+                        ], style={'padding': 10, 'flex': 3}
                     ),
 
                     html.Div(  # Middle section of options row
@@ -122,12 +120,13 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                             html.Label('Minimum number of hits/gene to allow:'),
                             dcc.Slider(
                                 id='min-hits-slider',
-                                min=5*(abs_min_cutoff//5), max=100,
+                                min=5 * (abs_min_cutoff // 5), max=100,
                                 value=40, persistence=True, persistence_type='local',
-                                marks={str(n): str(n) for n in range(5*(abs_min_cutoff//5), 100+abs_min_cutoff, 5)},
+                                marks={str(n): str(n) for n in
+                                       range(5 * (abs_min_cutoff // 5), 100 + abs_min_cutoff, 5)},
                                 step=None
                             ),
-                        ], style={'padding': 10, 'flex': 4}
+                        ], style={'padding': 10, 'flex': 6}
                     ),
                     html.Div(  # Right section of options row
                         [
@@ -149,7 +148,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                                 persistence=True, persistence_type='local',
                                 labelStyle={'display': 'inline-block', 'text-align': 'justify'},
                             ),
-                        ], style={'padding': 10, 'flex': 4}
+                        ], style={'padding': 10, 'flex': 3}
                     ),
                 ], style={'display': 'flex', 'flex-direction': 'row'},
             ),
@@ -157,38 +156,41 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                 [
                     html.Div(  # Left section of plotting row
                         [
-                            # html.H3(
-                            #     'Rocket Plot of Mean Tail Lengths'
-                            # ),
                             dcc.Graph(
                                 id='primary-scatter',
                             )
                         ], style={'padding': 10, 'flex': '0 0 600px'}
                     ),
-                    html.Div(  # Right section of the plotting row, with selected-data
+                    html.Div(  # Right section of the plotting row, with buttons
                         [
-                            html.Pre(id='selected-data')
+                            html.Br(), html.Br(),
+                            html.Div(
+                                [
+                                    html.Button('Popout Scatter', id='btn-nclicks-1', n_clicks=0),
+                                    html.Button('Quick Save', id='btn-nclicks-2', n_clicks=0)
+                                ]
+                            ),
+                            html.Div(id='container-button-timestamp'),
+                            html.Br(), html.Br(),
+                            html.Div(
+                                [
+                                    html.Button('Save Scatter As SVG', id='btn-nclicks-3', n_clicks=0),
+                                    html.Button('Save Scatter As PNG', id='btn-nclicks-4', n_clicks=0),
+                                    dcc.Download(id='download_image'),
+                                ]
+                            ),
+                            html.Br(), html.Br(),
+                            html.Div(
+                                [
+                                    html.Button('Reset Selected Data', id='btn-nclicks-5', n_clicks=0),
+                                ]
+                            )
                         ], style={'padding': 10, 'flex': 1}
                     )
                 ], style={'display': 'flex', 'flex-direction': 'row'},
             ),
-            html.Div(  # Saving/Output Buttons Row
-                [
-                    html.Div(
-                        [
-                            html.Button('Popout Scatter', id='btn-nclicks-1', n_clicks=0),
-                            html.Button('Quick Save', id='btn-nclicks-2', n_clicks=0)
-                        ]
-                    ),
-                    html.Div(id='container-button-timestamp'),
-                    html.Div(
-                        [
-                            html.Button('Save Scatter As SVG', id='btn-nclicks-3', n_clicks=0),
-                            html.Button('Save Scatter As PNG', id='btn-nclicks-4', n_clicks=0),
-                            dcc.Download(id='download_image'),
-                        ]
-                    )
-                ]
+            html.Div(  # Selected data table
+                id='selected-datatable'
             )
         ]
     )
@@ -200,19 +202,15 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
          Input('xaxis-col', 'value'),
          Input('yaxis-col', 'value'),
          Input('min-hits-slider', 'value'),
-         Input('selected-data', 'children'),
+         Input('selected-datatable', 'children'),
          Input('options', 'value')])
     def main_plot(xaxis_library, yaxis_library,
                   xaxis_col, yaxis_col,
                   min_hits,
-                  selectedData, options_list) -> go.Figure:
+                  selected_data, options_list) -> go.Figure:
+        global COMPRESSED_DF, PLOT_DF, SELECTED_DF
         extended_xaxis_col = f"{xaxis_col}_{xaxis_library}"
         extended_yaxis_col = f"{yaxis_col}_{yaxis_library}"
-        if selectedData != "No points selected":
-            selected_gene_ids = [hit["Gene ID"] for hit in json.loads(selectedData)]
-            selected_gene_names = [hit["Gene Name"] for hit in json.loads(selectedData)]
-        else:
-            selected_gene_ids, selected_gene_names = [], []
 
         # Below tries to make some "smart" bounds around the plot!
         min_hit_df = COMPRESSED_DF[COMPRESSED_DF['gene_hits'] >= min_hits]
@@ -271,20 +269,28 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                                          showlegend=False))
             else:
                 print(f"Diagonal doesn't really make sense unless you are comparing the same metric between libs!")
-        if selectedData != "No points selected":
-            selected_df = PLOT_DF[PLOT_DF["gene_id"].isin(selected_gene_ids)]
+        if selected_data['type'] != "Pre":
+            selected_df = SELECTED_DF
             fig.add_trace(go.Scatter(mode='markers',
                                      x=selected_df[extended_xaxis_col],
                                      y=selected_df[extended_yaxis_col],
                                      customdata=list(zip(selected_df[f"gene_id"],
                                                          selected_df[f"gene_name"],
-                                                         selected_df[f"gene_hits_{xaxis_library}"],
-                                                         selected_df[f"gene_hits_{yaxis_library}"])),
+                                                         selected_df[extended_xaxis_col],
+                                                         selected_df[extended_yaxis_col])),
                                      marker=dict(color='red',
                                                  size=7,
                                                  line=dict(color='black',
                                                            width=2)),
+                                     text=selected_df['gene_name'],
+                                     hovertemplate="<b>%{text}</b><br>"
+                                                   f"<br>{extended_xaxis_col}={'%{x}'}"
+                                                   f"<br>{extended_yaxis_col}={'%{y}'}"
+                                                   "<br>gene_id=%{customdata[0]}",
                                      name='Selected Genes',
+                                     hoverlabel=dict(
+                                         bgcolor="black",
+                                     ),
                                      showlegend=False))
 
         fig.update_layout(legend=dict(  # orientation="h",
@@ -313,38 +319,47 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
         return fig
 
     @app.callback(
-        Output('selected-data', 'children'),
-        [Input('primary-scatter', 'selectedData'),
-         Input('gene_name_select', 'value'),
-         Input('xaxis-lib', 'value'),
-         Input('yaxis-lib', 'value')])
-    def display_selected_data(selectedData, select_by_name, x_lib, y_lib):
+        [
+            Output('selected-datatable', 'children')
+        ],
+        [
+            Input('primary-scatter', 'selectedData'),
+            Input('gene_name_select', 'value'),
+            Input('xaxis-lib', 'value'),
+            Input('yaxis-lib', 'value'),
+            Input('btn-nclicks-5', 'n_clicks'),
+        ]
+    )
+    def display_selected_data(selectedData, select_by_name, x_lib, y_lib, reset_clicks):
+        global COMPRESSED_DF, PLOT_DF, SELECTED_DF
+        changed_id = [p['prop_id'] for p in callback_context.triggered][0]
+        if 'btn-nclicks-5' in changed_id:
+            SELECTED_DF = None
+            return [html.Pre("No points selected")]
         if not selectedData and select_by_name == '':
-            return "No points selected"
-        return_data = []
+            return [html.Pre("No points selected")]
         if select_by_name != '':
             try:
-                selected_df = COMPRESSED_DF.loc[COMPRESSED_DF.gene_name == select_by_name].reset_index().set_index(
-                    'lib')
-                return_data = [{'Gene Name': select_by_name,
-                                'Gene ID': selected_df.loc[x_lib, 'gene_id'],
-                                f'{x_lib} hits': str(selected_df.loc[x_lib, 'gene_hits']),
-                                f'{y_lib} hits': str(selected_df.loc[y_lib, 'gene_hits'])}]
+                name_selected_df = PLOT_DF.loc[PLOT_DF.gene_name == select_by_name]
             except KeyError:
                 print(f"Could not find {select_by_name} in COMPRESSED_DF!!")
-                return_data = []
+                name_selected_df = pd.DataFrame()
                 if not selectedData:
-                    return "No points selected"
+                    return [html.Pre("No points selected")]
+        else:
+            name_selected_df = pd.DataFrame()
         if selectedData:
-            pprint(selectedData)
+            selected_df = pd.DataFrame()
             for point_dict in selectedData['points']:
-                gene_id, gene_name, x_counts, y_counts = point_dict['customdata']
+                gene_id, gene_name = point_dict['customdata'][:2]
                 if gene_name != select_by_name:
-                    return_data.append({'Gene Name': gene_name,
-                                        'Gene ID': gene_id,
-                                        f'{x_lib} hits': x_counts,
-                                        f'{y_lib} hits': y_counts})
-        return json.dumps(return_data, indent=2)
+                    selected_df = pd.concat([selected_df, PLOT_DF.loc[PLOT_DF.gene_name == gene_name]])
+        else:
+            selected_df = pd.DataFrame()
+        SELECTED_DF = pd.concat([name_selected_df, selected_df])
+        transposed_selected_df = SELECTED_DF.set_index('gene_name').T.reset_index()
+        trans_df_columns = [{"name": i, "id": i} for i in transposed_selected_df.columns]
+        return [dash_table.DataTable(data=transposed_selected_df.to_dict('records'), columns=trans_df_columns)]
 
     @app.callback(
         Output('container-button-timestamp', 'children'),
@@ -362,7 +377,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
             go.Figure(scatter_fig).write_image(save_file_loc,
                                                width=600, height=600, scale=2)
         else:
-            msg = '*None of the buttons*'
+            msg = '*Neither of these buttons*'
         return html.Div(f"{msg} was most recently clicked")
 
     @app.callback(
@@ -386,7 +401,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
             temp_hold = dcc.send_file(temp_save_file_loc)
             os.remove(temp_save_file_loc)
             return temp_hold
-    
+
     app.run_server(debug=False, dev_tools_hot_reload=False)
 
 
@@ -396,5 +411,5 @@ if __name__ == '__main__':
     libraries_to_run = argv[1:]
     print(f"Running w/ libraries: {libraries_to_run}")
     main(libraries_to_run,
-         #force_compressed_df_build=True,
+         # force_compressed_df_build=True,
          abs_min_cutoff=1)
