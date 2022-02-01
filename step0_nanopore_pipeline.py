@@ -543,6 +543,8 @@ def nanopolish_index_and_polya(genomeDir, dataDir, outputDir, threads, regenerat
 def __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter):
     import simplesam as ssam
     fastq_path = f'{outputDir}/cat_files/cat.fastq'
+    
+    # This open block is just to look at the first line of the fastq
     with open(fastq_path, 'r') as f:
         first_line = f.readline()
         # Check if each of the cutadapt comments were added, save for below.
@@ -729,8 +731,10 @@ def merge_results(**other_kwargs):
         else:
             merge_reads_df = sam_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
         merge_reads_df = merge_reads_df.drop_duplicates()
-        # Dropping unmapped reads, after the addition of the -F 0x904 with samtools this should do nothing
+        
+        # Dropping unmapped or secondary reads, after the addition of the -F 0x904 with samtools this should do nothing:
         merge_reads_df = merge_reads_df[merge_reads_df["sequence"] != "*"]
+        
         # Dropping terrible mapq scored reads, I don't think there are very many of these at all(?)
         merge_reads_df = merge_reads_df[merge_reads_df["mapq"] != 0]
 
