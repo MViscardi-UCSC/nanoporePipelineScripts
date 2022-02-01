@@ -664,7 +664,6 @@ def merge_results(**other_kwargs):
         # Pull the 16 bit flag to get strand information (important for merge w/ featC later)
         sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-", 0: "+"})
         sam_df = sam_df.astype({'strand': 'category'})
-        sam_df = adjust_5_ends(sam_df, genomeDir, outputDir)
         if keep_multimaps:
             # Identify and drop reads that have the 4 bit flag: indicating they didn't map!
             sam_df = sam_df[(sam_df.bit_flag & 4) != 4]
