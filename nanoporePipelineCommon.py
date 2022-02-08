@@ -200,7 +200,7 @@ class SamOrBamFile:
         # subprocess.run accepts the input param to pass to the bash call!
         if output_path:
             if to_bam:
-                run(f"samtools view -h --no-PG -b - > {output_path}",
+                run(f"samtools view -h --no-PG -b - > {output_path} && samtools index {output_path}",
                     input=buffer.encode('utf-8'), shell=True)
             else:
                 run(f"samtools view -h --no-PG - > {output_path}",
