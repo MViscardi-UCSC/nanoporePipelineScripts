@@ -497,21 +497,23 @@ def old_assign_w_josh_method(reads_df, genomeDir):
 def assign_with_josh_method(merged_on_reads_df: pd.DataFrame, genomeDir: str,
                             keepMultipleTranscriptInfo=False, save_it=False,
                             add_names=False) -> pd.DataFrame:
-    # merged_on_reads_df = adjust_5_ends(merged_on_reads_df)
+    merged_on_reads_df = adjust_5_ends(merged_on_reads_df)
     print(f"Using Josh's read assignment method w/ 5'ends!")
     if keepMultipleTranscriptInfo:
         read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
     else:
-        read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
-                                                      # (f"{genomeDir}/*.allChrsLite.parquet")
+        read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrsLite.parquet")
     print(f"Loading readAssignment file from {read_assignment_path}")
     read_assignment_df = pd.read_parquet(read_assignment_path)
+    if keepMultipleTranscriptInfo:
+        read_assignment_df = read_assignment_df.astype({"to_stop": "int64",
+                                                        "to_start": "int64"})
     print(f"Loaded  readAssignment file from {read_assignment_path}")
     
     print(f"Starting merge of dataframes to make assignments")
     merged_on_reads_and_assigned_df = merged_on_reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
-                                                               how="left", suffixes=("_fromFeatureCounts",
-                                                                                     ""))
+                                                               how="left", suffixes=("",
+                                                                                     "_fromJoshAssign"))
     print(f"Finished merge of dataframes to make assignments")
     return merged_on_reads_and_assigned_df
 
