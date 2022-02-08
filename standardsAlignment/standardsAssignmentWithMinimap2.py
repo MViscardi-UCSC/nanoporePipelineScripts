@@ -393,57 +393,60 @@ if __name__ == '__main__':
 
     # W/ Dataframes:
     # Find the newest matching files for libraries of interest:
+    path_dict = pick_libs_return_paths_dict(
+        [
+            "pTRI-stds-tera3",
+            "pTRI-stds",
+        ],
+        file_suffix="parquet",
+        file_midfix="mergedOnReads")
+    for lib_key, lib_path in path_dict.items():
+        lib_key += '_fromDF'
+        df = pd.read_parquet(lib_path)
+        df['read_length'] = df['sequence'].str.len()
+        min_length = 1350
+        max_length = 1550
+        df = df.query(f"{min_length} <= read_length <= {max_length}")
+        stds_df = align_standards(compressed_df=df,
+                                  tail_less_reference=True,
+                                  keep_read_id=True,
+                                  )
+        extra_df = df.merge(stds_df[['read_id', 'adapter']], on='read_id')
+        extra_df.to_csv(f"{get_dt(for_file=True)}_{lib_key}_compressed-plus_wLen{min_length}-{max_length}.tsv", sep='\t')
+        extra_df.to_parquet(f"{get_dt(for_file=True)}_{lib_key}_compressed-plus_wLen{min_length}-{max_length}.parquet")
+        for only_stds in (True, False):
+            plot_value_counts(stds_df,
+                              only_standards=only_stds,
+                              title=f"{lib_key}: {min_length} <= read_len <= {max_length};"
+                                    f" only_stds={only_stds}")
+
+    # W/ Fastq:
     # path_dict = pick_libs_return_paths_dict(
     #     [
     #         "pTRI-stds-tera3",
     #         "pTRI-stds",
     #     ],
-    #     file_suffix="parquet",
-    #     file_midfix="mergedOnReads")
+    #     file_suffix='fastq',
+    #     file_midfix='cat',
+    #     output_dir_folder='cat_files')
     # for lib_key, lib_path in path_dict.items():
-    #     lib_key += '_fromDF'
-    #     df = pd.read_parquet(lib_path)
-    #     stds_df = align_standards(compressed_df=df,
+    #     stds_df = align_standards(fastq_file=lib_path,
     #                               tail_less_reference=True,
     #                               keep_read_id=True,
     #                               )
-    #     extra_df = df.merge(stds_df[['read_id', 'adapter']], on='read_id')
+    #     parquet_path = list(pick_libs_return_paths_dict([lib_key],
+    #                                                     file_suffix="parquet",
+    #                                                     file_midfix="mergedOnReads").values())[0]
+    #     df = pd.read_parquet(parquet_path)
+    #     extra_df = df.merge(stds_df[['read_id', 'adapter']], on='read_id', how='right')
     #     extra_df.to_csv(f"{get_dt(for_file=True)}_{lib_key}_compressed-plus.tsv", sep='\t')
     #     extra_df.to_parquet(f"{get_dt(for_file=True)}_{lib_key}_compressed-plus.parquet")
+    # 
+    #     lib_key += '_fromFastq'
     #     for plot_frac in (True, False):
     #         for only_stds in (True, False):
     #             plot_value_counts(stds_df,
     #                               plot_fractions=plot_frac,
     #                               only_standards=only_stds,
     #                               title=f"{lib_key}: plot_frac={plot_frac}; only_stds={only_stds}")
-
-    # W/ Fastq:
-    path_dict = pick_libs_return_paths_dict(
-        [
-            "pTRI-stds-tera3",
-            "pTRI-stds",
-        ],
-        file_suffix='fastq',
-        file_midfix='cat',
-        output_dir_folder='cat_files')
-    for lib_key, lib_path in path_dict.items():
-        stds_df = align_standards(fastq_file=lib_path,
-                                  tail_less_reference=True,
-                                  keep_read_id=True,
-                                  )
-        parquet_path = list(pick_libs_return_paths_dict([lib_key],
-                                                        file_suffix="parquet",
-                                                        file_midfix="mergedOnReads").values())[0]
-        df = pd.read_parquet(parquet_path)
-        extra_df = df.merge(stds_df[['read_id', 'adapter']], on='read_id', how='right')
-        extra_df.to_csv(f"{get_dt(for_file=True)}_{lib_key}_compressed-plus.tsv", sep='\t')
-        extra_df.to_parquet(f"{get_dt(for_file=True)}_{lib_key}_compressed-plus.parquet")
-
-        lib_key += '_fromFastq'
-        for plot_frac in (True, False):
-            for only_stds in (True, False):
-                plot_value_counts(stds_df,
-                                  plot_fractions=plot_frac,
-                                  only_standards=only_stds,
-                                  title=f"{lib_key}: plot_frac={plot_frac}; only_stds={only_stds}")
-    print("Done.")
+        print("Done.")
