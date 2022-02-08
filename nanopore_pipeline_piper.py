@@ -14,9 +14,10 @@ def per_library_run(lib_name, path_to_settings):
     print(f"##Starting run for {lib_name} @ {get_dt(for_print=True)}##")
     start = datetime.now()
     settings_dict = {"settings": path_to_settings,
-                     "stepsToRun": "FP",
+                     "stepsToRun": "MNCFPS",
                      "genomeDir": "/data16/marcus/genomes/elegansRelease100",
                      "callWithJoshMethod": True,
+                     "regenerate": True,
                      }
     args = meshSetsAndArgs(skip_cli_dict=settings_dict)
     main_out = main(**args)
@@ -40,10 +41,14 @@ if __name__ == '__main__':
         #           "211031_totalRNA_0639_L3_settingsFile.txt",
         # xrn1="/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
         #      "211031_totalRNA_5108_xrn-1-KD_settingsFile.txt",
-        wt_5tera="/211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/"
-                 "211118_totalRNA_5108_xrn-1-KD_settingsFile.txt",
-        smg6_5tera="/211210_nanoporeRun_totalRNA_2102_xrn-1-KD_5TERA/"
-                   "211210_totalRNA_2102_xrn-1-KD_settingsFile.txt",
+        # wt_5tera="/211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/"
+        #          "211118_totalRNA_5108_xrn-1-KD_settingsFile.txt",
+        # smg6_5tera="/211210_nanoporeRun_totalRNA_2102_xrn-1-KD_5TERA/"
+        #            "211210_totalRNA_2102_xrn-1-KD_settingsFile.txt",
+        totalRNA3="/220131_nanoporeRun_totalRNA_0639_L3_third/"
+                  "220131_totalRNA_0639_L3_third_settingsFile.txt",
+        polyA3="/220131_nanoporeRun_polyA_0639_L3_third/"
+               "220131_polyA_0639_L3_third_settingsFile.txt",
     )
     working_path = "/data16/marcus/working"
 
