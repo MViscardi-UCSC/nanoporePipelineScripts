@@ -54,12 +54,19 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
             print(f"Couldn't find pre-processed file at: {search_path}\nGoing to load from library files!")
             force_compressed_df_build = True
     if force_compressed_df_build:
-        reads_df, COMPRESSED_DF = load_and_merge_lib_parquets(libs, drop_sub_n=abs_min_cutoff)
+        reads_df, COMPRESSED_DF = load_and_merge_lib_parquets(libs,
+                                                              drop_sub_n=abs_min_cutoff,
+                                                              add_nucleotide_fractions=True)
         save_path = f"./testInputs/{get_dt(for_file=True)}_{'_'.join(libs)}.compressed.parquet"
         COMPRESSED_DF.to_parquet(save_path)
         print(f"Saved new compressed file to: {save_path}")
     lib_list = COMPRESSED_DF.lib.unique().tolist()
+    COMPRESSED_DF['is_MtDNA'] = COMPRESSED_DF['chr_id'] == 'MtDNA'
     plottable_columns = COMPRESSED_DF.select_dtypes(include='number').columns.to_list()
+    color_by_columns = ["None", "is_MtDNA", "chr_id",
+                        "t_fraction", "a_fraction",
+                        "c_fraction", "g_fraction",
+                        ]
 
     app = dash.Dash(__name__)
 
@@ -89,7 +96,6 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                             ),
                         ], style={'padding': 10, 'flex': 3}
                     ),
-
                     html.Div(  # Middle section of options row
                         [
                             html.Label('Options'),
@@ -100,7 +106,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                                     {'label': 'Log Y', 'value': 'log_y'},
                                     {'label': 'Trend Line', 'value': 'trendline'},
                                     {'label': 'Diagonal Line', 'value': 'diagonal'},
-                                    {'label': 'Color By Chr', 'value': 'color_chr'},
+                                    # {'label': 'Color By Chr', 'value': 'color_chr'},
                                 ],
                                 value=['log_x', 'log_y'],
                                 persistence=True, persistence_type='local',
@@ -145,6 +151,16 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                                 id='yaxis-col',
                                 options=[{'label': i, 'value': i} for i in plottable_columns],
                                 value=plottable_columns[0],
+                                persistence=True, persistence_type='local',
+                                labelStyle={'display': 'inline-block', 'text-align': 'justify'},
+                            ),
+
+                            html.Br(),
+                            html.Label('Color By:'),
+                            dcc.RadioItems(
+                                id='color-col',
+                                options=[{'label': i, 'value': i} for i in color_by_columns],
+                                value=color_by_columns,
                                 persistence=True, persistence_type='local',
                                 labelStyle={'display': 'inline-block', 'text-align': 'justify'},
                             ),
@@ -203,11 +219,13 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
          Input('yaxis-col', 'value'),
          Input('min-hits-slider', 'value'),
          Input('selected-datatable', 'children'),
-         Input('options', 'value')])
+         Input('options', 'value'),
+         Input('color-col', 'value')])
     def main_plot(xaxis_library, yaxis_library,
                   xaxis_col, yaxis_col,
                   min_hits,
-                  selected_data, options_list) -> go.Figure:
+                  selected_data, options_list,
+                  color_by_col) -> go.Figure:
         global COMPRESSED_DF, PLOT_DF, SELECTED_DF
         extended_xaxis_col = f"{xaxis_col}_{xaxis_library}"
         extended_yaxis_col = f"{yaxis_col}_{yaxis_library}"
@@ -224,17 +242,22 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
         # TODO: Something to handle if x and y libs are the same (just make one df and copy it?)
         x_axis_df = min_hit_df[min_hit_df.lib == xaxis_library].drop(columns='lib')
         y_axis_df = min_hit_df[min_hit_df.lib == yaxis_library].drop(columns='lib')
-
-        PLOT_DF = pd.merge(x_axis_df, y_axis_df, on=["gene_id", "gene_name", "chr_id"],
-                           suffixes=(f"_{xaxis_library}",
-                                     f"_{yaxis_library}"))
+        if xaxis_library == yaxis_library:
+            merge_suffixes = (f"_{xaxis_library}", '_y')
+        else:
+            merge_suffixes = (f"_{xaxis_library}",
+                              f"_{yaxis_library}")
+        PLOT_DF = pd.merge(x_axis_df, y_axis_df, on=["gene_id", "gene_name", "chr_id", "is_MtDNA",
+                                                     "t_fraction", "a_fraction",
+                                                     "c_fraction", "g_fraction"],
+                           suffixes=merge_suffixes)
 
         if 'trendline' in options_list:
             trend = "ols"
         else:
             trend = None
-        if 'color_chr' in options_list:
-            color_by = 'chr_id'
+        if color_by_col != "None" and color_by_col in PLOT_DF.columns.to_list():
+            color_by = color_by_col
         else:
             color_by = None
         fig = px.scatter(PLOT_DF,
@@ -245,7 +268,28 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                                                              f"gene_hits_{xaxis_library}",
                                                              f"gene_hits_{yaxis_library}"],
                          trendline=trend, trendline_color_override="red",
-                         color=color_by)
+                         color=color_by, color_continuous_scale='BlueRed')
+        if 'trendline' in options_list:
+            trend_results: pd.DataFrame = px.get_trendline_results(fig)
+            for index, result in trend_results.iterrows():
+                spearman_r, spearman_p = stats.spearmanr(PLOT_DF[extended_xaxis_col],
+                                                         PLOT_DF[extended_yaxis_col])
+                print_text = f"<b>Correlation & Trend:</b>"
+                if not color_by:
+                    print_text += f"<br>Trend R<sup>2</sup> = {result[0].rsquared:.4f}"
+                print_text += f"<br>Spearman R = {spearman_r:.4f}" \
+                              f"<br>Spearman p-val = {spearman_p:.2E}"
+                fig.add_annotation(text=print_text,
+                                   x=0.99, xref='paper', xanchor='right',
+                                   y=0.01, yref='paper', yanchor='bottom',
+                                   align='right',
+                                   bordercolor="darkgray",
+                                   borderwidth=2,
+                                   borderpad=6,
+                                   bgcolor="lightgray",
+                                   font=dict(family="Courier New, monospace",
+                                             size=16),
+                                   showarrow=False)
         fig.update_layout(margin={'l': 40, 'b': 40, 't': 10, 'r': 0},
                           width=600, height=600,
                           hovermode='closest', clickmode="event+select",
@@ -254,7 +298,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                           template='plotly_white')
 
         traces_dict = dict(size=4, color='black', opacity=0.9)
-        if 'color_chr' in options_list:
+        if color_by_col != "None" and color_by_col in PLOT_DF.columns:
             traces_dict.pop('color')
         fig.update_traces(marker=traces_dict)
         if 'diagonal' in options_list:
@@ -294,10 +338,14 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                                      showlegend=False))
 
         fig.update_layout(legend=dict(  # orientation="h",
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=0.01))
+            yanchor="top", y=0.99,
+            xanchor="left", x=0.01,
+            itemsizing='constant',
+            bordercolor="darkgray",
+            borderwidth=2,
+            bgcolor="lightgray",
+            font=dict(family="Courier New, monospace",
+                      size=14), ))
         if 'log_x' in options_list:
             fig.update_xaxes(type='log',
                              range=[log10(min_plot_x), log10(max_plot_x)],
@@ -411,5 +459,5 @@ if __name__ == '__main__':
     libraries_to_run = argv[1:]
     print(f"Running w/ libraries: {libraries_to_run}")
     main(libraries_to_run,
-         # force_compressed_df_build=True,
+         force_compressed_df_build=False,
          abs_min_cutoff=1)
