@@ -12,7 +12,9 @@ https://dash.plotly.com/interactive-graphing
 https://dash.plotly.com/dash-core-components/graph
 https://community.plotly.com/t/generate-another-plot-from-data-obtained-from-hovering-over-the-one-graph-and-a-pandas-dataframe/51848/4
 """
-from nanoporePipelineCommon import pick_libs_return_paths_dict, get_dt
+import seaborn
+
+from nanoporePipelineCommon import pick_libs_return_paths_dict, get_dt, find_newest_matching_file
 import pandas as pd
 
 pd.set_option('display.width', 400)
@@ -120,11 +122,14 @@ def my_first_attempt():
         app.run_server(debug=True)
 
 
-def load_and_merge_lib_parquets(lib_list, drop_unassigned=True, drop_failed_polya=True,
+def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/elegansRelease100/",
+                                drop_unassigned=True, drop_failed_polya=True,
                                 drop_sub_n=5, keep_transcript_info=False,
-                                subset_first_load=False) -> [pd.DataFrame, pd.DataFrame]:
-    read_assignment_df = pd.read_parquet(f"/data16/marcus/genomes/elegansRelease100/"
-                                         f"Caenorhabditis_elegans.WBcel235.100.allChrs.parquet")
+                                subsample_each_lib=False, read_pos_in_groupby=False,
+                                add_nucleotide_fractions=False,
+                                group_by_t5=False) -> [pd.DataFrame, pd.DataFrame]:
+    read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
+    read_assignment_df = pd.read_parquet(read_assignment_path)
     # Loop through each library name in the list and for each:
     #   1. Load the Parquet
     #   2. Merge this w/ Josh's assign reads based on chr_pos
@@ -137,6 +142,10 @@ def load_and_merge_lib_parquets(lib_list, drop_unassigned=True, drop_failed_poly
     for library_name, parquet_path in path_dict.items():
         print(f"Loading parquet for {library_name} lib. . .")
         lib_df = pd.read_parquet(parquet_path)
+        # if isinstance(subsample_each_lib, int):
+        #     lib_df - lib_df.sample(subsample_each_lib)
+        # elif subsample_each_lib:
+        #     lib_df = lib_df.sample(10000)
         df_dict[library_name] = lib_df
 
     # This is a cute way to quickly merge all of these dfs into one, while retaining lib info.
@@ -145,83 +154,117 @@ def load_and_merge_lib_parquets(lib_list, drop_unassigned=True, drop_failed_poly
     multi_df = pd.concat(df_dict.values(), keys=df_dict.keys())
     multi_df.index.set_names(("lib", "old_index"), inplace=True)
     super_df = multi_df.reset_index(level="lib").reset_index(drop=True)
-    print(f"Starting merge . . .", end="")
+    print(f"Starting assignment merge . . .", end="")
+    
+    # Some major issues with ugly column names coming through, plan to clean them up:
+    read_assignment_cols = read_assignment_df.columns.to_list()
+    read_assignment_cols.remove('chr_id')
+    read_assignment_cols.remove('chr_pos')
+    read_assignment_cols_to_drop = [col for col in read_assignment_cols if col in super_df.columns]
+    super_df.drop(columns=read_assignment_cols_to_drop, inplace=True)
+    
     super_df = super_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
-                              how="left", suffixes=["_fromFeatureCounts",
+                              how="left", suffixes=["_originalOutput",
                                                     ""])
-    if not keep_transcript_info:
-        super_df = super_df[["lib",
-                             "read_id",
-                             "chr_id",
-                             "chr_pos",
-                             "gene_id",
-                             "gene_name",
-                             "cigar",
-                             "sequence",
-                             "num_mismatches",
-                             "polya_length",
-                             "strand_fromFeatureCounts",
-                             "strand",
-                             ]].drop_duplicates()
-    else:
-        super_df = super_df[["lib",
-                             "read_id",
-                             "chr_id",
-                             "chr_pos",
-                             "gene_id",
-                             "gene_name",
-                             "cigar",
-                             "sequence",
-                             "num_mismatches",
-                             "polya_length",
-                             "strand_fromFeatureCounts",
-                             "strand",
-                             "transcript_id",
-                             "to_start",
-                             "to_stop",
-                             ]].drop_duplicates()
-
+    keep_columns = ["lib",
+                    "read_id",
+                    "chr_id",
+                    "chr_pos",
+                    "gene_id",
+                    "gene_name",
+                    "cigar",
+                    "sequence",
+                    "polya_length",
+                    "strand",
+                    ]
+    if keep_transcript_info:
+        for col in ["transcript_id", "to_start", "to_stop"]:
+            keep_columns.append(col)
+    if group_by_t5:
+        keep_columns.append('t5')
+    super_df = super_df[keep_columns].drop_duplicates()
     if drop_failed_polya:
         print(f"\nRead counts pre-failed-polyA call drop:   {super_df.shape[0]}")
         super_df = super_df[~super_df["polya_length"].isna()]
         print(f"Read counts post-failed-polyA call drop:  {super_df.shape[0]}")
-    print(f"\rFinished merge!")
+    print(f"\rFinished assignment merge!")
+    
+    # Post-assignment cleanups:
     if drop_unassigned:
         print(f"Read counts post gene assignment:  {super_df.shape[0]}")
         super_df = super_df[~super_df["gene_id"].isna()].reset_index(drop=True)
         print(f"Read counts post unassigned drop:  {super_df.shape[0]}")
-        super_df = super_df[super_df["strand_fromFeatureCounts"] == super_df["strand"]].reset_index(drop=True)
-        print(f"Read counts post consistent-assignment check: {super_df.shape[0]}")
+        # 220201: I don't know why we were doing below...?
+        # super_df = super_df[super_df["strand_originalOutput"] == super_df["strand_forPlot"]].reset_index(drop=True)
+        # print(f"Read counts post consistent-assignment check: {super_df.shape[0]}")
+        if keep_transcript_info:
+            super_df = super_df.astype({"to_stop": "int64",
+                                        "to_start": "int64"})
     super_df["read_length"] = super_df["sequence"].apply(len)
 
     # Create the groupby dataframe:
+    print(f"Creating groupby dataframe merged on lib, chr_id, gene_id, and gene_name")
+    groupby_col_list = ["lib", "chr_id", "gene_id", "gene_name"]
+    if keep_transcript_info:
+        print(f"\t+transcript_id")
+        groupby_col_list.append("transcript_id")
+    if group_by_t5:
+        print(f"\t+t5 tag")
+        groupby_col_list.append("t5")
+    
+    # Holy crap, the observed=True helps to keep this from propagating out to 129,151,669,691,968 rows...
+    groupby_obj = super_df.groupby(groupby_col_list, observed=True)
     if not keep_transcript_info:
-        groupby_obj = super_df.groupby(["lib", "chr_id", "gene_id", "gene_name"])
+        compressed_prefix = "gene"
     else:
-        groupby_obj = super_df.groupby(["lib", "chr_id", "gene_id", "gene_name", "transcript_id"])
-    compressed_df = groupby_obj["read_id"].apply(len).to_frame(name="gene_hits")
+        compressed_prefix = "transcript"
+    compressed_df = groupby_obj["read_id"].apply(len).to_frame(name=f"{compressed_prefix}_hits")
     compressed_df["mean_polya_length"] = groupby_obj["polya_length"].mean()
     compressed_df["mean_read_length"] = groupby_obj["read_length"].mean()
+    if read_pos_in_groupby:
+        compressed_df['stop_distances'] = groupby_obj["to_stop"].apply(list).to_frame(name="stop_distances")
+        compressed_df['start_distances'] = groupby_obj["to_start"].apply(list).to_frame(name="stop_distances")
     
     # RPM and fractional hits calculations
-    compressed_df["gene_rpm"] = pd.NA
-    compressed_df["gene_frac_hits"] = pd.NA
+    # Need to first create columns of NA values, tobe overwritten
+    compressed_df[f"{compressed_prefix}_rpm"] = pd.NA
+    compressed_df[f"{compressed_prefix}_frac_hits"] = pd.NA
+    # Only look at one library at a time (so the normalization is per lib not whole df)
     for lib in compressed_df.index.unique(level='lib').to_list():
-        norm_factor = compressed_df.query(f"lib == '{lib}'").gene_hits.sum()
+        # Create the 'norm_factor' which will be the total # of read hits in that lib
+        norm_factor = compressed_df.query(f"lib == '{lib}'")[f"{compressed_prefix}_hits"].sum()
+        # Turn the total number of read hits into the 'million of read hits'
         rpm_norm_factor = norm_factor / 1000000
-        gene_rpm_series = compressed_df.query(f"lib == '{lib}'").gene_hits / rpm_norm_factor
-        compressed_df["gene_rpm"] = compressed_df['gene_rpm'].fillna(value=gene_rpm_series)
-        gene_frac_hits_series = compressed_df.query(f"lib == '{lib}'").gene_hits / norm_factor
-        compressed_df["gene_frac_hits"] = compressed_df['gene_frac_hits'].fillna(value=gene_frac_hits_series)
+        # For each library divide gene_hits by the rpm norm factor to get rpm
+        gene_rpm_series = compressed_df.query(f"lib == '{lib}'")[f"{compressed_prefix}_hits"] / rpm_norm_factor
+        # Use a series fill, so that we can fill that library's part of the DF without effecting others
+        compressed_df[f"{compressed_prefix}_rpm"] = compressed_df[f"{compressed_prefix}_rpm"].\
+            fillna(value=gene_rpm_series)
+        # Same as above, but with fraction of hits, rather than a rpm calc (practically same thing)
+        gene_frac_hits_series = compressed_df.query(f"lib == '{lib}'")[f"{compressed_prefix}_hits"] / norm_factor
+        compressed_df[f"{compressed_prefix}_frac_hits"] = compressed_df[f"{compressed_prefix}_frac_hits"].\
+            fillna(value=gene_frac_hits_series)
+    
+    # Requirement for min number of gene/transcript hits
     if isinstance(drop_sub_n, int):
-        print(f"Gene counts pre sub-{drop_sub_n} gene-hits drop:  {compressed_df.shape[0]}")
-        compressed_df = compressed_df[compressed_df["gene_hits"] >= drop_sub_n]
-        print(f"Gene counts post sub-{drop_sub_n} gene-hits drop:  {compressed_df.shape[0]}")
+        print(f"Gene counts pre sub-{drop_sub_n} {compressed_prefix}_hits drop:  {compressed_df.shape[0]}")
+        compressed_df = compressed_df[compressed_df[f"{compressed_prefix}_hits"] >= drop_sub_n]
+        print(f"Gene counts post sub-{drop_sub_n} {compressed_prefix}_hits drop:  {compressed_df.shape[0]}")
+    # Reset index at the end,
+    #   we didn't retain any info w/ the index, so it doesn't help much
     compressed_df = compressed_df.reset_index()
+    
+    if add_nucleotide_fractions:
+        print(f"Adding nucleotide content information to genes!")
+        path_to_gc = "/data16/marcus/genomes/elegansRelease100/" \
+                     "Caenorhabditis_elegans.WBcel235.cdna.all.fa.GCcontent.parquet"
+        gc_df = pd.read_parquet(path_to_gc).drop(columns=["chr_id"])
+        compressed_df = compressed_df.merge(gc_df, on=["gene_id", "gene_name"], how="left")
+    
     return super_df, compressed_df
 
 
-def distributions_of_polya_tails(libs):
+def distributions_of_polya_tails(libs, force_compressed_df_build=False):
     import dash
     import json
     from dash import dcc, html, callback_context
@@ -235,7 +278,26 @@ def distributions_of_polya_tails(libs):
     if len(libs) < 2:
         raise ValueError(f"Please provide 2 or more libraries, only {len(libs)} given.")
 
-    reads_df, compressed_df = load_and_merge_lib_parquets(libs)
+    if not force_compressed_df_build:
+        compressed_save_search = f"./testInputs/*_{'_'.join(libs)}.compressed.parquet"
+        reads_save_search = f"./testInputs/*_{'_'.join(libs)}.reads.parquet"
+        print(f"Looking for pre-processed file at: {compressed_save_search}...")
+        try:
+            compressed_parquet_path = find_newest_matching_file(compressed_save_search)
+            compressed_df = pd.read_parquet(compressed_parquet_path)
+            reads_save_path = find_newest_matching_file(reads_save_search)
+            reads_df = pd.read_parquet(reads_save_path)
+        except ValueError:
+            print(f"Couldn't find pre-processed file at: {compressed_save_search}\nGoing to load from library files!")
+            force_compressed_df_build = True
+    if force_compressed_df_build:
+        reads_df, compressed_df = load_and_merge_lib_parquets(libs, drop_sub_n=1)
+        compressed_save_path = f"./testInputs/{get_dt(for_file=True)}_{'_'.join(libs)}.compressed.parquet"
+        reads_save_path = f"./testInputs/{get_dt(for_file=True)}_{'_'.join(libs)}.reads.parquet"
+        compressed_df.to_parquet(compressed_save_path)
+        reads_df.to_parquet(reads_save_path)
+        print(f"Saved new compressed file to: {compressed_save_path}")
+        print(f"Saved new reads file to:      {reads_save_path}")
     lib_list = compressed_df.lib.unique().tolist()
 
     external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
@@ -474,7 +536,7 @@ def distributions_of_polya_tails(libs):
                           template='plotly_white')
         return fig
 
-    def _plot_triple_violin(filtered_df):
+    def _plot_multi_violin(filtered_df):
         fig = px.violin(filtered_df, x="gene_name", y="polya_length",
                         color="lib", points="all")
         fig.update_layout(margin={'l': 0, 'b': 40, 't': 10, 'r': 40},
@@ -495,6 +557,7 @@ def distributions_of_polya_tails(libs):
                           # jitter=0.05,  # add some jitter on points for better visibility
                           # scalemode='count',  # scale violin plot area with total count
                           )
+        seaborn.set_palette('colorblind')
         return fig
 
     @app.callback(
@@ -517,7 +580,7 @@ def distributions_of_polya_tails(libs):
         else:
             violin_df = pd.DataFrame(dict(zip(column_list, [[] for _ in range(len(column_list))])))
         # return _plot_split_violin(violin_df, x_lib, y_lib)
-        return _plot_triple_violin(violin_df)
+        return _plot_multi_violin(violin_df)
 
     @app.callback(
         Output('hover-data', 'children'),
@@ -585,7 +648,7 @@ def distributions_of_polya_tails(libs):
             msg = '*None of the buttons*'
         return html.Div(f"{msg} was most recently clicked")
 
-    app.run_server(debug=False, dev_tools_hot_reload=False, host='127.0.0.1', port=8000)
+    app.run_server(debug=False, dev_tools_hot_reload=False, host='127.0.0.1', port=16000)
 
 
 if __name__ == '__main__':
@@ -593,4 +656,6 @@ if __name__ == '__main__':
 
     libraries_to_run = argv[1:]
     print(f"Running w/ libraries: {libraries_to_run}")
-    distributions_of_polya_tails(libraries_to_run)
+    distributions_of_polya_tails(libraries_to_run,
+                                 force_compressed_df_build=False,
+                                 )
