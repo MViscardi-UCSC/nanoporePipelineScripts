@@ -684,11 +684,17 @@ if __name__ == '__main__':
     #                                              save_file=True)
     # print(test_df)
     # print(test_df2)
-    assign_with_josh_method("", '/data16/marcus/genomes/elegansRelease100/',
-                            keepMultipleTranscriptInfo=True, save_it=True, add_names=True)
-    assign_with_josh_method("", '/data16/marcus/genomes/elegansRelease100/',
-                            keepMultipleTranscriptInfo=False, save_it=True)
-    assign_with_josh_method("", '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/',
-                            keepMultipleTranscriptInfo=True, save_it=True, add_names=True)
-    assign_with_josh_method("", '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/',
-                            keepMultipleTranscriptInfo=False, save_it=True)
+
+    # assign_with_josh_method("", '/data16/marcus/genomes/elegansRelease100/',
+    #                         keepMultipleTranscriptInfo=True, save_it=True, add_names=True)
+    # assign_with_josh_method("", '/data16/marcus/genomes/elegansRelease100/',
+    #                         keepMultipleTranscriptInfo=False, save_it=True)
+    # assign_with_josh_method("", '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/',
+    #                         keepMultipleTranscriptInfo=True, save_it=True, add_names=True)
+    # assign_with_josh_method("", '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/',
+    #                         keepMultipleTranscriptInfo=False, save_it=True)
+
+    # sam_or_bam_class_testing()
+    df = load_and_merge_lib_parquets(['polyA2', 'polyA3'],
+                                     keep_transcript_info=True,
+                                     add_nucleotide_fractions=True)
