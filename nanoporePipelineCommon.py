@@ -485,6 +485,7 @@ def old_assign_w_josh_method(reads_df, genomeDir):
         merge_df = merge_df[merge_df.strand_fromReads == merge_df.strand_fromAssign]
         print(f"Done merging at {get_dt(for_print=True)}")
         return merge_df
+
     read_assignments_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
     read_assignments_df = load_read_assignments(read_assignments_path)
     print("Finished loading files!")
