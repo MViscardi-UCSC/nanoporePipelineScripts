@@ -390,15 +390,28 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
 
 
 def sam_or_bam_class_testing():
-    test_sam_path = "./testInputs/pTRI_test.sorted.bam"
+    test_output_dir = "/data16/marcus/working/211101_nanoporeSoftLinks/220131_nanoporeRun_totalRNA_0639_L3_third/output_dir"
+    test_sam_path = f"{test_output_dir}/cat_files/cat.sorted.mappedAndPrimary.bam"
     # test_sam_path = "/data16/marcus/working/211101_nanoporeSoftLinks/" \
     #                 "211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/" \
     #                 "output_dir/cat_files/cat.sorted.mappedAndPrimary.sam"
     sam = SamOrBamFile(test_sam_path,
                        # subsample=50000,
                        )
+    polya_df = pd.read_csv(f"{test_output_dir}/nanopolish/polya.passed.tsv", sep="\t")
+    # For some god-awful reason the chr_pos in polyA are -1 to those in the SAM file:
+    polya_df["position"] = polya_df["position"] + 1
+    polya_df = polya_df.rename(columns={"readname": "read_id",
+                                        "qc_tag": "qc_tag_polya",
+                                        "position": "chr_pos",
+                                        "contig": "chr_id",
+                                        "polya_length": "pA"})
+    polya_df = polya_df[['read_id', 'chr_id', 'chr_pos', 'pA']]
+    sam.df = pd.merge(sam.df, polya_df, on=['read_id', 'chr_id', 'chr_pos'], how='left')
+    sam.df.pA.fillna(0, inplace=True)
+    sam.tag_columns.append('pA')
     # sam.to_sam(test_sam_path + '.resave.sam', escape_char="~")
-    sam.to_sam(output_path=test_sam_path.rstrip('.sam') + '.resave.sam')
+    # sam.to_sam(output_path=test_sam_path.rstrip('.sam') + '.resave.sam')
     print(sam)
 
 
