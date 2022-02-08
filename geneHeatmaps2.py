@@ -90,9 +90,9 @@ def plotly_cdf(cdf_values, x_values):
     fig.show()
 
 
-def plotly_imshow_heatmap(extra_annotation, output_name, plotter_df, title, x_axis_cdfs, x_labels):
+def plotly_imshow_heatmap(output_name, y_labels, x_axis_cdfs, x_labels,
+                          extra_annotation=None, title=None):
     import plotly.express as px
-    y_labels = plotter_df["gene_name"].to_list()
     fig = px.imshow(x_axis_cdfs,
                     x=x_labels,
                     y=y_labels,
@@ -190,8 +190,15 @@ def plot_heatmap(smallish_df: pd.DataFrame, bounds: List[int] = (-300, 300),
 
     x_labels = list(range(bounds[0] - 1, bounds[1] + 1))
 
+    y_labels = plotter_df["gene_name"].to_list()
+
     if plotter_df.shape[0] > 1:
-        plotly_imshow_heatmap(extra_annotation, output_name, plotter_df, title, x_axis_cdfs, x_labels)
+        plotly_imshow_heatmap(output_name,
+                              y_labels,
+                              x_axis_cdfs,
+                              x_labels,
+                              title=title,
+                              extra_annotation=extra_annotation)
     elif plotter_df.shape[0] == 1:
         plotly_cdf(x_axis_cdfs[0], x_labels)
     else:
