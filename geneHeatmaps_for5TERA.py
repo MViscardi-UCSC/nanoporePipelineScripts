@@ -5,6 +5,19 @@ Marcus Viscardi,    December 18, 2021
 This is going to be an adaptation of geneHeatmaps2.py, mainly with the goal to
 specifically plot 5TERA adapted reads (these should be specifically 5'monoP
 containing mRNAs!)
+
+Jan 31, 2022:   I could probably just use the actual gene's identified by featureCounts,
+                then find where those genes start and end (in the GTF file). Those
+                distances would work just fine for heatmaps, and would be independent
+                of transcript identity. Eventually I could reassess per transcript for
+                the interesting genes.
+                    The main issue with an approach like this is that it lacks the option
+                    to localize my heatmap's view window to be around the relevant stops...
+                    The second issue is that these would be intron-independent...
+                    which is crappy.
+                Conclusion: For now, lets stick with the joshAssign method, while it'll be
+                            a bit more noisy and have an asterix, I'll at least be able to
+                            get it working!
 """
 import time
 
