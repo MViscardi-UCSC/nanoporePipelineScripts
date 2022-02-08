@@ -672,27 +672,4 @@ def parse_read_assignment_allChrs_txt(assignment_file_txt, multi_row_isoforms=Fa
 
 
 if __name__ == '__main__':
-    # original_genome = '/data16/marcus/genomes/elegansRelease100/' \
-    #                   'Caenorhabditis_elegans.WBcel235.100.allChrs.txt'
-    # pTRI_genome = '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/' \
-    #               '210928_allChrs_plus-pTRI.allChrs.txt'
-    # test_df = parse_read_assignment_allChrs_txt(original_genome,
-    #                                             save_file=True)
-    # test_df2 = parse_read_assignment_allChrs_txt(pTRI_genome,
-    #                                              save_file=True)
-    # print(test_df)
-    # print(test_df2)
-
-    # assign_with_josh_method("", '/data16/marcus/genomes/elegansRelease100/',
-    #                         keepMultipleTranscriptInfo=True, save_it=True, add_names=True)
-    # assign_with_josh_method("", '/data16/marcus/genomes/elegansRelease100/',
-    #                         keepMultipleTranscriptInfo=False, save_it=True)
-    # assign_with_josh_method("", '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/',
-    #                         keepMultipleTranscriptInfo=True, save_it=True, add_names=True)
-    # assign_with_josh_method("", '/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/',
-    #                         keepMultipleTranscriptInfo=False, save_it=True)
-
-    # sam_or_bam_class_testing()
-    df = load_and_merge_lib_parquets(['polyA2', 'polyA3'],
-                                     keep_transcript_info=True,
-                                     add_nucleotide_fractions=True)
+    df = load_and_merge_lib_parquets(['polyA2', 'polyA3'])
