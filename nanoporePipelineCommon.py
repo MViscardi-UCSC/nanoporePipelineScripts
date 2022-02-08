@@ -216,9 +216,19 @@ class SamOrBamFile:
 def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/elegansRelease100/",
                                 drop_unassigned=True, drop_failed_polya=True,
                                 drop_sub_n=5, keep_transcript_info=False,
-                                subsample_each_lib=False, read_pos_in_groupby=False,
-                                add_nucleotide_fractions=False,
+                                read_pos_in_groupby=False, add_nucleotide_fractions=False,
                                 group_by_t5=False) -> [pd.DataFrame, pd.DataFrame]:
+    concat_df = library_reads_df_load_and_concat(lib_list, genomeDir, drop_unassigned, drop_failed_polya,
+                                                keep_transcript_info, group_by_t5)
+
+    compressed_df = compress_concat_df_of_libs(concat_df, drop_sub_n, read_pos_in_groupby, add_nucleotide_fractions,
+                                               keep_transcript_info, group_by_t5)
+
+    return concat_df, compressed_df
+
+
+def library_reads_df_load_and_concat(lib_list, genomeDir, drop_unassigned, drop_failed_polya, keep_transcript_info,
+                                     group_by_t5):
     # Initially load the read assignments file:
     read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
     print(f"Loading readAssignments file from: {read_assignment_path}...", end=' ')
@@ -248,32 +258,28 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
         lib_df = adjust_5_ends(lib_df)
         # Store the library dataframe in the temporary dictionary
         df_dict[library_name] = lib_df
-
     # This is a cute way to quickly merge all of these dfs into one, while retaining lib info.
     #   B/c I am still a little scared of MultiIndexed dataframes, I used the reset_index steps
     #   to push the mutliindex back into columns. Maybe someday I'll use the multiindex!
     multi_df = pd.concat(df_dict.values(),
                          keys=df_dict.keys())
     multi_df.index.set_names(("lib", "old_index"), inplace=True)
-    super_df = multi_df.reset_index(level="lib").reset_index(drop=True)
-
+    concat_df = multi_df.reset_index(level="lib").reset_index(drop=True)
     # Some major issues with ugly column names coming through, plan to clean them up:
     read_assignment_cols = read_assignment_df.columns.to_list()
     read_assignment_cols.remove('chr_id')
     read_assignment_cols.remove('chr_pos')
     # Only retain columns that don't show up in both the read assignment df and the super merge df:
-    read_assignment_cols_to_drop = [col for col in read_assignment_cols if col in super_df.columns]
+    read_assignment_cols_to_drop = [col for col in read_assignment_cols if col in concat_df.columns]
     # Drop those 'unique' columns
-    super_df.drop(columns=read_assignment_cols_to_drop,
+    concat_df.drop(columns=read_assignment_cols_to_drop,
                   inplace=True)
-
     print(f"Starting assignment merge . . .", end="")
     # Add read assignments w/ josh's read_assignment dataframe
-    super_df = super_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
+    concat_df = concat_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
                               how="left", suffixes=["_originalOutput",
                                                     ""])
     print(f"\rFinished assignment merge!")
-
     # To further clean up mixed columns, just retain the ones we care about!
     keep_columns = ["lib",
                     "read_id",
@@ -293,33 +299,33 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
     if group_by_t5:
         # Add 5TERA information to the columns we care about if requested
         keep_columns.append('t5')
-
     # Drop unnecessary columns, reassess for duplicates.
     #   i.e. reads that mapped to two transcripts will
     #        otherwise be dups if we drop transcript info!
-    super_df = super_df[keep_columns].drop_duplicates()
-
+    concat_df = concat_df[keep_columns].drop_duplicates()
     # Only retain polyA passed reads if requested
     if drop_failed_polya:
-        print(f"\nRead counts pre-failed-polyA call drop:   {super_df.shape[0]}")
-        super_df = super_df[~super_df["polya_length"].isna()]
-        print(f"Read counts post-failed-polyA call drop:  {super_df.shape[0]}")
-
+        print(f"\nRead counts pre-failed-polyA call drop:   {concat_df.shape[0]}")
+        concat_df = concat_df[~concat_df["polya_length"].isna()]
+        print(f"Read counts post-failed-polyA call drop:  {concat_df.shape[0]}")
     # Post-assignment cleanups:
     if drop_unassigned:
-        print(f"Read counts post gene assignment:  {super_df.shape[0]}")
-        super_df = super_df[~super_df["gene_id"].isna()].reset_index(drop=True)
-        print(f"Read counts post unassigned drop:  {super_df.shape[0]}")
+        print(f"Read counts post gene assignment:  {concat_df.shape[0]}")
+        concat_df = concat_df[~concat_df["gene_id"].isna()].reset_index(drop=True)
+        print(f"Read counts post unassigned drop:  {concat_df.shape[0]}")
         # 220201: I don't know why we were doing below...?
-        # super_df = super_df[super_df["strand_originalOutput"] == super_df["strand_forPlot"]].reset_index(drop=True)
-        # print(f"Read counts post consistent-assignment check: {super_df.shape[0]}")
+        # concat_df = concat_df[concat_df["strand_originalOutput"] == concat_df["strand_forPlot"]].reset_index(drop=True)
+        # print(f"Read counts post consistent-assignment check: {concat_df.shape[0]}")
         if keep_transcript_info:
-            super_df = super_df.astype({"to_stop": "int64",
+            concat_df = concat_df.astype({"to_stop": "int64",
                                         "to_start": "int64"})
-
     # Add a read length column!
-    super_df["read_length"] = super_df["sequence"].apply(len)
+    concat_df["read_length"] = concat_df["sequence"].apply(len)
+    return concat_df
 
+
+def compress_concat_df_of_libs(super_df, drop_sub_n, read_pos_in_groupby, add_nucleotide_fractions, keep_transcript_info,
+                               group_by_t5):
     # Create the groupby dataframe:
     groupby_col_list = ["lib", "chr_id", "gene_id", "gene_name"]
     print(f"Creating groupby dataframe merged on: {groupby_col_list}")
@@ -329,7 +335,6 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
     if group_by_t5:
         print(f"\t+ [t5] tag")
         groupby_col_list.append("t5")
-
     # Holy crap, the observed=True helps to keep this from propagating out to 129,151,669,691,968 rows...
     groupby_obj = super_df.groupby(groupby_col_list, observed=True)
     if not keep_transcript_info:
@@ -342,7 +347,6 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
     if read_pos_in_groupby:
         compressed_df['stop_distances'] = groupby_obj["to_stop"].apply(list).to_frame(name="stop_distances")
         compressed_df['start_distances'] = groupby_obj["to_start"].apply(list).to_frame(name="stop_distances")
-
     # RPM and fractional hits calculations
     # Need to first create columns of NA values, tobe overwritten
     compressed_df[f"{compressed_prefix}_rpm"] = pd.NA
@@ -362,7 +366,6 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
         gene_frac_hits_series = compressed_df.query(f"lib == '{lib}'")[f"{compressed_prefix}_hits"] / norm_factor
         compressed_df[f"{compressed_prefix}_frac_hits"] = compressed_df[f"{compressed_prefix}_frac_hits"]. \
             fillna(value=gene_frac_hits_series)
-
     # Requirement for min number of gene/transcript hits
     if isinstance(drop_sub_n, int):
         print(f"Gene counts pre sub-{drop_sub_n} {compressed_prefix}_hits drop:  {compressed_df.shape[0]}")
@@ -371,7 +374,6 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
     # Reset index at the end,
     #   we didn't retain any info w/ the index, so it doesn't help much
     compressed_df = compressed_df.reset_index()
-
     if add_nucleotide_fractions:
         if not keep_transcript_info:
             print(f"Adding nucleotide content information to genes!")
@@ -385,8 +387,7 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
                          "Caenorhabditis_elegans.WBcel235.cdna.all.fa.GCcontent.transcripts.parquet"
             gc_df = pd.read_parquet(path_to_gc).drop(columns=["chr_id"])
             compressed_df = compressed_df.merge(gc_df, on=["gene_id", "gene_name", "transcript_id"], how="left")
-
-    return super_df, compressed_df
+    return compressed_df
 
 
 def sam_or_bam_class_testing():
