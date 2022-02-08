@@ -753,7 +753,8 @@ def merge_results(**other_kwargs):
         merge_reads_df = merge_reads_df[merge_reads_df["mapq"] != 0]
 
         if callWithJoshMethod:
-            merge_reads_df = assign_with_josh_method(merge_reads_df, genomeDir)
+            merge_reads_df = assign_with_josh_method(merge_reads_df, genomeDir,
+                                                     keepMultipleTranscriptInfo=False)
             if 'F' in stepsToRun:
                 print(f"Reads that have matching assignments: "
                       f"{merge_reads_df[merge_reads_df.gene_id == merge_reads_df.gene_id_fromFeatureCounts].shape[0]}/"
