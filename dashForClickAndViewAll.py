@@ -30,16 +30,16 @@ pd.set_option('display.max_columns', None)
 
 def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
     global COMPRESSED_DF, PLOT_DF, SELECTED_DF
+    
     import dash
-    import json
     from dash import dcc, html, callback_context, dash_table
-    import dash_bootstrap_components as dbc
     from dash.dependencies import Input, Output
-    import dash_daq as daq
+    
     import plotly.express as px
     import plotly.graph_objects as go
     import plotly.io as pio
-
+    
+    from scipy import stats
     from math import log10
 
     if len(libs) < 2:
