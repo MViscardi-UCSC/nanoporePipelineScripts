@@ -313,9 +313,6 @@ def library_reads_df_load_and_concat(lib_list, genomeDir, drop_unassigned, drop_
         print(f"Read counts post gene assignment:  {concat_df.shape[0]}")
         concat_df = concat_df[~concat_df["gene_id"].isna()].reset_index(drop=True)
         print(f"Read counts post unassigned drop:  {concat_df.shape[0]}")
-        # 220201: I don't know why we were doing below...?
-        # concat_df = concat_df[concat_df["strand_originalOutput"] == concat_df["strand_forPlot"]].reset_index(drop=True)
-        # print(f"Read counts post consistent-assignment check: {concat_df.shape[0]}")
         if keep_transcript_info:
             concat_df = concat_df.astype({"to_stop": "int64",
                                         "to_start": "int64"})
