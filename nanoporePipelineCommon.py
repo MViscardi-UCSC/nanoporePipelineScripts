@@ -404,7 +404,7 @@ def sam_or_bam_class_testing():
 
 # "riboD", "totalRNA", "totalRNA2", "polyA", "polyA2",
 # "xrn-1", "xrn-1-5tera", "pTRI-stds", "xrn-1-5tera-smg-6", "pTRI-stds-tera3"
-def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", file_midfix="mergedOnReads",
+def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", file_midfix="_mergedOnReads",
                                 output_dir_folder="merge_files", return_all: bool = False) -> dict:
     output_dir_dict = {
         "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir",
@@ -418,7 +418,9 @@ def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", fi
         "xrn-1-5tera": "/data16/marcus/working/211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/output_dir",
         "pTRI-stds": "/data16/marcus/working/211121_nanoporeRun_pTRIstds/output_dir",
         "xrn-1-5tera-smg-6": "/data16/marcus/working/211210_nanoporeRun_totalRNA_2102_xrn-1-KD_5TERA/output_dir",
-        "pTRI-stds-tera3": "/data16/marcus/working/211212_nanoporeRun_pTRIstds_TERA3",
+        "pTRI-stds-tera3": "/data16/marcus/working/211212_nanoporeRun_pTRIstds_TERA3/output_dir",
+        "polyA3": "/data16/marcus/working/220131_nanoporeRun_polyA_0639_L3_third/output_dir",
+        "totalRNA3": "/data16/marcus/working/220131_nanoporeRun_totalRNA_0639_L3_third/output_dir",
     }
     if return_all:
         lib_list = output_dir_dict.keys()
@@ -426,7 +428,7 @@ def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", fi
     return_dict = {}
     for lib_key, output_dir in output_dir_dict.items():
         if lib_key in lib_list:
-            file_path = f"{output_dir}/{output_dir_folder}/*_{file_midfix}.{file_suffix}"
+            file_path = f"{output_dir}/{output_dir_folder}/*{file_midfix}.{file_suffix}"
             print(f"Looking for file for {lib_key}, at {file_path}...", end=" ")
             return_dict[lib_key] = find_newest_matching_file(file_path)
             print(f"File Found.")
