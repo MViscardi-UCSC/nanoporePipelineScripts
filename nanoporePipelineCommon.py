@@ -218,17 +218,21 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
                                 drop_sub_n=5, keep_transcript_info=False,
                                 read_pos_in_groupby=False, add_nucleotide_fractions=False,
                                 group_by_t5=False) -> [pd.DataFrame, pd.DataFrame]:
-    concat_df = library_reads_df_load_and_concat(lib_list, genomeDir, drop_unassigned, drop_failed_polya,
-                                                keep_transcript_info, group_by_t5)
+    concat_df = library_reads_df_load_and_concat(lib_list, genomeDir,
+                                                 drop_unassigned=drop_unassigned, drop_failed_polya=drop_failed_polya,
+                                                 keep_transcript_info=keep_transcript_info, group_by_t5=group_by_t5)
 
-    compressed_df = compress_concat_df_of_libs(concat_df, drop_sub_n, read_pos_in_groupby, add_nucleotide_fractions,
-                                               keep_transcript_info, group_by_t5)
+    compressed_df = compress_concat_df_of_libs(concat_df,
+                                               drop_sub_n=drop_sub_n, read_pos_in_groupby=read_pos_in_groupby,
+                                               add_nucleotide_fractions=add_nucleotide_fractions,
+                                               keep_transcript_info=keep_transcript_info, group_by_t5=group_by_t5)
 
     return concat_df, compressed_df
 
 
-def library_reads_df_load_and_concat(lib_list, genomeDir, drop_unassigned, drop_failed_polya, keep_transcript_info,
-                                     group_by_t5):
+def library_reads_df_load_and_concat(lib_list, genomeDir, drop_unassigned=True, drop_failed_polya=True,
+                                     keep_transcript_info=False,
+                                     group_by_t5=False):
     # Initially load the read assignments file:
     read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
     print(f"Loading readAssignments file from: {read_assignment_path}...", end=' ')
@@ -273,12 +277,12 @@ def library_reads_df_load_and_concat(lib_list, genomeDir, drop_unassigned, drop_
     read_assignment_cols_to_drop = [col for col in read_assignment_cols if col in concat_df.columns]
     # Drop those 'unique' columns
     concat_df.drop(columns=read_assignment_cols_to_drop,
-                  inplace=True)
+                   inplace=True)
     print(f"Starting assignment merge . . .", end="")
     # Add read assignments w/ josh's read_assignment dataframe
     concat_df = concat_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
-                              how="left", suffixes=["_originalOutput",
-                                                    ""])
+                                how="left", suffixes=["_originalOutput",
+                                                      ""])
     print(f"\rFinished assignment merge!")
     # To further clean up mixed columns, just retain the ones we care about!
     keep_columns = ["lib",
@@ -315,14 +319,15 @@ def library_reads_df_load_and_concat(lib_list, genomeDir, drop_unassigned, drop_
         print(f"Read counts post unassigned drop:  {concat_df.shape[0]}")
         if keep_transcript_info:
             concat_df = concat_df.astype({"to_stop": "int64",
-                                        "to_start": "int64"})
+                                          "to_start": "int64"})
     # Add a read length column!
     concat_df["read_length"] = concat_df["sequence"].apply(len)
     return concat_df
 
 
-def compress_concat_df_of_libs(super_df, drop_sub_n, read_pos_in_groupby, add_nucleotide_fractions, keep_transcript_info,
-                               group_by_t5):
+def compress_concat_df_of_libs(super_df, drop_sub_n=5, read_pos_in_groupby=False, add_nucleotide_fractions=False,
+                               keep_transcript_info=False,
+                               group_by_t5=False):
     # Create the groupby dataframe:
     groupby_col_list = ["lib", "chr_id", "gene_id", "gene_name"]
     print(f"Creating groupby dataframe merged on: {groupby_col_list}")
@@ -473,7 +478,7 @@ def old_assign_w_josh_method(reads_df, genomeDir):
         print(f"Reads unassigned by Josh method: {merge_df[~merge_df.gene_id.isna()].shape[0]} "
               f"/{merge_df.shape[0]}, [Dropping these!]")
         merge_df = merge_df[~merge_df.gene_id.isna()]
-        
+
         print(f"Reads with different assignments between Josh method and FeatureCounts: "
               f"{merge_df[merge_df.strand_fromReads != merge_df.strand_fromAssign].shape[0]} "
               f"/{merge_df.shape[0]}, [Dropping these!]")
@@ -508,7 +513,7 @@ def assign_with_josh_method(merged_on_reads_df: pd.DataFrame, genomeDir: str,
         read_assignment_df = read_assignment_df.astype({"to_stop": "int64",
                                                         "to_start": "int64"})
     print(f"Loaded  readAssignment file from {read_assignment_path}")
-    
+
     print(f"Starting merge of dataframes to make assignments")
     merged_on_reads_and_assigned_df = merged_on_reads_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
                                                                how="left", suffixes=("",
@@ -608,15 +613,15 @@ def parse_read_assignment_allChrs_txt(assignment_file_txt, multi_row_isoforms=Fa
     #   it can return a dataframe, but it will also (optionally) save a new parquet file!
     # Majorly rewritten on 12/14/2021, will now save a parquet with lists holding transcript/
     #   isoform information. Easily expanded with the df.explode() function!
-    
+
     print(f"Loading read assignment file from: {assignment_file_txt}")
     df = pd.read_csv(assignment_file_txt, sep="\t",
                      names=["chr_pos", "gene_id_strand", "transcript_info"])
     print(f"\tLoaded file to dataframe.")
-    
+
     df[["chr_id", "chr_pos"]] = df["chr_pos"].str.split("_", expand=True)
     print(f"\tParsed chr_id and chr_pos info.")
-    
+
     df[["gene_id", "strand"]] = df["gene_id_strand"].str.split(":", expand=True)
     df.drop(columns="gene_id_strand", inplace=True)
     print(f"\tParsed gene_id and strand info.")
