@@ -843,6 +843,28 @@ def merge_results(**other_kwargs):
     return merge_df, genes_df
 
 
+def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
+    from standardsAlignment.standardsAssignmentWithMinimap2 import align_standards, plot_value_counts
+    if not isinstance(df, pd.DataFrame):
+        merge_dir = f"{outputDir}/merge_files"
+        try:
+            merge_on_reads_path = find_newest_matching_file(f"{merge_dir}/*mergedOnReads.parquet")
+            df = pd.read_parquet(merge_on_reads_path)
+        except ValueError:
+            print(f"Could not find a mergedOnReads parquet file in directory:\n\t{merge_dir}")
+            merge_on_reads_path = find_newest_matching_file(f"{merge_dir}/*mergedOnReads.tsv")
+            df = pd.read_csv(merge_on_reads_path, sep="\t", low_memory=False)
+    stds_mini_df = align_standards(compressed_df=df, keep_read_id=True, **other_kwargs)
+    if isinstance(stds_mini_df, pd.DataFrame):
+        df = df.merge(stds_mini_df, on="read_id")
+        out_file = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet"
+        print(f"Saving parquet file to:\n\t{out_file}")
+        df.to_parquet(out_file)
+        plot_value_counts(df)
+    else:
+        print(stds_mini_df)
+
+
 def flair(outputDir, **other_kwargs):
     def run_and_load_flair(outputDir, genomeDir, threads, sampleID, condition, regenerate, **kwargs) -> pd.DataFrame:
         flair_map_path = f"{outputDir}/flair/flair.quantify.{sampleID}.{condition}.isoform.read.map.txt"
