@@ -382,7 +382,7 @@ def alternative_genome_filtering(altGenomeDirs, outputDir, threads, minimapParam
 
 
 def trim_tera_adapters(outputDir, threads, regenerate, tera3adapter, tera5adapter, **other_kwargs):
-    # TODO: There is an error hear that is leading to rerunning on already cutadapt'ed fastqs!!
+    # TODO: There is an error here that is leading to rerunning on already cutadapt'ed fastqs!!
     #  maybe solved w/ dropping the regen flag......
 
     # First step is to backup the original fastq file:
