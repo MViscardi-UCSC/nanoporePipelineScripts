@@ -43,7 +43,7 @@ import warnings
 from tqdm import tqdm
 
 from nanoporePipelineCommon import find_newest_matching_file, get_dt, \
-    gene_names_to_gene_ids, assign_w_josh_method, SamOrBamFile, FastqFile, adjust_5_ends, assign_with_josh_method
+    gene_names_to_gene_ids, SamOrBamFile, FastqFile, adjust_5_ends, assign_with_josh_method
 
 import numpy as np
 import pandas as pd
