@@ -110,6 +110,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
         parser.add_argument('--stepsToRun', metavar='stepsToRun',
                             type=str, default=None,
                             help="Steps to run within the pipeline: (G)uppy basecalling, "
+                                 "(T)rim TERA-Seq adapters, "
                                  "(M)inimap, (N)anopolish, (F)eature counts, (C)oncat files, "
                                  "merge with (P)andas, use f(L)air to ID transcripts, "
                                  "map pTRI nanopore (S)tandards, and/or random e(X)tra "
