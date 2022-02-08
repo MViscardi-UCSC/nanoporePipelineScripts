@@ -486,57 +486,6 @@ def minimap2_and_samtools(genomeDir, outputDir, threads, regenerate, minimapPara
               f"Use the regenerate tag if you want to rerun.\n")
 
 
-def nanopolish_index_and_polya(genomeDir, dataDir, outputDir, threads, regenerate, **other_kwargs):
-    # First we have to index the fastq_files!
-    nanopolish_index_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.fastq.index.readdb")
-    if nanopolish_index_flag:
-        seq_sum_matches = [i for i in listdir(dataDir) if
-                           path.isfile(path.join(dataDir, i)) and 'sequencing_summary' in i]
-        if len(seq_sum_matches) != 1:
-            raise IndexError(f"Too many/few matches for 'sequencing_summary' in sequencing directory!!\n"
-                             f"{seq_sum_matches}")
-        else:
-            seq_sum_name = seq_sum_matches[0]
-        call = f"nanopolish index --directory={dataDir}/fast5 " \
-               f"--sequencing-summary={dataDir}/{seq_sum_name} " \
-               f"{outputDir}/cat_files/cat.fastq"
-        print(f"Starting nanopolish index at {get_dt(for_print=True)}\nUsing call:\t{call}\n"
-              f"(There are limited outputs from this script, and it runs very slow)")
-        live_cmd_call(call)
-        print(f"Nanopolish index completed at {get_dt(for_print=True)}")
-    else:
-        print(f"\n\nNanopolish index already ran. Based on file at:"
-              f"\n\t{outputDir}/cat_files/cat.fastq.index.readdb\n"
-              f"Use the regenerate tag if you want to rerun.\n")
-
-    # Now we are able to run the nanopolish polya script, this will throw an error if minimap2
-    #   has not ran yet!!!!
-    nanopolish_polya_flag = regenerate or not path.exists(f"{outputDir}/nanopolish/polya.tsv")
-    if nanopolish_polya_flag:
-        genome_fa_file = glob(f"{genomeDir}/*allChrs.fa")
-        if len(genome_fa_file) != 1:
-            raise NotImplementedError(f"Currently this script only supports having genomeDirs "
-                                      f"with one fa files that ends with 'allChrs.fa'")
-        call = f"nanopolish polya --threads={threads} --reads={outputDir}/cat_files/cat.fastq " \
-               f"--bam={outputDir}/cat_files/cat.sorted.bam --genome={genome_fa_file[0]} " \
-               f"> {outputDir}/nanopolish/polya.tsv"
-        print(f"\nStarting nanopolish polyA at {get_dt(for_print=True)} (This takes a while)"
-              f"\nUsing call:\t{call}\n")
-        live_cmd_call(call)
-        print(f"\n\nFinished nanopolish polyA at {get_dt(for_print=True)}")
-
-        filter_call = f"head -n 1 {outputDir}/nanopolish/polya.tsv > {outputDir}/nanopolish/polya.passed.tsv; " \
-                      f"grep PASS {outputDir}/nanopolish/polya.tsv >> {outputDir}/nanopolish/polya.passed.tsv"
-        print(f"\nStarting filtering nanopolish polyA calls at {get_dt(for_print=True)}"
-              f"\nUsing call:\t{filter_call}\n")
-        live_cmd_call(filter_call)
-        print(f"\n\nFinished filtering nanopolish polyA calls at {get_dt(for_print=True)}")
-    else:
-        print(f"\n\nNanopolish polyA already ran. Based on file at:"
-              f"\n\t{outputDir}/nanopolish/polya.tsv\n"
-              f"Use the regenerate tag if you want to rerun.\n")
-
-
 #################################################################################
 # Step4: Concatenate files (less important for single MinIon runs), and create
 #        a single file that contains information from all the tools I am using
@@ -607,21 +556,82 @@ def concat_files(outputDir, tera3adapter, tera5adapter, **other_kwargs):
         live_cmd_call(f"samtools view {outputDir}/cat_files/cat.sorted.bam "
                       f"> {outputDir}/cat_files/cat.sorted.sam")
 
-    # Most of this is much less necessary as we are not getting the nested files that came out of Roach's gridION!
-    calls = [f"samtools view -b -F 0x904 {original_bam_file} > {bam_file_for_feature_counts}",
-             # The above command will build a new bam file w/out reads w/ bit_flags:
-             #    0x004, UNMAP           =   reads who's sequence didn't align to the genome
-             #    0x100, SECONDARY       =   reads that are secondary alignments
-             #    0x800, SUPPLEMENTARY   =   reads that are supplemental alignments
-             f"samtools index {bam_file_for_feature_counts}",
-             f"samtools view {outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam "
-             f"> {outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam",
-             ]
-    print(f"Starting final cleanup at {get_dt(for_print=True)}\n")
-    for num, call in enumerate(calls):
-        print(f"\nStarting call ({num + 1} of {len(calls)}):\t{call}")
+    concat_flag = regenerate or not path.exists(bam_file_with_only_mappedAndPrimary)
+    if concat_flag:
+        calls = [f"samtools view -b -F 0x904 {original_bam_file} > {bam_file_with_only_mappedAndPrimary}",
+                 # The above command will build a new bam file w/out reads w/ bit_flags:
+                 #    0x004, UNMAP           =   reads who's sequence didn't align to the genome
+                 #    0x100, SECONDARY       =   reads that are secondary alignments
+                 #    0x800, SUPPLEMENTARY   =   reads that are supplemental alignments
+                 f"samtools index {bam_file_with_only_mappedAndPrimary}",
+                 f"samtools view {outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam "
+                 f"> {outputDir}/cat_files/cat.sorted.mappedAndPrimary.sam",
+                 ]
+        print(f"Starting final cleanup at {get_dt(for_print=True)}\n")
+        for num, call in enumerate(calls):
+            print(f"\nStarting call ({num + 1} of {len(calls)}):\t{call}")
+            live_cmd_call(call)
+        print(f"\n\nFinished final cleanup at {get_dt(for_print=True)}")
+    else:
+        print(f"\n\nFile concatenation already ran. Based on file at:"
+              f"\n\t{bam_file_with_only_mappedAndPrimary}\n"
+              f"Use the regenerate tag if you want to rerun.\n")
+
+
+def nanopolish_index_and_polya(genomeDir, dataDir, outputDir, threads, regenerate, **other_kwargs):
+    # First we have to index the fastq_files!
+    nanopolish_index_flag = regenerate or not path.exists(f"{outputDir}/cat_files/cat.fastq.index.readdb")
+    if nanopolish_index_flag:
+        seq_sum_matches = [i for i in listdir(dataDir) if
+                           path.isfile(path.join(dataDir, i)) and 'sequencing_summary' in i]
+        if len(seq_sum_matches) > 1:
+            raise IndexError(f"Too many matches for 'sequencing_summary' in sequencing directory!!\n"
+                             f"{seq_sum_matches}")
+        if len(seq_sum_matches) == 0:
+            warnings.warn(f"No matches for 'sequencing_summary' in sequencing directory!!\n"
+                             f"{seq_sum_matches}\nGoing to continue w/out any seq summary! THIS WILL BE SLOW!")
+            seq_sum_call = ""
+        else:
+            seq_sum_name = seq_sum_matches[0]
+            seq_sum_call = f"--sequencing-summary={dataDir}/{seq_sum_name} "
+        call = f"nanopolish index --directory={dataDir}/fast5 " \
+               f"{seq_sum_call}" \
+               f"{outputDir}/cat_files/cat.fastq"
+        print(f"Starting nanopolish index at {get_dt(for_print=True)}\nUsing call:\t{call}\n"
+              f"(There are limited outputs from this script, and it runs very slow)")
         live_cmd_call(call)
-    print(f"\n\nFinished final cleanup at {get_dt(for_print=True)}")
+        print(f"Nanopolish index completed at {get_dt(for_print=True)}")
+    else:
+        print(f"\n\nNanopolish index already ran. Based on file at:"
+              f"\n\t{outputDir}/cat_files/cat.fastq.index.readdb\n"
+              f"Use the regenerate tag if you want to rerun.\n")
+
+    # Now we are able to run the nanopolish polya script, this will throw an error if minimap2
+    #   has not ran yet!!!!
+    nanopolish_polya_flag = regenerate or not path.exists(f"{outputDir}/nanopolish/polya.tsv")
+    if nanopolish_polya_flag:
+        genome_fa_file = glob(f"{genomeDir}/*allChrs.fa")
+        if len(genome_fa_file) != 1:
+            raise NotImplementedError(f"Currently this script only supports having genomeDirs "
+                                      f"with one fa files that ends with 'allChrs.fa'")
+        call = f"nanopolish polya --threads={threads} --reads={outputDir}/cat_files/cat.fastq " \
+               f"--bam={outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam --genome={genome_fa_file[0]} " \
+               f"> {outputDir}/nanopolish/polya.tsv"
+        print(f"\nStarting nanopolish polyA at {get_dt(for_print=True)} (This takes a while)"
+              f"\nUsing call:\t{call}\n")
+        live_cmd_call(call)
+        print(f"\n\nFinished nanopolish polyA at {get_dt(for_print=True)}")
+
+        filter_call = f"head -n 1 {outputDir}/nanopolish/polya.tsv > {outputDir}/nanopolish/polya.passed.tsv; " \
+                      f"grep PASS {outputDir}/nanopolish/polya.tsv >> {outputDir}/nanopolish/polya.passed.tsv"
+        print(f"\nStarting filtering nanopolish polyA calls at {get_dt(for_print=True)}"
+              f"\nUsing call:\t{filter_call}\n")
+        live_cmd_call(filter_call)
+        print(f"\n\nFinished filtering nanopolish polyA calls at {get_dt(for_print=True)}")
+    else:
+        print(f"\n\nNanopolish polyA already ran. Based on file at:"
+              f"\n\t{outputDir}/nanopolish/polya.tsv\n"
+              f"Use the regenerate tag if you want to rerun.\n")
 
 
 #################################################################################
