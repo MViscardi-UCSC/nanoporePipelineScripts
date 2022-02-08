@@ -545,16 +545,19 @@ def __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter):
     return None
 
 
-def concat_files(outputDir, tera3adapter, tera5adapter, **other_kwargs):
+def concat_files(outputDir, tera3adapter, tera5adapter, regenerate, **other_kwargs):
     original_bam_file = f"{outputDir}/cat_files/cat.sorted.bam"
-    bam_file_for_feature_counts = f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam"
+    bam_file_with_only_mappedAndPrimary = f"{outputDir}/cat_files/cat.sorted.mappedAndPrimary.bam"
     if isinstance(tera3adapter, str) or isinstance(tera5adapter, str):
         __tera_adapter_tagging__(outputDir, tera3adapter, tera5adapter)
     else:
         # The below step has to happen in coordinance w/ re-tagging,
         #   so if re-tagging doesn't happen we still want to make the sam file!
+        print(f"Unpacking bam file from:"
+              f"\n\t{outputDir}/cat_files/cat.sorted.bam")
         live_cmd_call(f"samtools view {outputDir}/cat_files/cat.sorted.bam "
                       f"> {outputDir}/cat_files/cat.sorted.sam")
+        print("Done.")
 
     concat_flag = regenerate or not path.exists(bam_file_with_only_mappedAndPrimary)
     if concat_flag:
