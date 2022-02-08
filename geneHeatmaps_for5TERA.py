@@ -88,21 +88,83 @@ def make_dataframes_for_heatmaps(lib):
 
 
 def main(libs):
-    df_dict = {}
+    from tqdm import tqdm
+    from dashForClickAndViewPolyATails import load_and_merge_lib_parquets
+    from time import sleep
+    tqdm.pandas()
+    
+    # This has been a great way to assign and handle several libraries together,
+    #   I am very proud of this 'step'.
+    reads_df, compressed_df = load_and_merge_lib_parquets(libs,
+                                                          genomeDir=f"/data16/marcus/genomes/"
+                                                                    f"plus-pTRIxef_elegansRelease100",
+                                                          drop_failed_polya=False, drop_sub_n=1,
+                                                          keep_transcript_info=True,
+                                                          read_pos_in_groupby=True, group_by_t5=True,
+                                                          subsample_each_lib=20000)
+    
+    bounds = (-300, 300)
+    print(f"\nProcessing stop_distances to CDFs in the range of {bounds} around the stop codon:")
+    compressed_df['stop_cdf'] = compressed_df.progress_apply(
+        lambda row: np_cdf_from_hits(row['stop_distances'],
+                                     bounds),
+        axis=1)
+    
+    compressed_df = compressed_df.query("chr_id != 'MtDNA'")
+    
     for lib in libs:
-        df_dict[lib] = make_dataframes_for_heatmaps(lib)
-    reads_df_dict = {lib: dfs[0] for lib, dfs in df_dict.items()}
-    compressed_df_dict = {lib: dfs[1] for lib, dfs in df_dict.items()}
-    print(compressed_df_dict)
-    for lib, df in compressed_df_dict.items():
-        # TODO: major error here due to stop_distances being lists of strings!! not numbers! WTF man...
-        #       This is likely due to how the are currently stored in the damn readAssignment parquet!!!
-        #                                                              VV Super hacky fix for now:
-        df = df.query("t5 == '+'").query("chr != 'MtDNA'")
-        df['cdf'] = df.apply(lambda row: np_cdf_from_hits([int(i) for i in row['stop_distances']], (-300, 300)), axis=1)
-        print(df.cdf)
-        compressed_df_dict[lib] = df
-    print(compressed_df_dict)
+        plotter_df = compressed_df.query(f"lib == '{lib}'")
+        plotter_df = plotter_df.query("t5 == '+'").query("transcript_hits >= 50")
+        
+        # Grabbed below form geneHeatmaps2.py, this is a rough way to sort the individual genes/transcripts
+        plotter_df["halfway_index"] = pd.DataFrame(plotter_df.apply(lambda x: np.where(x["stop_cdf"] >= 0.5)[0][0],
+                                                                    axis=1), index=plotter_df.index)
+        plotter_df["quarter_index"] = pd.DataFrame(plotter_df.apply(lambda x: np.where(x["stop_cdf"] >= 0.25)[0][0],
+                                                                    axis=1), index=plotter_df.index)
+        plotter_df["threequart_index"] = pd.DataFrame(plotter_df.apply(lambda x: np.where(x["stop_cdf"] >= 0.75)[0][0],
+                                                                       axis=1), index=plotter_df.index)
+        plotter_df.sort_values(by=[
+            "quarter_index",
+            "halfway_index",
+            "threequart_index",
+        ], inplace=True)
+        
+        # This will create a 2D array, of width = nucleotide window and length = # of genes/transcripts
+        x_axis_cdfs = plotter_df["stop_cdf"].to_list()
+    
+        x_labels = list(range(bounds[0], bounds[1]+1))
+    
+        y_labels = plotter_df["gene_name"].to_list()
+        from geneHeatmaps2 import plotly_imshow_heatmap
+        plotly_imshow_heatmap(f"t5_heatmap_{lib}",
+                              y_labels,
+                              x_axis_cdfs,
+                              x_labels,
+                              extra_annotation=lib)
+        
+        # Attempt to plot w/ clustering?
+        x_labels_plus = [f"{i}nt" for i in range(-300, 300+1)]
+        new_df = plotter_df.copy(deep=True)
+        new_df[x_labels_plus] = pd.DataFrame(plotter_df.stop_cdf.to_list(), index=plotter_df.index)
+        from sklearn.cluster import AgglomerativeClustering
+        clusters = new_df.shape[0]
+        clusters_max = 25
+        clusters = min([clusters, clusters_max])
+        cluster = AgglomerativeClustering(n_clusters=clusters, affinity='euclidean', linkage='ward')
+        new_df['cluster_order'] = cluster.fit_predict(new_df[x_labels_plus])
+        new_df = new_df.sort_values('cluster_order')
+        x_axis_cdfs = new_df["stop_cdf"].to_list()
+        x_labels = list(range(bounds[0], bounds[1]+1))
+        y_labels = new_df["gene_name"].to_list()
+        from geneHeatmaps2 import plotly_imshow_heatmap
+        plotly_imshow_heatmap(f"t5_heatmap_{lib}_clusteredTo{clusters}groups",
+                              y_labels,
+                              x_axis_cdfs,
+                              x_labels,
+                              extra_annotation=f"{lib} (w/ clustering - {clusters} groups)")
+        
+    sleep(2)
+    print(compressed_df)
 
 
 if __name__ == '__main__':
