@@ -64,7 +64,7 @@ def load_libraries(per_gene_cutoff=25, ski_pelo_col=True):
     merge_df['t5_read_count_wt'] = merge_df['t5_fraction_wt'] * merge_df['read_hits_wt']
     merge_df['t5_read_count_6'] = merge_df['t5_fraction_6'] * merge_df['read_hits_6']
     merge_df['t5_total_reads'] = merge_df['t5_read_count_wt'] + merge_df['t5_read_count_6']
-    merge_df['fraction_of_t5_from_6'] = merge_df['t5_read_count_wt'] / merge_df['t5_total_reads']
+    merge_df['fraction_of_t5_from_wt'] = merge_df['t5_read_count_wt'] / merge_df['t5_total_reads']
     merge_df['per_gene_p_value'] = merge_df['read_hits_wt'] / merge_df['total_read_counts']
 
     t5_total_wt = merge_df['t5_read_count_wt'].sum()
@@ -132,7 +132,7 @@ def with_dash_for_click_to_copy():
                             dcc.Dropdown(
                                 id='y_col',
                                 options=[{'label': i, 'value': i} for i in merge_df.columns],
-                                value="fraction_of_t5_from_6"),
+                                value="fraction_of_t5_from_wt"),
                         ],
                         width=8,
                         style={'height': '100%'}
@@ -188,7 +188,7 @@ def with_dash_for_click_to_copy():
     def main_plot(min_hits, x_col, y_col):
         plot_df = merge_df[merge_df["read_hits_wt"] >= min_hits].copy(deep=True)
         plot_df = plot_df[plot_df["read_hits_6"] >= min_hits]
-        print(plot_df)
+        print(f"There are {plot_df.shape[0]} genes plotted.")
         fig = px.scatter(plot_df,
                          x=x_col,
                          y=y_col,
@@ -196,7 +196,7 @@ def with_dash_for_click_to_copy():
                          # y='bionomial_test_nlog10',
                          # y="t5_fraction_diff",
                          # x='t5_total_reads', y='fraction_of_t5_from_6',
-                         color="fraction_of_t5_from_6",
+                         color="fraction_of_t5_from_wt",
                          color_continuous_scale='Bluered',
                          hover_name="gene_name", hover_data=["gene_id",
                                                              "read_hits_6",
@@ -273,7 +273,7 @@ def with_dash_for_click_to_copy():
             msg = '*None of the buttons*'
         return html.Div(f"{msg} was most recently clicked")
 
-    app.run_server(debug=False, dev_tools_hot_reload=False)
+    app.run_server(debug=False, dev_tools_hot_reload=False, host='127.0.0.2', port=8000)
 
 
 if __name__ == '__main__':
