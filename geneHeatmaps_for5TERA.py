@@ -79,8 +79,8 @@ def make_dataframes_for_heatmaps(lib):
                                    'polya_length',
                                    'qc_tag_polya'])
     df = assign_with_josh_method(df, "/data16/marcus/genomes/plus-pTRIxef_elegansRelease100",
-                                 keepMultipleTranscriptInfo=True)
-    # print(df)
+                                 keepMultipleTranscriptInfo=True, add_names=True)
+    print(df)
     df_transcripts = compress_on_transcripts(df, 5)
     print(df_transcripts.query("t5 == '+'"))
     df_transcripts = df_transcripts.sort_values('transcript_hits')
