@@ -520,29 +520,27 @@ def assign_with_josh_method(merged_on_reads_df: pd.DataFrame, genomeDir: str,
 
 
 def adjust_5_ends(df: pd.DataFrame):
+    import re
+    from tqdm import tqdm
+    tqdm.pandas()
+
     def _flip_neg_strand_genes(chr_position: int, cigar: str, strand: str) -> int:
-        import regex as re
         if strand == "+":
             read_end = chr_position
             return read_end
-        else:
-            numbers = list(map(int, re.findall(rf'(\d+)[MDNSI]', cigar)))
-            cigar_chars = re.findall(rf'\d+([MDNSI])', cigar)
-            mnd_nums, mnd_chars = [], []
-            for i, cigar_char in enumerate(cigar_chars):
-                if cigar_char in "MND":
-                    mnd_chars.append(cigar_char)
-                    mnd_nums.append(numbers[i])
-            read_end = chr_position + sum(mnd_nums)
+        else:  # if strand == "-":
+            parsed_cigar = re.findall(rf'(\d+)([MDNSIX])', cigar)
+            mdn_nums = [int(num) for num, char in parsed_cigar if char in "MDN"]
+            read_end = chr_position + sum(mdn_nums)
             return read_end
 
     if "original_chr_pos" not in df.columns.to_list():
-        print(f"\nMaking adjustments for 5' ends (this is currently very, very slow...)")
+        print(f"\nMaking adjustments for 5' ends:")
         df["original_chr_pos"] = df["chr_pos"]
-        df["chr_pos"] = df.apply(lambda read: _flip_neg_strand_genes(read["original_chr_pos"],
-                                                                     read["cigar"],
-                                                                     read["strand"]),
-                                 axis=1)
+        df["chr_pos"] = df.progress_apply(lambda read: _flip_neg_strand_genes(read["original_chr_pos"],
+                                                                              read["cigar"],
+                                                                              read["strand"]),
+                                          axis=1)
     else:
         print(f"'original_chr_pos' column already found in dataframe, skipping adjustment for 5'ends!")
     return df
