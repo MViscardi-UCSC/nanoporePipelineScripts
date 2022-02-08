@@ -824,7 +824,6 @@ def merge_results(**other_kwargs):
             output_file = f"{outputDir}/merge_files/{filename}"
             print(f"Saving compressed on genes files to:\n\t{output_file} + .parquet/.tsv")
             gene_df.to_parquet(f"{output_file}.parquet")
-            # gene_df.to_csv(f"{output_file}.tsv", sep="\t")
             light_gene_df = gene_df.drop(['read_ids',
                                           'polya_lengths',
                                           'read_lengths',
