@@ -217,20 +217,24 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
                                 drop_unassigned=True, drop_failed_polya=True,
                                 drop_sub_n=5, keep_transcript_info=False,
                                 read_pos_in_groupby=False, add_nucleotide_fractions=False,
+                                add_tail_groupings=True, tail_groupings_cutoff=50,
                                 group_by_t5=False) -> [pd.DataFrame, pd.DataFrame]:
-    concat_df = library_reads_df_load_and_concat(lib_list, genomeDir,
+    concat_df = library_reads_df_load_and_concat(lib_list, genomeDir=genomeDir,
                                                  drop_unassigned=drop_unassigned, drop_failed_polya=drop_failed_polya,
                                                  keep_transcript_info=keep_transcript_info, group_by_t5=group_by_t5)
 
     compressed_df = compress_concat_df_of_libs(concat_df,
                                                drop_sub_n=drop_sub_n, read_pos_in_groupby=read_pos_in_groupby,
                                                add_nucleotide_fractions=add_nucleotide_fractions,
+                                               add_tail_groupings=add_tail_groupings,
+                                               tail_groupings_cutoff=tail_groupings_cutoff,
                                                keep_transcript_info=keep_transcript_info, group_by_t5=group_by_t5)
 
     return concat_df, compressed_df
 
 
-def library_reads_df_load_and_concat(lib_list, genomeDir, drop_unassigned=True, drop_failed_polya=True,
+def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genomes/elegansRelease100/",
+                                     drop_unassigned=True, drop_failed_polya=True,
                                      keep_transcript_info=False,
                                      group_by_t5=False):
     # Initially load the read assignments file:
@@ -325,8 +329,9 @@ def library_reads_df_load_and_concat(lib_list, genomeDir, drop_unassigned=True, 
     return concat_df
 
 
-def compress_concat_df_of_libs(super_df, drop_sub_n=5, read_pos_in_groupby=False, add_nucleotide_fractions=False,
+def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=False, add_nucleotide_fractions=False,
                                keep_transcript_info=False,
+                               add_tail_groupings=True, tail_groupings_cutoff=50,
                                group_by_t5=False):
     # Create the groupby dataframe:
     groupby_col_list = ["lib", "chr_id", "gene_id", "gene_name"]
@@ -337,18 +342,40 @@ def compress_concat_df_of_libs(super_df, drop_sub_n=5, read_pos_in_groupby=False
     if group_by_t5:
         print(f"\t+ [t5] tag")
         groupby_col_list.append("t5")
+    
     # Holy crap, the observed=True helps to keep this from propagating out to 129,151,669,691,968 rows...
-    groupby_obj = super_df.groupby(groupby_col_list, observed=True)
+    groupby_obj = concat_df.groupby(groupby_col_list, observed=True)
+
+    # Change the compressed prefix so that I am count gene hits or transcript hits, depending on set up!
     if not keep_transcript_info:
         compressed_prefix = "gene"
     else:
         compressed_prefix = "transcript"
+    
     compressed_df = groupby_obj["read_id"].apply(len).to_frame(name=f"{compressed_prefix}_hits")
+    
     compressed_df["mean_polya_length"] = groupby_obj["polya_length"].mean()
+    compressed_df["median_polya_length"] = groupby_obj["polya_length"].median()
+    
     compressed_df["mean_read_length"] = groupby_obj["read_length"].mean()
+    compressed_df["median_read_length"] = groupby_obj["read_length"].median()
+    
     if read_pos_in_groupby:
         compressed_df['stop_distances'] = groupby_obj["to_stop"].apply(list).to_frame(name="stop_distances")
         compressed_df['start_distances'] = groupby_obj["to_start"].apply(list).to_frame(name="stop_distances")
+    if add_tail_groupings:
+        print(f"Adding tail length groupings information, with a tail cutoff at {tail_groupings_cutoff} nts...",
+              end=' ')
+        compressed_df[f"sub_{tail_groupings_cutoff}_tails"] = groupby_obj.polya_length. \
+            apply(lambda group_series: group_series[group_series <= tail_groupings_cutoff].count())
+        compressed_df[f'frac_sub_{tail_groupings_cutoff}_tails'] = compressed_df[f"sub_{tail_groupings_cutoff}_tails"] \
+                                                                   / compressed_df[f"{compressed_prefix}_hits"]
+        compressed_df['tail_groupings_group'] = pd.cut(compressed_df[f'frac_sub_{tail_groupings_cutoff}_tails'],
+                                                       bins=[0.0, 0.1, 0.45, 1.0], labels=['long_tailed',
+                                                                                            'ungrouped',
+                                                                                            'short_tailed'],
+                                                       include_lowest=True)
+        print(f"Done.")
     # RPM and fractional hits calculations
     # Need to first create columns of NA values, tobe overwritten
     compressed_df[f"{compressed_prefix}_rpm"] = pd.NA
@@ -677,4 +704,5 @@ def parse_read_assignment_allChrs_txt(assignment_file_txt, multi_row_isoforms=Fa
 
 
 if __name__ == '__main__':
-    df = load_and_merge_lib_parquets(['polyA2', 'polyA3'])
+    concatenation_df = library_reads_df_load_and_concat(['polyA2', 'polyA3'])
+    print("breakpoint")
