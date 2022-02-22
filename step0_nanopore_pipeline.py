@@ -274,7 +274,7 @@ def buildOutputDirs(stepsToRun, **kwargs) -> None:
 # Step1: Trigger Docker Container which will do the actual guppy base-calling
 #        (eventually I'll want to have this function outside of docker!)
 #################################################################################
-def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, extraGuppyOptions, **other_kwargs):
+def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, extraGuppyOptions, nestedData, **other_kwargs):
     # TODO: I may need to change the --trim_strategy for TERA3!! add an param here for tera3adapter,
     #       if that param is not None, than I'll probably want to add the '--trim_strategy none'!!
     prev_cat_fastq = path.exists(f"{outputDir}/cat_files/cat.fastq")
@@ -284,6 +284,8 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, e
             extra_guppy_options = extraGuppyOptions + " "
         else:
             extra_guppy_options = ""
+        if nestedData:
+            extra_guppy_options += "-r "
         call = rf"""guppy_basecaller -x "cuda:0" {extra_guppy_options}--num_callers 12 --gpu_runners_per_device 8 """ \
                rf"""-c {guppyConfig} -i {dataDir}/fast5 -s {outputDir}/fastqs """ \
                rf"""2>&1 | tee {guppy_log}"""
