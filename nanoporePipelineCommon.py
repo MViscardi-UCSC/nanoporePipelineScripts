@@ -6,6 +6,7 @@ A common location for some often used methods.
 """
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 import os
 
 pd.set_option('display.width', 400)
@@ -113,8 +114,9 @@ class SamOrBamFile:
 
         if isinstance(header_source, str):
             self.header = check_output(f"samtools view -H {header_source}", shell=True).decode("utf-8")
+            # I don't remember what the plan was with storing this other header?:
             read_file_header = check_output(f"samtools view --no-PG -H {path}", shell=True).decode("utf-8")
-            self.header_lines = len(read_file_header.split('\n')) - 1
+            self.header_lines = len(self.header.split('\n')) - 1
         else:
             self.header = check_output(f"samtools view --no-PG -H {path}", shell=True).decode("utf-8")
             self.header_lines = len(self.header.split('\n')) - 1
@@ -163,6 +165,10 @@ class SamOrBamFile:
         final_df = final_df.astype(self.dtype_dict)
         print(f"{get_dt(for_print=True)}: Finished loading {self.file_type} file!")
         return final_df
+    
+    def add_column_w_merge(self, df_to_merge_with: pd.DataFrame, cols_to_merge_on: list or tuple):
+        self.df = self.df.merge(df_to_merge_with, on=cols_to_merge_on, how='left')
+        print(f"Completed merge using columns: {cols_to_merge_on}")
 
     def to_sam(self, output_path=None, escape_char="|", to_bam=False,
                infer_tag_types=False):
@@ -190,7 +196,7 @@ class SamOrBamFile:
         save_df = save_df.drop(self.tag_columns, axis=1)
 
         temp_header = self.header + f"@CO\t{get_dt(for_print=True)}: Introduced edits with python . . . " \
-                                    f"More info hopefully added to this later!\n"
+                                    f"More info hopefully added to this later!\n"  # TODO: Add more info...
         buffer = temp_header + save_df.to_csv(sep="\t",
                                               header=False,
                                               index=False,
@@ -213,11 +219,16 @@ class SamOrBamFile:
         self.to_sam(output_path=output_path, to_bam=True)
 
 
+class NanoJAMDF(pd.DataFrame):
+    pass
+
+
 def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/elegansRelease100/",
                                 drop_unassigned=True, drop_failed_polya=True,
                                 drop_sub_n=5, keep_transcript_info=False,
                                 read_pos_in_groupby=False, add_nucleotide_fractions=False,
                                 add_tail_groupings=True, tail_groupings_cutoff=50,
+                                pass_list_columns=False,
                                 group_by_t5=False) -> [pd.DataFrame, pd.DataFrame]:
     concat_df = library_reads_df_load_and_concat(lib_list, genomeDir=genomeDir,
                                                  drop_unassigned=drop_unassigned, drop_failed_polya=drop_failed_polya,
@@ -228,6 +239,7 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
                                                add_nucleotide_fractions=add_nucleotide_fractions,
                                                add_tail_groupings=add_tail_groupings,
                                                tail_groupings_cutoff=tail_groupings_cutoff,
+                                               pass_list_columns=pass_list_columns,
                                                keep_transcript_info=keep_transcript_info, group_by_t5=group_by_t5)
 
     return concat_df, compressed_df
@@ -330,9 +342,10 @@ def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genome
 
 
 def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=False, add_nucleotide_fractions=False,
-                               keep_transcript_info=False,
+                               keep_transcript_info=False, pass_list_columns=False,
                                add_tail_groupings=True, tail_groupings_cutoff=50,
                                group_by_t5=False):
+    
     # Create the groupby dataframe:
     groupby_col_list = ["lib", "chr_id", "gene_id", "gene_name"]
     print(f"Creating groupby dataframe merged on: {groupby_col_list}")
@@ -351,8 +364,9 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
         compressed_prefix = "gene"
     else:
         compressed_prefix = "transcript"
-    
-    compressed_df = groupby_obj["read_id"].apply(len).to_frame(name=f"{compressed_prefix}_hits")
+
+    tqdm.pandas(desc=f"Counting reads per {compressed_prefix}")
+    compressed_df = groupby_obj["read_id"].progress_apply(len).to_frame(name=f"{compressed_prefix}_hits")
     
     compressed_df["mean_polya_length"] = groupby_obj["polya_length"].mean()
     compressed_df["median_polya_length"] = groupby_obj["polya_length"].median()
@@ -361,13 +375,21 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
     compressed_df["median_read_length"] = groupby_obj["read_length"].median()
     
     if read_pos_in_groupby:
-        compressed_df['stop_distances'] = groupby_obj["to_stop"].apply(list).to_frame(name="stop_distances")
-        compressed_df['start_distances'] = groupby_obj["to_start"].apply(list).to_frame(name="stop_distances")
+        tqdm.pandas(desc=f"Storing stop distances as lists")
+        compressed_df['stop_distances'] = groupby_obj["to_stop"].progress_apply(list).to_frame(name="stop_distances")
+        tqdm.pandas(desc=f"Storing start distances as lists")
+        compressed_df['start_distances'] = groupby_obj["to_start"].progress_apply(list).to_frame(name="stop_distances")
+    if pass_list_columns:
+        tqdm.pandas(desc=f"Storing polyA lengths as lists")
+        compressed_df['polya_lengths'] = groupby_obj["polya_length"].progress_apply(list).to_frame(name="polya_lengths")
+        tqdm.pandas(desc=f"Storing read lengths as lists")
+        compressed_df['read_lengths'] = groupby_obj["read_length"].progress_apply(list).to_frame(name="read_lengths")
     if add_tail_groupings:
         print(f"Adding tail length groupings information, with a tail cutoff at {tail_groupings_cutoff} nts...",
               end=' ')
+        tqdm.pandas(desc=f"Counting number of tails shorter than {tail_groupings_cutoff} for each gene")
         compressed_df[f"sub_{tail_groupings_cutoff}_tails"] = groupby_obj.polya_length. \
-            apply(lambda group_series: group_series[group_series <= tail_groupings_cutoff].count())
+            progress_apply(lambda group_series: group_series[group_series <= tail_groupings_cutoff].count())
         compressed_df[f'frac_sub_{tail_groupings_cutoff}_tails'] = compressed_df[f"sub_{tail_groupings_cutoff}_tails"] \
                                                                    / compressed_df[f"{compressed_prefix}_hits"]
         compressed_df['tail_groupings_group'] = pd.cut(compressed_df[f'frac_sub_{tail_groupings_cutoff}_tails'],
@@ -447,15 +469,19 @@ def sam_or_bam_class_testing():
 
 # "riboD", "totalRNA", "totalRNA2", "polyA", "polyA2",
 # "xrn-1", "xrn-1-5tera", "pTRI-stds", "xrn-1-5tera-smg-6", "pTRI-stds-tera3"
-def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", file_midfix="_mergedOnReads",
-                                output_dir_folder="merge_files", return_all: bool = False) -> dict:
+def pick_libs_return_paths_dict(lib_list: list, output_dir_folder="merge_files",
+                                file_midfix="_mergedOnReads", file_suffix="parquet",
+                                return_all: bool = False) -> dict:
     output_dir_dict = {
         "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir",
         "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
                     "output_dir",
+        "totalRNA1": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
+                    "output_dir",
         "totalRNA2": "/data16/marcus/working/"
                      "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir",
         "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir",
+        "polyA1": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir",
         "polyA2": "/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/output_dir",
         "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/output_dir",
         "xrn-1-5tera": "/data16/marcus/working/211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/output_dir",
@@ -464,9 +490,20 @@ def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", fi
         "pTRI-stds-tera3": "/data16/marcus/working/211212_nanoporeRun_pTRIstds_TERA3/output_dir",
         "polyA3": "/data16/marcus/working/220131_nanoporeRun_polyA_0639_L3_third/output_dir",
         "totalRNA3": "/data16/marcus/working/220131_nanoporeRun_totalRNA_0639_L3_third/output_dir",
+        "roach_L3_1": "/data16/marcus/working/220222_roach_analysis_revisit/L3_techRep1/output_dir",
+        "roach_L3_2": "/data16/marcus/working/220222_roach_analysis_revisit/L3_techRep2/output_dir",
+        "roach_L4_1": "/data16/marcus/working/220222_roach_analysis_revisit/L4_techRep1/output_dir",
+        "roach_L4_2": "/data16/marcus/working/220222_roach_analysis_revisit/L4_techRep2/output_dir",
     }
+    if not isinstance(lib_list, list):
+        if not isinstance(lib_list, tuple):
+            raise NotImplementedError(f"Please pass a list/tuple of library keys, "
+                                      f"you passed a {type(lib_list)}. "
+                                      f"If you only want one value, "
+                                      f"please use the pick_lib_return_path() method.")
     if return_all:
         lib_list = output_dir_dict.keys()
+        lib_list = [lib for lib in lib_list if lib not in ["polyA", "totalRNA"]]
     file_suffix = file_suffix.strip(".")
     return_dict = {}
     for lib_key, output_dir in output_dir_dict.items():
@@ -482,6 +519,14 @@ def pick_libs_return_paths_dict(lib_list: list, file_suffix: str = "parquet", fi
                        f"{lib_list}")
     return return_dict
 
+
+def pick_lib_return_path(lib_key, output_dir_folder="merge_files",
+                         file_midfix="_mergedOnReads", file_suffix="parquet",) -> str:
+    [(lib_key, lib_path)] = pick_libs_return_paths_dict([lib_key],
+                                                        file_suffix=file_suffix,
+                                                        file_midfix=file_midfix,
+                                                        output_dir_folder=output_dir_folder).items()
+    return lib_path
 
 def load_read_assignments(assignment_file_parquet_path) -> pd.DataFrame:
     print(f"Loading read assignment file from: {assignment_file_parquet_path} ", end="")
