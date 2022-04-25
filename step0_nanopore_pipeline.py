@@ -101,8 +101,8 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                                  "[rna_r9.4.1_70bps_hac.cfg]")
         parser.add_argument('--dropGeneWithHitsLessThan', metavar='dropGeneWithHitsLessThan',
                             type=int, default=None,
-                            help="Number of threads to be used by guppy_basecaller, "
-                                 "nanopolish and minimap2.")
+                            help="Minimum number of reads per gene to have in the "
+                                 "compressedOnGenes outputs.")
         parser.add_argument('--altGenomeDirs', metavar='altGenomeDirs',
                             nargs='*', type=List[str], default=None,
                             help="Alternative genomes that can be used for filtering out reads "
@@ -221,8 +221,11 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
     settingsDict = parseSettings(**argDict)
     finalArgDict = {}
 
+    # Start with the absolute defaults
     finalArgDict.update(absoluteDefDict)
+    # Overwrite any defaults with things found in the settings file
     finalArgDict.update(settingsDict)
+    # Overwrite any defaults or settings file calls with the command line (or passed dict)
     finalArgDict.update(argDict)
     print("\033[1m\nPipeline Arguments:")
 
@@ -755,6 +758,9 @@ def merge_results(**other_kwargs):
         merge_reads_df = merge_reads_df[merge_reads_df["mapq"] != 0]
 
         if callWithJoshMethod:
+            # TODO: More standardized handling of this or the featureCounts called gene_ids.
+            #       The current system is inconsistent and confuses downstream scripts!
+            # TODO: Another option would be to just settle on one method for use!!
             merge_reads_df = assign_with_josh_method(merge_reads_df, genomeDir,
                                                      keepMultipleTranscriptInfo=False)
             if 'F' in stepsToRun:
@@ -868,7 +874,8 @@ def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
 
 
 def flair(outputDir, **other_kwargs):
-    def run_and_load_flair(outputDir, genomeDir, threads, sampleID, condition, regenerate, **kwargs) -> pd.DataFrame:
+    def run_and_load_flair(outputDir, genomeDir, threads, sampleID,
+                           condition, regenerate, **kwargs) -> pd.DataFrame:
         flair_map_path = f"{outputDir}/flair/flair.quantify.{sampleID}.{condition}.isoform.read.map.txt"
         if regenerate or not path.exists(flair_map_path):
             manifest_path = f"{outputDir}/flair/read_manifest.tsv"
@@ -947,6 +954,7 @@ def flair(outputDir, **other_kwargs):
     flair_df = run_and_load_flair(outputDir, **other_kwargs)
     final_flair_df = merge_some_more(flair_df, outputDir,
                                      output_to_file=True)
+    return final_flair_df
 
 
 def extra_steps(outputDir, genomeDir, minimapParam, threads, df=None, **other_kwargs):
