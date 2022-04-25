@@ -20,8 +20,9 @@ From dashForClickAndViewPolyATails.py:
 import os
 from pprint import pprint
 
-from nanoporePipelineCommon import get_dt, find_newest_matching_file
-from dashForClickAndViewPolyATails import load_and_merge_lib_parquets
+import numpy as np
+
+from nanoporePipelineCommon import get_dt, find_newest_matching_file, load_and_merge_lib_parquets
 import pandas as pd
 
 pd.set_option('display.width', 400)
@@ -30,15 +31,15 @@ pd.set_option('display.max_columns', None)
 
 def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
     global COMPRESSED_DF, PLOT_DF, SELECTED_DF
-    
+
     import dash
     from dash import dcc, html, callback_context, dash_table
     from dash.dependencies import Input, Output
-    
+
     import plotly.express as px
     import plotly.graph_objects as go
     import plotly.io as pio
-    
+
     from scipy import stats
     from math import log10
 
@@ -56,16 +57,20 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
     if force_compressed_df_build:
         reads_df, COMPRESSED_DF = load_and_merge_lib_parquets(libs,
                                                               drop_sub_n=abs_min_cutoff,
-                                                              add_nucleotide_fractions=True)
+                                                              add_nucleotide_fractions=True,
+                                                              add_tail_groupings=True)
         save_path = f"./testInputs/{get_dt(for_file=True)}_{'_'.join(libs)}.compressed.parquet"
         COMPRESSED_DF.to_parquet(save_path)
         print(f"Saved new compressed file to: {save_path}")
     lib_list = COMPRESSED_DF.lib.unique().tolist()
     COMPRESSED_DF['is_MtDNA'] = COMPRESSED_DF['chr_id'] == 'MtDNA'
+    COMPRESSED_DF['median_mean_diff_tails'] = COMPRESSED_DF['median_polya_length'] - COMPRESSED_DF['mean_polya_length']
     plottable_columns = COMPRESSED_DF.select_dtypes(include='number').columns.to_list()
     color_by_columns = ["None", "is_MtDNA", "chr_id",
                         "t_fraction", "a_fraction",
                         "c_fraction", "g_fraction",
+                        "tail_groupings_group",
+                        "frac_sub_50_tails",
                         ]
 
     app = dash.Dash(__name__)
@@ -106,6 +111,7 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                                     {'label': 'Log Y', 'value': 'log_y'},
                                     {'label': 'Trend Line', 'value': 'trendline'},
                                     {'label': 'Diagonal Line', 'value': 'diagonal'},
+                                    {'label': 'Shape by MtDNA', 'value': 'MtDNA_shape'},
                                     # {'label': 'Color By Chr', 'value': 'color_chr'},
                                 ],
                                 value=['log_x', 'log_y'],
@@ -131,6 +137,24 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                                 marks={str(n): str(n) for n in
                                        range(5 * (abs_min_cutoff // 5), 100 + abs_min_cutoff, 5)},
                                 step=None
+                            ),
+                            html.Br(),
+                            html.Label('Shorter tail group cutoff:', id="short-group-cutoff-label"),
+                            dcc.Slider(
+                                id='short-group-cutoff-slider',
+                                min=0, max=1, step=0.01,
+                                value=0.45,
+                                persistence=True, persistence_type='local',
+                                tooltip={"placement": "bottom", "always_visible": True},
+                            ),
+                            html.Br(),
+                            html.Label('Longer tail group cutoff:', id="long-group-cutoff-label"),
+                            dcc.Slider(
+                                id='long-group-cutoff-slider',
+                                min=0, max=1, step=0.01,
+                                value=0.1,
+                                persistence=True, persistence_type='local',
+                                tooltip={"placement": "bottom", "always_visible": True},
                             ),
                         ], style={'padding': 10, 'flex': 6}
                     ),
@@ -220,15 +244,26 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
          Input('min-hits-slider', 'value'),
          Input('selected-datatable', 'children'),
          Input('options', 'value'),
-         Input('color-col', 'value')])
+         Input('color-col', 'value'),
+         Input('short-group-cutoff-slider', 'value'),
+         Input('long-group-cutoff-slider', 'value'),
+         ])
     def main_plot(xaxis_library, yaxis_library,
                   xaxis_col, yaxis_col,
                   min_hits,
                   selected_data, options_list,
-                  color_by_col) -> go.Figure:
+                  color_by_col, short_group_cutoff, long_group_cutoff) -> go.Figure:
         global COMPRESSED_DF, PLOT_DF, SELECTED_DF
         extended_xaxis_col = f"{xaxis_col}_{xaxis_library}"
         extended_yaxis_col = f"{yaxis_col}_{yaxis_library}"
+
+        if color_by_col in ["tail_groupings_group", "frac_sub_50_tails"]:
+            COMPRESSED_DF['tail_groupings_group'] = pd.cut(COMPRESSED_DF[f'frac_sub_50_tails'],
+                                                           bins=[0.0, long_group_cutoff, short_group_cutoff, 1.0],
+                                                           labels=['long_tailed',
+                                                                   'ungrouped',
+                                                                   'short_tailed'],
+                                                           include_lowest=True)
 
         # Below tries to make some "smart" bounds around the plot!
         min_hit_df = COMPRESSED_DF[COMPRESSED_DF['gene_hits'] >= min_hits]
@@ -243,10 +278,9 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
         x_axis_df = min_hit_df[min_hit_df.lib == xaxis_library].drop(columns='lib')
         y_axis_df = min_hit_df[min_hit_df.lib == yaxis_library].drop(columns='lib')
         if xaxis_library == yaxis_library:
-            merge_suffixes = (f"_{xaxis_library}", '_y')
-        else:
-            merge_suffixes = (f"_{xaxis_library}",
-                              f"_{yaxis_library}")
+            yaxis_library = 'y'
+        merge_suffixes = (f"_{xaxis_library}",
+                          f"_{yaxis_library}")
         PLOT_DF = pd.merge(x_axis_df, y_axis_df, on=["gene_id", "gene_name", "chr_id", "is_MtDNA",
                                                      "t_fraction", "a_fraction",
                                                      "c_fraction", "g_fraction"],
@@ -256,19 +290,36 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
             trend = "ols"
         else:
             trend = None
-        if color_by_col != "None" and color_by_col in PLOT_DF.columns.to_list():
-            color_by = color_by_col
+        if 'MtDNA_shape' in options_list:
+            shape_col = 'is_MtDNA'
+        else:
+            shape_col = None
+        if color_by_col != "None":
+            if color_by_col in PLOT_DF.columns.to_list():
+                color_by = color_by_col
+            elif color_by_col in ["tail_groupings_group", "frac_sub_50_tails"]:
+                color_by = f"{color_by_col}_{yaxis_library}"
         else:
             color_by = None
+
+        color_discrete_map = {'long_tailed': 'cornflowerblue',
+                              'short_tailed': 'coral',
+                              'ungrouped': 'slategrey',
+                              False: 'black',
+                              True: 'coral'}
+        
         fig = px.scatter(PLOT_DF,
                          x=extended_xaxis_col,
                          y=extended_yaxis_col,
                          custom_data=["gene_id", "gene_name"],
+                         symbol=shape_col,
+                         symbol_sequence=[0, 3],
                          hover_name="gene_name", hover_data=["gene_id",
                                                              f"gene_hits_{xaxis_library}",
                                                              f"gene_hits_{yaxis_library}"],
                          trendline=trend, trendline_color_override="red",
-                         color=color_by, color_continuous_scale='BlueRed')
+                         color=color_by, color_continuous_scale='BlueRed', color_discrete_map=color_discrete_map,
+                         labels={f"frac_sub_50_tails_{yaxis_library}": "% tails >50"})
         if 'trendline' in options_list:
             trend_results: pd.DataFrame = px.get_trendline_results(fig)
             for index, result in trend_results.iterrows():
@@ -297,9 +348,13 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
                           yaxis_title=f"{yaxis_col} (Lib: {yaxis_library})",
                           template='plotly_white')
 
-        traces_dict = dict(size=4, color='black', opacity=0.9)
-        if color_by_col != "None" and color_by_col in PLOT_DF.columns:
-            traces_dict.pop('color')
+        traces_dict = dict(size=4, color='black', opacity=0.8)
+        if color_by_col != "None":
+            if color_by_col in PLOT_DF.columns.to_list():
+                traces_dict.pop('color')
+            elif color_by_col in ["tail_groupings_group", "frac_sub_50_tails"]:
+                traces_dict.pop('color')
+
         fig.update_traces(marker=traces_dict)
         if 'diagonal' in options_list:
             if xaxis_col == yaxis_col:
@@ -450,6 +505,27 @@ def main(libs, force_compressed_df_build=False, abs_min_cutoff=5):
             os.remove(temp_save_file_loc)
             return temp_hold
 
+    @app.callback(Output('short-group-cutoff-label', 'children'),
+                  Output('long-group-cutoff-label', 'children'),
+                  Input('yaxis-lib', 'value'),
+                  Input('short-group-cutoff-slider', 'value'),
+                  Input('long-group-cutoff-slider', 'value'),
+                  Input('min-hits-slider', 'value'))
+    def display_value(y_axis_lib, short_group_cutoff, long_group_cutoff, min_hits):
+        COMPRESSED_DF['test_group'] = pd.cut(COMPRESSED_DF[f'frac_sub_50_tails'],
+                                                       bins=[0.0, long_group_cutoff, short_group_cutoff, 1.0],
+                                                       labels=['long_tailed',
+                                                               'ungrouped',
+                                                               'short_tailed'],
+                                                       include_lowest=True)
+        min_hit_df = COMPRESSED_DF.query(f"lib == '{y_axis_lib}'")
+        min_hit_df = min_hit_df.query(f"gene_hits >= {min_hits}")
+        counts = min_hit_df.value_counts('test_group')
+        return (f"Shorter tail group cutoff: ({counts['short_tailed']}; "
+                f"{counts['short_tailed'] / counts.sum()*100:0.1f}%)",
+                f"Longer tail group cutoff: ({counts['long_tailed']}; "
+                f"{counts['long_tailed'] / counts.sum()*100:0.1f}%)")
+    
     app.run_server(debug=False, dev_tools_hot_reload=False)
 
 
