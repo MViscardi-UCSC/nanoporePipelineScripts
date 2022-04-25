@@ -242,10 +242,10 @@ def make_split_violins2(df1, df2, gene_list):
     print(super_df.info())
 
     # # PLOT IT:
-    # top_2 = super_df[super_df["hits_rank"] <= 2]
+    # top_2 = concat_df[concat_df["hits_rank"] <= 2]
     sea.set_theme(style="whitegrid")
     # ax = sea.swarmplot(x="tail_length", y="gene_id", hue="replicate",
-    #                    data=super_df, dodge=True, alpha=.01, zorder=1)
+    #                    data=concat_df, dodge=True, alpha=.01, zorder=1)
     ax = sea.violinplot(x="gene_id", y="tail_length", hue="replicate",
                         data=super_df, split=True, bw=0.2, inner="quartiles")
     plt.show()
