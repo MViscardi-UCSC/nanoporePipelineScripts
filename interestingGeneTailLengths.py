@@ -43,11 +43,11 @@ def make_split_violins2(dfs, replicate_names, gene_list):
     print(super_df[["gene_name", "gene_id", "replicate", "read_hits"]].drop_duplicates())
 
     # # PLOT IT:
-    # top_2 = super_df[super_df["hits_rank"] <= 2]
+    # top_2 = concat_df[concat_df["hits_rank"] <= 2]
     sea.set_theme(style="whitegrid")
     # The swarm plot is CRAZY SLOW
     # ax = sea.swarmplot(x="tail_length", y="gene_name", hue="replicate",
-    #                    data=super_df, dodge=True, alpha=.01, zorder=1)
+    #                    data=concat_df, dodge=True, alpha=.01, zorder=1)
     print(f"Plotting . . .")
     # Below works!:
     ax = sea.violinplot(x="gene_name", y="tail_length", hue="replicate",
@@ -57,7 +57,7 @@ def make_split_violins2(dfs, replicate_names, gene_list):
     # plt.yscale('log')
     plt.show()
     # import plotly.express as px
-    # fig = px.violin(super_df, x="gene_name", y="tail_length", color="replicate")
+    # fig = px.violin(concat_df, x="gene_name", y="tail_length", color="replicate")
     # fig.show()
     print(" . . . Done!")
 
