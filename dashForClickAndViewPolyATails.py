@@ -331,6 +331,13 @@ def distributions_of_polya_tails(libs, force_compressed_df_build=False):
                         options=[{'label': i, 'value': i} for i in lib_list],
                         value=lib_list[1]
                     ),
+                    dcc.Dropdown(
+                        id='scatter-plot-col',
+                        options=[{'label': i, 'value': i} for i in ['mean',
+                                                                    'median',
+                                                                    'mean-median']],
+                        value='mean'
+                    ),
                     html.Div(
                         [
                             dcc.Markdown(
@@ -346,6 +353,10 @@ def distributions_of_polya_tails(libs, force_compressed_df_build=False):
                             daq.BooleanSwitch(
                                 id='trendline-switch', on=False,
                                 label="Trendline for scatter:"
+                            ),
+                            daq.BooleanSwitch(
+                                id='kde-plot-switch', on=False,
+                                label="KDE plot:"
                             ),
                         ]
                     ),
@@ -423,29 +434,38 @@ def distributions_of_polya_tails(libs, force_compressed_df_build=False):
         Output('primary-scatter', 'figure'),
         [Input('xaxis-lib', 'value'),
          Input('yaxis-lib', 'value'),
+         Input('scatter-plot-col', 'value'),
          Input('min-hits-slider', 'value'),
          Input('selected-data', 'children'),
-         Input('trendline-switch', 'on')])
-    def main_plot(xaxis_library, yaxis_library, min_hits,
-                  selectedData, trendline_switch) -> go.Figure:
+         Input('trendline-switch', 'on'),
+         Input('kde-plot-switch', 'on')])
+    def main_plot(xaxis_library, yaxis_library, plot_col_tag, min_hits,
+                  selectedData, trendline_switch, kde_plot) -> go.Figure:
         if selectedData != "No points selected":
             selected_gene_ids = [hit["Gene ID"] for hit in json.loads(selectedData)]
             selected_gene_names = [hit["Gene Name"] for hit in json.loads(selectedData)]
         else:
             selected_gene_ids, selected_gene_names = [], []
+        plot_cols = ["gene_id",
+                     "gene_name",
+                     "gene_hits",
+                     "mean_polya_length",
+                     "median_polya_length"]
+        if plot_col_tag != 'mean-median':
+            plot_col = plot_col_tag
+        else:
+            plot_col = "mean_median_diff"
+            compressed_df['mean_median_diff_polya_length'] = compressed_df["mean_polya_length"] - \
+                                                             compressed_df["median_polya_length"]
+            plot_cols.append("mean_median_diff_polya_length")
+
         min_hit_df = compressed_df[compressed_df['gene_hits'] >= min_hits]
-        max_mean_tail = min_hit_df.mean_polya_length.max()
-        max_mean_tail += 10
-        min_mean_tail = min_hit_df.mean_polya_length.min()
-        min_mean_tail -= 10
-        x_axis_df = min_hit_df[min_hit_df.lib == xaxis_library][["gene_id",
-                                                                 "gene_name",
-                                                                 "gene_hits",
-                                                                 "mean_polya_length"]]
-        y_axis_df = min_hit_df[min_hit_df.lib == yaxis_library][["gene_id",
-                                                                 "gene_name",
-                                                                 "gene_hits",
-                                                                 "mean_polya_length"]]
+        max_plot_val = min_hit_df[f"{plot_col}_polya_length"].max()
+        max_plot_val += 10
+        min_plot_val = min_hit_df[f"{plot_col}_polya_length"].min()
+        min_plot_val -= 10
+        x_axis_df = min_hit_df[min_hit_df.lib == xaxis_library][plot_cols]
+        y_axis_df = min_hit_df[min_hit_df.lib == yaxis_library][plot_cols]
 
         plot_df = pd.merge(x_axis_df, y_axis_df, on=["gene_id", "gene_name"],
                            suffixes=(f"_{xaxis_library}",
@@ -455,7 +475,9 @@ def distributions_of_polya_tails(libs, force_compressed_df_build=False):
             trend = "ols"
         else:
             trend = None
-        fig = px.scatter(plot_df, x=f"mean_polya_length_{xaxis_library}", y=f"mean_polya_length_{yaxis_library}",
+
+        fig = px.scatter(plot_df,
+                         x=f"{plot_col}_polya_length_{xaxis_library}", y=f"{plot_col}_polya_length_{yaxis_library}",
                          custom_data=["gene_id", "gene_name"],
                          hover_name="gene_name", hover_data=["gene_id",
                                                              f"gene_hits_{xaxis_library}",
@@ -463,12 +485,18 @@ def distributions_of_polya_tails(libs, force_compressed_df_build=False):
                          trendline=trend)
         fig.update_layout(margin={'l': 40, 'b': 40, 't': 10, 'r': 0},
                           hovermode='closest', clickmode="event+select",
-                          xaxis_title=f"Mean polyA Tail Length (Lib: {xaxis_library})",
-                          yaxis_title=f"Mean polyA Tail Length (Lib: {yaxis_library})",
+                          xaxis_title=f"{plot_col.title()} polyA Tail Length (Lib: {xaxis_library})",
+                          yaxis_title=f"{plot_col.title()} polyA Tail Length (Lib: {yaxis_library})",
                           template='plotly_white')
-        fig.update_traces(marker=dict(size=7, color='darkgray', opacity=0.7))
-        fig.add_trace(go.Scatter(x=[min_mean_tail, max_mean_tail],
-                                 y=[min_mean_tail, max_mean_tail],
+        fig.update_traces(marker=dict(size=7, color='black', opacity=0.7,
+                                      line=dict(width=1, color='DarkSlateGrey')))
+        if kde_plot:
+            fig.update_traces(marker=dict(size=2, opacity=0.1))
+            fig.add_trace(go.Histogram2dContour(x=plot_df[f"{plot_col}_polya_length_{xaxis_library}"],
+                                                y=plot_df[f"{plot_col}_polya_length_{yaxis_library}"],
+                                                colorscale='Blues'))
+        fig.add_trace(go.Scatter(x=[min_plot_val, max_plot_val],
+                                 y=[min_plot_val, max_plot_val],
                                  mode='lines',
                                  line=dict(color='black',
                                            dash='dash'),
@@ -476,8 +504,9 @@ def distributions_of_polya_tails(libs, force_compressed_df_build=False):
         if selectedData != "No points selected":
             selected_df = plot_df[plot_df["gene_id"].isin(selected_gene_ids)]
             fig.add_trace(go.Scatter(mode='markers',
-                                     x=selected_df[f"mean_polya_length_{xaxis_library}"],
-                                     y=selected_df[f"mean_polya_length_{yaxis_library}"],
+                                     x=selected_df[f"{plot_col}_polya_length_{xaxis_library}"],
+                                     y=selected_df[f"{plot_col}_polya_length_{yaxis_library}"],
+                                     text=selected_df[f"gene_name"],
                                      customdata=list(zip(selected_df[f"gene_id"],
                                                          selected_df[f"gene_name"],
                                                          selected_df[f"gene_hits_{xaxis_library}"],
@@ -502,8 +531,8 @@ def distributions_of_polya_tails(libs, force_compressed_df_build=False):
             #                                                                       f"gene_hits_{yaxis_library}"],
             #                                   color=1)
             # fig.add_trace(selected_data_points.data[0])
-        fig.update_xaxes(range=[min_mean_tail, max_mean_tail])
-        fig.update_yaxes(range=[min_mean_tail, max_mean_tail])
+        fig.update_xaxes(range=[min_plot_val, max_plot_val])
+        fig.update_yaxes(range=[min_plot_val, max_plot_val])
         return fig
 
     def _plot_split_violin(filtered_df, x_lib, y_lib):
@@ -539,27 +568,35 @@ def distributions_of_polya_tails(libs, force_compressed_df_build=False):
         return fig
 
     def _plot_multi_violin(filtered_df):
-        fig = px.violin(filtered_df, x="gene_name", y="polya_length",
-                        color="lib", points="all")
+        filtered_df['log_polya_length'] = np.log10(filtered_df['polya_length'])
+        filtered_df['scale_group'] = 'group1'
+        print(filtered_df)
+        fig = px.violin(filtered_df,
+                        x="gene_name", y="log_polya_length",
+                        color="lib",
+                        points="all",
+                        # box=True,
+                        )
         fig.update_layout(margin={'l': 0, 'b': 40, 't': 10, 'r': 40},
-                          yaxis_title=f"Distribution of PolyA Tail Length Calls",
+                          yaxis_title=f"Distribution of PolyA Tail Length Calls (Log<sub>10</sub>)",
                           legend=dict(orientation="h",
                                       yanchor="bottom",
                                       y=1.02,
                                       xanchor="left",
                                       x=0),
                           template='plotly_white',
-                          violingap=0.1, violingroupgap=0)
+                          violingap=0.2, violingroupgap=0)
         fig.update_traces(meanline_visible=True,
                           points='all',  # show all points
                           side='positive',
                           spanmode='hard',
                           pointpos=-0.1,  # could maybe go back to both sides and zero this...
                           marker=dict(opacity=0.5),
+                          # width=0.1,
                           # jitter=0.05,  # add some jitter on points for better visibility
-                          # scalemode='count',  # scale violin plot area with total count
+                          scalemode='width',
+                          scalegroup='group1',
                           )
-        seaborn.set_palette('colorblind')
         return fig
 
     @app.callback(
