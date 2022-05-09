@@ -297,8 +297,7 @@ def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genome
     print(f"Starting assignment merge . . .", end="")
     # Add read assignments w/ josh's read_assignment dataframe
     concat_df = concat_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
-                                how="left", suffixes=["_originalOutput",
-                                                      ""])
+                                how="left", suffixes=["_originalOutput", ""])
     print(f"\rFinished assignment merge!")
     # To further clean up mixed columns, just retain the ones we care about!
     keep_columns = ["lib",
@@ -378,7 +377,7 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
         tqdm.pandas(desc=f"Storing stop distances as lists")
         compressed_df['stop_distances'] = groupby_obj["to_stop"].progress_apply(list).to_frame(name="stop_distances")
         tqdm.pandas(desc=f"Storing start distances as lists")
-        compressed_df['start_distances'] = groupby_obj["to_start"].progress_apply(list).to_frame(name="stop_distances")
+        compressed_df['start_distances'] = groupby_obj["to_start"].progress_apply(list).to_frame(name="start_distances")
     if pass_list_columns:
         tqdm.pandas(desc=f"Storing polyA lengths as lists")
         compressed_df['polya_lengths'] = groupby_obj["polya_length"].progress_apply(list).to_frame(name="polya_lengths")
@@ -749,5 +748,5 @@ def parse_read_assignment_allChrs_txt(assignment_file_txt, multi_row_isoforms=Fa
 
 
 if __name__ == '__main__':
-    concatenation_df = library_reads_df_load_and_concat(['polyA2', 'polyA3'])
+    reads_df, compressed_df = load_and_merge_lib_parquets(["xrn-1-5tera", "xrn-1-5tera-smg-6"])
     print("breakpoint")
