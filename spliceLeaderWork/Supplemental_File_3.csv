@@ -1,0 +1,13 @@
+Min percent SL2 to be counted as downstream in an operon,0.1,Unnamed: 2,Unnamed: 3
+,number,percent of annotated,percent of predicted operons
+total predicted operons,1429,,
+total annotated operons,1267,,
+total exact matches,913,0.720599842147,0.638908327502
+,,,
+total predicted operons with partial1,248,,0.173547935619
+total annotated operons with partial1,224,0.17679558011,
+,,,
+Total percentage matched,,0.897395422257,0.8124562631209999
+,,,
+"1Partials  are counted  if there are two or more overlaping genes. However, the partial matches tab contains all operons that overlap by even one gene.",,,
+"Note: many of the predicted operons have large distances between genes. Therefore, the upstream gene may be correct in the prediction, or there may be a un-annotated gene closer to the downstream gene.",,,
