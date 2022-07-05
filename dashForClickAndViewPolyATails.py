@@ -488,8 +488,9 @@ def distributions_of_polya_tails(libs, force_compressed_df_build=False):
                           xaxis_title=f"{plot_col.title()} polyA Tail Length (Lib: {xaxis_library})",
                           yaxis_title=f"{plot_col.title()} polyA Tail Length (Lib: {yaxis_library})",
                           template='plotly_white')
-        fig.update_traces(marker=dict(size=7, color='black', opacity=0.7,
-                                      line=dict(width=1, color='DarkSlateGrey')))
+        fig.update_traces(marker=dict(size=7, color='black', opacity=0.8,
+                                      # line=dict(width=1, color='DarkSlateGrey'),
+                                      ))
         if kde_plot:
             fig.update_traces(marker=dict(size=2, opacity=0.1))
             fig.add_trace(go.Histogram2dContour(x=plot_df[f"{plot_col}_polya_length_{xaxis_library}"],
