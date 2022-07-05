@@ -304,6 +304,7 @@ def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genome
                     "read_id",
                     "chr_id",
                     "chr_pos",
+                    "original_chr_pos",
                     "gene_id",
                     "gene_name",
                     "cigar",
