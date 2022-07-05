@@ -467,6 +467,21 @@ def sam_or_bam_class_testing():
     print(sam)
 
 
+def boolDF_to_upsetPlot(input_df: pd.DataFrame,
+                        show_percentages=False, show_counts=True,
+                        file_name=None, min_subset_size=0, min_degree=0,
+                        sort_by='cardinality', sort_categories_by='cardinality'):
+    import upsetplot
+    import matplotlib.pyplot as plt
+    upset_format_data = upsetplot.from_indicators(lambda lambda_df: lambda_df.select_dtypes(bool), data=input_df)
+    fig = plt.figure()
+    upset = upsetplot.UpSet(upset_format_data, sort_by=sort_by, sort_categories_by=sort_categories_by,
+                            min_subset_size=min_subset_size, min_degree=min_degree, show_percentages=show_percentages, show_counts=show_counts)
+    upset.plot(fig=fig)
+    if isinstance(file_name, str):
+        fig.savefig(file_name)
+
+
 # "riboD", "totalRNA", "totalRNA2", "polyA", "polyA2",
 # "xrn-1", "xrn-1-5tera", "pTRI-stds", "xrn-1-5tera-smg-6", "pTRI-stds-tera3"
 def pick_libs_return_paths_dict(lib_list: list, output_dir_folder="merge_files",
