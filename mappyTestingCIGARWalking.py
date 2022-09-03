@@ -9,9 +9,7 @@ would have called with the original mapping!
 
 from geneHeatmaps2 import _flip_neg_strand_genes, load_reads_parquet
 from nanoporePipelineCommon import find_newest_matching_file
-from standardsAlignment.standardsAssignmentWithMinimap2 import _loop_align_seq_to_adapters
 import mappy
-from pprint import pprint
 
 
 def mappy_aligner(path_to_genome):
