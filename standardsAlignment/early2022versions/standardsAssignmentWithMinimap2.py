@@ -34,8 +34,11 @@ pd.set_option("display.max_columns", None)
 
 def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar_width=None,
                     keep_minimap_obj=False, threads=10, tail_less_reference=False,
+                    specified_reference=None,
                     **kwargs) -> Union[str, pd.DataFrame]:
-    if tail_less_reference:  # This ref doesn't have the tails or HDV attached to the 3' ends
+    if isinstance(specified_reference, str):
+        path_to_genome = specified_reference
+    elif tail_less_reference:  # This ref doesn't have the tails or HDV attached to the 3' ends
         path_to_genome = "/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/" \
                          "intermediate_files/standards_with_indexes_without_tails_or_HDV.fa"
     else:  # This ref does...
@@ -74,9 +77,7 @@ def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar
                                                          sequence,
                                                          keep_read_id=keep_read_id,
                                                          was_fastq=True,
-                                                         print_stuff=False,
-                                                         print_per_seq=False,
-                                                         print_per_seq_plus=False, )
+                                                         **kwargs)
             # Save the assignment dictionary from the aligner loop into the list:
             seq_assignments.append(seq_assignment)
             # Set the progress bar description, mostly cuz it's fun...
@@ -130,10 +131,14 @@ def align_standards(fastq_file=None, compressed_df=None, keep_read_id=False, bar
                       ]
 
         # Loop to extract and drop the mappy python object
-        mappy_df[mappy_cols] = mappy_df.apply(lambda row: _loop_pull_mappy_obj_info(row["mapping_obj"],
-                                                                                    columns=mappy_cols),
-                                              axis=1, result_type="expand")
-        mappy_df.drop(columns="mapping_obj", inplace=True)
+        try:
+            mappy_df[mappy_cols] = mappy_df.apply(lambda row: _loop_pull_mappy_obj_info(row["mapping_obj"],
+                                                                                        columns=mappy_cols),
+                                                  axis=1, result_type="expand")
+            mappy_df.drop(columns="mapping_obj", inplace=True)
+        except ValueError:
+            print(mappy_df.head())
+            raise ValueError
 
         # Extract the last bit of information stored in the mappy flags
         for mappy_flag_col in ["stds_type_of_alignment", "stds_ts", "stds_cigar"]:
