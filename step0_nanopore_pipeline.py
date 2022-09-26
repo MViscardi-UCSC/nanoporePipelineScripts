@@ -43,7 +43,7 @@ import warnings
 from tqdm import tqdm
 
 from nanoporePipelineCommon import find_newest_matching_file, get_dt, \
-    gene_names_to_gene_ids, SamOrBamFile, FastqFile, adjust_5_ends, assign_with_josh_method
+    gene_names_to_gene_ids, SamOrBamFile, FastqFile, assign_with_josh_method
 
 import numpy as np
 import pandas as pd
@@ -852,7 +852,7 @@ def merge_results(**other_kwargs):
 
 
 def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
-    from standardsAlignment.standardsAssignmentWithMinimap2 import align_standards, plot_value_counts
+    from standardsAlignment.early2022versions.standardsAssignmentWithMinimap2 import align_standards, plot_value_counts
     if not isinstance(df, pd.DataFrame):
         merge_dir = f"{outputDir}/merge_files"
         try:
