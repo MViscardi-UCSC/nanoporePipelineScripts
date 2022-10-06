@@ -215,30 +215,38 @@ def standards_aligner_v2(path_to_standards_ref_fasta: str,
     print(f"Mapping to adapters named: {aligner.seq_names}")
 
     if isinstance(fastx_file, str):
+        # align_stds_from_fastx() will do the majority of the work here, see the method for details
         storage_dict = align_stds_from_fastx(fastx_file, aligner,
                                              print_weird_results=print_weird_results)
 
+        # We convert the dictionary output from standards assignment to a dataframe,
+        #   as this makes it a little easier to finesse.
         temp_df = pd.DataFrame.from_dict(storage_dict, orient='index')
         columns_to_keep = ['assignment',
-                           'sequence']  # at this point the read_ids are the indexes
+                           'sequence']
+        # At this point the read_ids are the indexes
         df = temp_df[columns_to_keep]
 
+        # Here we can pull more information about the winning alignment to store in the dataframe if needed:
         tqdm.pandas(desc=f"Extracting information from Mappy python objects")
-
         pd.options.mode.chained_assignment = None
         df['mappy_hit_obj'] = temp_df.progress_apply(lambda row: apply_extract_mappy_hit_obj(**row), axis=1)
+
+        # This is a holdover from when I was testing with generated data
         if testing_generated_data:
             df['original_std'] = df.index.str[6:8]
             df['correct_hit'] = df.assignment == df.original_std
             pprint(df.correct_hit.value_counts())
             pd.options.mode.chained_assignment = 'warn'
     elif isinstance(mjv_compressed_df, pd.DataFrame):
+        df = None
         # First check that the pTRI chr_id shows up in the compressed on reads dataframe:
         if "cerENO2" not in mjv_compressed_df['chr_id'].unique().tolist():
             return f"Chromosome cerENO2 not found in dataframe, please run minimap2 w/ genome that has cerENO2 added!!"
         # Todo: Write this section up. It would be nice to have this work with the compressed dataframes I'll actually
         #       be using for all this in the future!
     else:
+        df = None
         raise NotImplementedError("Please provide either a fastq or a df")
     # pprint(df.value_counts('assignment'))
     pprint(df[df['assignment'].isin(['00', '05', '10', '15', '30', '60'])]
@@ -338,7 +346,7 @@ def generate_test_std_reads(reference_fasta="/data16/marcus/scripts/nanoporePipe
         output_file_name = output_file_overwrite_full_path
     else:
         output_file_name = f"{output_file_dir}/{get_dt(for_file=True)}_{output_file_suffix}"
-    
+
     finalStandards_dict = {}
     for read_id, sequence, quality, comments in mp.fastx_read(reference_fasta, read_comment=True):
         if "finalStandard" in read_id:
@@ -412,7 +420,7 @@ if __name__ == '__main__':
     # ref_fasta = "/data16/marcus/genomes/plus_cerENO2_elegansRelease100/220923_allChrs_plus-cerENO2.allChrs.fa"
     gen_ref_fasta = "220902_version2.0_releventSequences_wOutTails_wExtraBarcode.fasta"
     # fasta = f"220920_generatedRNAStdsReads_withTruncations.fasta"
-    
+
     fasta = generate_test_std_reads(reference_fasta=gen_ref_fasta,
                                     delete_prob_quick=0.01,
                                     insert_prob_quick=0.01,
