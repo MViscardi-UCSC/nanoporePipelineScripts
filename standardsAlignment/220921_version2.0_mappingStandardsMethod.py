@@ -8,7 +8,6 @@ Also trying to make lots of comments so that this will be easier to understand i
     The version from 2021 was extremely hard to understand, and required a complete rewrite...
     Let's avoid that!
 
-
 Generally, the new method consists of a few primary steps:
     1. Take reads and align them to a mini-genome that only has the 6 standards (w/out tails)
         which sole difference is their barcodes (8bp); because of this lack of difference reads
@@ -30,8 +29,8 @@ Generally, the new method consists of a few primary steps:
         kinds of failures is a complete loss of the unique barcode region, resulting in a read that
         maps the exact same way to all 6 reference standards. The important thing about this system
         is that we can throw out these reads, if we allow an aligner like mappy to run with default
-        settings, it would pick a (seemingly random) the best standard and call that the primary
-        alignment,than assign the others as secondaries. This would produce false positives that could
+        settings, it would pick a (seemingly random) best standard and call that the primary
+        alignment, than assign the others as secondaries. This would produce false positives that could
         tank our downstream analysis
 """
 import mappy
