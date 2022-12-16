@@ -1,5 +1,5 @@
 """
-220921_version2.0_mappingStandardsMethod.py
+220921_version2_mappingStandardsMethod.py
 Marcus Viscardi,    September 21, 2022
 
 Taking things from generatingFakeReadsForTesting.ipynb and pulling them into a single method.
@@ -62,7 +62,8 @@ def print_mappy_hit_alignment(mappy_hit_obj: mappy.Alignment,
     ref_pos = 0
     read_seq = read_seq[mappy_hit_obj.q_st: mappy_hit_obj.q_en]
     read_pos = 0
-
+    if mappy_hit_obj.strand == -1:
+        read_seq = mp.revcomp(read_seq)
     top_line = ""
     middle_line = ""
     bottom_line = ""
@@ -104,7 +105,7 @@ def print_mappy_hit_alignment(mappy_hit_obj: mappy.Alignment,
                 bottom_line[block_index * line_print_width:(block_index + 1) * line_print_width],
             ])
         for top, mid, bot in print_blocks:
-            print()
+            print("\n\n")
             print(f"Read: {top}")
             print(f"      {mid}")
             print(f"Ref:  {bot}")
@@ -153,7 +154,7 @@ def per_read_mapping(read_id: str, sequence: str, aligner: mp.Aligner,
                        if key.startswith("hit_obj") and key[-2:] in list_of_max_mlen}
             NM_list = list(NM_dict.values())
             if NM_list.count(min(NM_list)) == 1:  # There is one std that has the lowest mismatch count
-                assignment = [std for std in NM_dict if NM_dict[std] == max(NM_list)][0]
+                assignment = [std for std in NM_dict if NM_dict[std] == min(NM_list)][0]
             else:  # Not sure what these situations will look like! They should have been caught in elif above!
                 str_of_tied_stds = "_".join(sorted(list(NM_dict.keys())))
                 assignment = f"Ambiguous_subset_{str_of_tied_stds}"
@@ -184,6 +185,7 @@ def align_stds_from_fastx(fastx: str, mappy_aligner: mp.Aligner,
                          total=sum(1 for line in open(fastx)) // lines_per_entry,
                          # The mappy.fastx_read iterator doesn't have a __len__, so we
                          #    have to manually tell tqdm how long the fastq will be
+                         desc=f"Reading fastx entries and assigning to standards"
                          )
     storage_dict = {}
     for read_id, sequence, _, comments in read_iterator:
@@ -199,11 +201,20 @@ def standards_aligner_v2(path_to_standards_ref_fasta: str,
                          threads_for_aligner: int = 10,
                          print_weird_results: bool = False,
                          testing_generated_data: bool = False,
+                         library_type: str = "dRNA",
                          ) -> pd.DataFrame:
+    if library_type == "dRNA":
+        mappy_preset = "map-ont"
+        extra_mappy_flag = 0x100000
+    elif library_type == "cDNA":
+        mappy_preset = "map-ont"
+        extra_mappy_flag = 0x200000
+    else:
+        raise NotImplementedError(f"Please provide 'dRNA' or 'cDNA' for library_type, you provided: {library_type}")
     aligner = mp.Aligner(path_to_standards_ref_fasta,
-                         preset="splice", k=14,  # These are the usual go-tos for mapping ONT dRNA-Seq
-                         extra_flags=0x100000,  # From: https://github.com/lh3/minimap2/blob/master/minimap.h
-                         #           0x100000 = forces strand matched alignment (b/c dRNA-seq retains strand info)
+                         preset=mappy_preset, k=14,  # These are the usual go-tos for mapping ONT dRNA-Seq
+                         extra_flags=extra_mappy_flag,  # From: https://github.com/lh3/minimap2/blob/master/minimap.h
+                         #           0x200000 = forces strand reverse strand alignment (b/c we have cDNA)
                          n_threads=threads_for_aligner,
                          )
     if not aligner:
@@ -227,7 +238,7 @@ def standards_aligner_v2(path_to_standards_ref_fasta: str,
         df = temp_df[columns_to_keep]
 
         # Here we can pull more information about the winning alignment to store in the dataframe if needed:
-        tqdm.pandas(desc=f"Extracting information from Mappy python objects")
+        tqdm.pandas(desc=f"Identifying assignments from Mappy objects")
         pd.options.mode.chained_assignment = None
         df['mappy_hit_obj'] = temp_df.progress_apply(lambda row: apply_extract_mappy_hit_obj(**row), axis=1)
 
@@ -248,16 +259,16 @@ def standards_aligner_v2(path_to_standards_ref_fasta: str,
         df = None
         raise NotImplementedError("Please provide either a fastq or a df")
     # pprint(df.value_counts('assignment'))
-    pprint(df[df['assignment'].isin(['00', '05', '10', '15', '30', '60'])]
-           .groupby(['assignment',
-                     'original_std'])
-           .size().unstack(fill_value=0))
-    print("\n")
-    pprint(df
-           .groupby(['assignment',
-                     'original_std'])
-           .size().unstack(fill_value=0))
-    print("done")
+    if testing_generated_data:
+        pprint(df[df['assignment'].isin(['00', '05', '10', '15', '30', '60'])]
+               .groupby(['assignment',
+                         'original_std'])
+               .size().unstack(fill_value=0))
+        print("\n")
+        pprint(df
+               .groupby(['assignment',
+                         'original_std'])
+               .size().unstack(fill_value=0))
     return df
 
 
@@ -411,6 +422,13 @@ def plot_par_categ(df,
                                  title=title)
     fig.show(renderer='firefox')
 
+def check_for_perfect_matches(rc_barcode_dict, **row):
+    assignment = row['assignment']
+    sequence = row['sequence']
+    barcode = rc_barcode_dict[assignment]
+    perfect_barcode = barcode in sequence
+    return perfect_barcode
+
 
 if __name__ == '__main__':
     title_text = "Testing presence of extra barcode in<br>generated sequences"
@@ -419,28 +437,56 @@ if __name__ == '__main__':
     # ref_fasta = "/data16/marcus/genomes/plus_cerENO2_elegansRelease100/220923_allChrs_plus-cerENO2.allChrs.fa"
     gen_ref_fasta = "220902_version2.0_releventSequences_wOutTails_wExtraBarcode.fasta"
     # fasta = f"220920_generatedRNAStdsReads_withTruncations.fasta"
-
-    fasta = generate_test_std_reads(reference_fasta=gen_ref_fasta,
-                                    delete_prob_quick=0.01,
-                                    insert_prob_quick=0.01,
-                                    sub_prob_quick=0.05,
-                                    upseq_trunc_prob_quick=0.001,
-                                    downseq_trunc_prob_quick=0.001,
-                                    indel_size_factor_quick=1,
-                                    standards_to_use=(0,
-                                                      5,
-                                                      10,
-                                                      15,
-                                                      30,
-                                                      60,
-                                                      99,
-                                                      ),
-                                    number_of_entries_in_fasta=10000,
-                                    )
-    assigned_df = standards_aligner_v2(ref_fasta, fasta,
-                                       testing_generated_data=True)
-    fig = px.imshow(assigned_df.groupby(['assignment',
-                                         'original_std']).size().unstack(fill_value=0),
-                    title=title_text)
+    
+    # Nano3P Post Porechop trimming
+    # fastq = "/data16/marcus/working/221028_nanoporeRun_ENO2RNAStds_Nano3P/output_dir/cat_files/cat.trimmed.fastq"
+    
+    # dRNA Seq Library
+    fastq = "/data16/marcus/working/221112_nanoporeRun_ENO2RNAStds_dRNA/output_dir/cat_files/cat.fastq"
+    assigned_df = standards_aligner_v2(ref_fasta, fastq,
+                                       testing_generated_data=False,
+                                       threads_for_aligner=20,
+                                       library_type="dRNA")
+    pprint(assigned_df)
+    pprint(assigned_df.assignment.value_counts(normalize=True))
+    fig = px.bar(assigned_df.assignment.value_counts(normalize=False))
     fig.show(renderer='firefox')
-    plot_par_categ(assigned_df, title=title_text)
+    assigned_df.to_csv(f"{get_dt(for_file=True)}_RNAStds_dRNA_Assignments.csv")
+
+    barcode_dict = {
+        '00': 'GGTGTTGTT',
+        '05': 'CGGCAATAA',
+        '10': 'TAATCGTCC',
+        '15': 'CCTTCTAGG',
+        '30': 'ACACACACC',
+        '60': 'AAGAGGAGG',
+    }
+    
+    rc_barcode_dict = {key: mp.revcomp(value) for key, value in barcode_dict.items()}
+
+    hit_df = assigned_df[assigned_df.assignment.isin(['00', '05', '10', '15', '30', '60'])]
+    # It's important to use the barcode_dict or the rc_barcode_dict depending on if we are using cDNA reads or RNA reads
+    hit_df['perfect_barcode'] = hit_df.apply(lambda row: check_for_perfect_matches(barcode_dict, **row), axis=1)
+
+    hit_df_groupby = hit_df.groupby("assignment")
+
+    grouped_df = hit_df_groupby['assignment'].count().to_frame(name="total_count")
+    grouped_df['perfect_match_count'] = hit_df_groupby['perfect_barcode'].sum().to_frame(name="perfect_match_count")
+    # grouped_df['mean_r_en'] = hit_df_groupby['r_en'].mean().to_frame(name="mean_r_en")
+
+    grouped_df['imperfect_match_count'] = grouped_df.total_count - grouped_df.perfect_match_count
+    grouped_df = grouped_df.reset_index()
+    
+    fig = px.bar(grouped_df, x='assignment',
+                 y=['perfect_match_count',
+                    'imperfect_match_count',
+                    ])
+    fig.update_layout(height=500, width=700)
+    fig.update_layout(legend=dict(
+        orientation='h',
+        yanchor="top",
+        y=0.99,
+        xanchor="left",
+        x=0.01
+    ))
+    fig.show()
