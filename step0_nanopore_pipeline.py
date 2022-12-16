@@ -132,7 +132,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                             type=int, default=None,
                             help="Adapter to be trimmed for 5TERA [None]")
         parser.add_argument('--extraGuppyOptions', metavar='extraGuppyOptions',
-                            type=int, default=None,
+                            type=int, default='',
                             help="String flags/options to be added to the guppy_basecaller call [None]")
         # Flag Arguments
         parser.add_argument('-p', '--printArgs', action='store_true',
@@ -292,19 +292,21 @@ def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate,
     # TODO: I may need to change the --trim_strategy for TERA3!! add an param here for tera3adapter,
     #       if that param is not None, than I'll probably want to add the '--trim_strategy none'!!
     prev_cat_fastq = path.exists(f"{outputDir}/cat_files/cat.fastq")
-    if freezeGuppyVersion6_3_8 or "fast5_out" in extraGuppyOptions:
+    if isinstance(extraGuppyOptions, str):
+        if extraGuppyOptions.endswith(" "):
+            extra_guppy_options = extraGuppyOptions
+        else:
+            extra_guppy_options = extraGuppyOptions + " "
+    else:
+        extra_guppy_options = ""
+    
+    if freezeGuppyVersion6_3_8 or "fast5_out" in extra_guppy_options:
         guppy_basecaller_path = "/data16/marcus/scripts/ont-guppy/bin/guppy_basecaller"
     else:
         guppy_basecaller_path = "guppy_basecaller"
+    
     if regenerate or not prev_cat_fastq:
         guppy_log = f"{outputDir}/logs/{get_dt()}_guppy.log"
-        if isinstance(extraGuppyOptions, str):
-            if extraGuppyOptions.endswith(" "):
-                extra_guppy_options = extraGuppyOptions
-            else:
-                extra_guppy_options = extraGuppyOptions + " "
-        else:
-            extra_guppy_options = ""
         if nestedData:
             extra_guppy_options += "-r "
         call = rf"""{guppy_basecaller_path} -x "cuda:0" {extra_guppy_options}--num_callers 12 """ \

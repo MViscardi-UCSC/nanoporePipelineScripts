@@ -298,7 +298,7 @@ def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genome
     # Add read assignments w/ josh's read_assignment dataframe
     concat_df = concat_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
                                 how="left", suffixes=["_originalOutput", ""])
-    print(f"\rFinished assignment merge!")
+    print(f"\rFinished assignment merge!          ")
     # To further clean up mixed columns, just retain the ones we care about!
     keep_columns = ["lib",
                     "read_id",
@@ -316,13 +316,19 @@ def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genome
         # Add transcript info to the columns we care about if requested
         for col in ["transcript_id", "to_start", "to_stop"]:
             keep_columns.append(col)
+    else:
+        print(f"Not keeping transcript information. . .")
     if group_by_t5:
         # Add 5TERA information to the columns we care about if requested
         keep_columns.append('t5')
+    else:
+        print(f"Not keeping 5TERA adapter information (if even present)...")
     # Drop unnecessary columns, reassess for duplicates.
     #   i.e. reads that mapped to two transcripts will
     #        otherwise be dups if we drop transcript info!
+    print(f"Dropping duplicate columns. . .", end='')
     concat_df = concat_df[keep_columns].drop_duplicates()
+    print(f"\rFinished dropping dup. columns.")
     # Only retain polyA passed reads if requested
     if drop_failed_polya:
         print(f"\nRead counts pre-failed-polyA call drop:   {concat_df.shape[0]}")
@@ -486,7 +492,7 @@ def boolDF_to_upsetPlot(input_df: pd.DataFrame,
 # "xrn-1", "xrn-1-5tera", "pTRI-stds", "xrn-1-5tera-smg-6", "pTRI-stds-tera3"
 def pick_libs_return_paths_dict(lib_list: list, output_dir_folder="merge_files",
                                 file_midfix="_mergedOnReads", file_suffix="parquet",
-                                return_all: bool = False) -> dict:
+                                return_all: bool = False, ignore_unmatched_keys: bool = False) -> dict:
     output_dir_dict = {
         "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir",
         "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
@@ -521,12 +527,19 @@ def pick_libs_return_paths_dict(lib_list: list, output_dir_folder="merge_files",
         lib_list = [lib for lib in lib_list if lib not in ["polyA", "totalRNA"]]
     file_suffix = file_suffix.strip(".")
     return_dict = {}
-    for lib_key, output_dir in output_dir_dict.items():
-        if lib_key in lib_list:
+    for lib_key in lib_list:
+        if lib_key in output_dir_dict.keys():
+            output_dir = output_dir_dict[lib_key]
             file_path = f"{output_dir}/{output_dir_folder}/*{file_midfix}.{file_suffix}"
             print(f"Looking for file for {lib_key}, at {file_path}...", end=" ")
             return_dict[lib_key] = find_newest_matching_file(file_path)
             print(f"File Found.")
+        else:
+            if ignore_unmatched_keys:
+                continue
+            else:
+                raise FileNotFoundError(f"Could not find a matching library tag for {lib_key}\n"
+                                        f"Your keys must be found in this list: {list(output_dir_dict.keys())}")
     if not return_dict:
         raise KeyError(f"No matching library keys found, please use keys from the following list: "
                        f"{list(output_dir_dict.keys())}. "
