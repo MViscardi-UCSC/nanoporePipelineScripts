@@ -141,9 +141,9 @@ class SamOrBamFile:
                 max_to_load = self.subsample
             else:
                 if self.file_type == 'bam':
-                    max_to_load = len(in_sam)
+                    max_to_load = len(in_sam)  # TODO: Change this step so it ignores header lines!!
                 else:
-                    max_to_load = sum(1 for line in open(self.path))
+                    max_to_load = sum(1 for line in open(self.path) if not line.startswith("@"))  # TODO: This may cause an issue with nanopore reads who's names start with @!!
             sam_iterator = tqdm(enumerate(in_sam), total=max_to_load)
             for i, read in sam_iterator:
                 sam_iterator.set_description(f"Processing {read.qname}")
