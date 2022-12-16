@@ -97,7 +97,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                                  "based on flowcell and kit used for run. Helpful "
                                  "table for picking a config @ https://denbi-nanopore-"
                                  "training-course.readthedocs.io/en/latest/basecalling/"
-                                 "basecalling.html or just google 'guppy_basecalling'"
+                                 "basecalling_1.html or just google 'guppy_basecalling'"
                                  "[rna_r9.4.1_70bps_hac.cfg]")
         parser.add_argument('--dropGeneWithHitsLessThan', metavar='dropGeneWithHitsLessThan',
                             type=int, default=None,
@@ -133,7 +133,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                             help="Adapter to be trimmed for 5TERA [None]")
         parser.add_argument('--extraGuppyOptions', metavar='extraGuppyOptions',
                             type=int, default=None,
-                            help="String flags/options to be added to the gupy_basecaller call [None]")
+                            help="String flags/options to be added to the guppy_basecaller call [None]")
         # Flag Arguments
         parser.add_argument('-p', '--printArgs', action='store_true',
                             help="Boolean flag to show how arguments are overwritten/accepted")
@@ -146,6 +146,12 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
         parser.add_argument('-j', '--callWithJoshMethod', action='store_true',
                             help="Boolean flag to use Josh's read assignment method, rather"
                                  "than FeatureCounts")
+        parser.add_argument('-F', '--freezeGuppyVersion6_3_8', action='store_true',
+                            help="A Boolean flag to force the use of guppy_basecaller v6.3.8."
+                                 "This version was the last to offer --fast5_out support, which"
+                                 "is required for tailfindr. Note that if '--fast5_out' is present"
+                                 "in the '--extraGuppyOptions' string, this flag will automatically"
+                                 "be activated!")
         # parser.add_argument('-A', '--altGenomeProcessing', action='store_true',
         #                     help="Boolean flag to ")
 
@@ -213,7 +219,9 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                            tera3adapter=False,
                            tera5adapter=False,
                            extraGuppyOptions=False,
-                           callWithJoshMethod=False)
+                           callWithJoshMethod=False,
+                           freezeGuppyVersion6_3_8=False,
+                           )
     if skip_cli_dict:
         argDict = skip_cli_dict
     else:
@@ -238,6 +246,8 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
             finalArgDict[key] = False
         elif key == "altGenomeDirs":
             finalArgDict[key] = list(arg)
+        elif key == "extraGuppyOptions":
+            finalArgDict[key] = arg.strip('"')
         else:
             try:
                 finalArgDict[key] = int(arg)
@@ -277,19 +287,28 @@ def buildOutputDirs(stepsToRun, **kwargs) -> None:
 # Step1: Trigger Docker Container which will do the actual guppy base-calling
 #        (eventually I'll want to have this function outside of docker!)
 #################################################################################
-def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate, extraGuppyOptions, nestedData, **other_kwargs):
+def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate,
+                         freezeGuppyVersion6_3_8, extraGuppyOptions, nestedData, **other_kwargs):
     # TODO: I may need to change the --trim_strategy for TERA3!! add an param here for tera3adapter,
     #       if that param is not None, than I'll probably want to add the '--trim_strategy none'!!
     prev_cat_fastq = path.exists(f"{outputDir}/cat_files/cat.fastq")
+    if freezeGuppyVersion6_3_8 or "fast5_out" in extraGuppyOptions:
+        guppy_basecaller_path = "/data16/marcus/scripts/ont-guppy/bin/guppy_basecaller"
+    else:
+        guppy_basecaller_path = "guppy_basecaller"
     if regenerate or not prev_cat_fastq:
         guppy_log = f"{outputDir}/logs/{get_dt()}_guppy.log"
         if isinstance(extraGuppyOptions, str):
-            extra_guppy_options = extraGuppyOptions + " "
+            if extraGuppyOptions.endswith(" "):
+                extra_guppy_options = extraGuppyOptions
+            else:
+                extra_guppy_options = extraGuppyOptions + " "
         else:
             extra_guppy_options = ""
         if nestedData:
             extra_guppy_options += "-r "
-        call = rf"""guppy_basecaller -x "cuda:0" {extra_guppy_options}--num_callers 12 --gpu_runners_per_device 8 """ \
+        call = rf"""{guppy_basecaller_path} -x "cuda:0" {extra_guppy_options}--num_callers 12 """ \
+               rf"""--gpu_runners_per_device 8 """ \
                rf"""-c {guppyConfig} -i {dataDir}/fast5 -s {outputDir}/fastqs """ \
                rf"""2>&1 | tee {guppy_log}"""
         print(f"Starting Guppy Basecalling with GPU @ {get_dt(for_print=True)}. . .\n"
