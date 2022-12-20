@@ -819,6 +819,7 @@ def merge_results(**other_kwargs):
         for adapter_col in ['t5', 't3']:
             if adapter_col in merged_df.columns:
                 merged_df[adapter_col].replace({'+': 1, '-': 0}, inplace=True)
+                merged_df[adapter_col] = pd.to_numeric(merged_df[adapter_col])
         grouped_genes = merged_df.groupby(["gene_id", "gene_name"])
 
         # This next step now uses set rather than list, to ensure we count each read only once!!
