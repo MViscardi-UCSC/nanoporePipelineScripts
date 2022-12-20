@@ -132,7 +132,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                             type=int, default=None,
                             help="Adapter to be trimmed for 5TERA [None]")
         parser.add_argument('--extraGuppyOptions', metavar='extraGuppyOptions',
-                            type=int, default='',
+                            type=int, default=None,
                             help="String flags/options to be added to the guppy_basecaller call [None]")
         # Flag Arguments
         parser.add_argument('-p', '--printArgs', action='store_true',
