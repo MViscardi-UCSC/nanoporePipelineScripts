@@ -515,6 +515,10 @@ def pick_libs_return_paths_dict(lib_list: list, output_dir_folder="merge_files",
         "roach_L3_2": "/data16/marcus/working/220222_roach_analysis_revisit/L3_techRep2/output_dir",
         "roach_L4_1": "/data16/marcus/working/220222_roach_analysis_revisit/L4_techRep1/output_dir",
         "roach_L4_2": "/data16/marcus/working/220222_roach_analysis_revisit/L4_techRep2/output_dir",
+        "5tera_xrn-1-KD_wt": "/data16/marcus/working/221216_nanoporeRun_totalRNA_wt_xrn-1-KD_5TERA/output_dir",
+        "5tera_xrn-1-KD_smg-5": "/data16/marcus/working/221216_nanoporeRun_totalRNA_smg-5_xrn-1-KD_5TERA/output_dir",
+        "5tera_xrn-1-KD_smg-6": "/data16/marcus/working/221216_nanoporeRun_totalRNA_smg-6_xrn-1-KD_5TERA/output_dir",
+        "5tera_xrn-1-KD_smg-7": "/data16/marcus/working/221216_nanoporeRun_totalRNA_smg-7_xrn-1-KD_5TERA/output_dir",
     }
     if not isinstance(lib_list, list):
         if not isinstance(lib_list, tuple):
