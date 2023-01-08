@@ -660,7 +660,7 @@ def gene_names_to_gene_ids(parquet_path: str = "/data16/marcus/genomes/elegansRe
     return df
 
 
-def get_dt(for_print=False, for_file=False):
+def get_dt(for_print=False, for_file=True):
     from datetime import datetime
     now = datetime.now()
     if for_print:
