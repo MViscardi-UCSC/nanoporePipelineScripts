@@ -244,6 +244,7 @@ def run_coverage_calc(bam_df, chrs=("I", "II", "III", "IV", "V", "MtDNA"), count
                            'III': 13783459,
                            'IV': 17493829,
                            'V': 20922738,
+                           'X': 17718726,
                            'MtDNA': 13327}
     # Because of some python weirdness, we need to turn single chromosomes into lists!
     if not isinstance(chrs, (list, tuple)):
