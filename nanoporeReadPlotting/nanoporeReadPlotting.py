@@ -7,7 +7,7 @@ Script to pull together the methods written in notebooks
 
 Much of this will come from:
     - SimpleReadPlotting_cigars.py
-    - finalizingReadPlotting_matplitlib.ipynb
+    - finalizingReadPlotting_matplotlib.ipynb
     - testingReadPlotting_matplotlib.ipynb
     - testingReadPlotting_plotly.ipynb
 
