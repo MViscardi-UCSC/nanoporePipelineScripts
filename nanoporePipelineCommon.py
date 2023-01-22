@@ -297,7 +297,7 @@ def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genome
     print(f"Starting assignment merge . . .", end="")
     # Add read assignments w/ josh's read_assignment dataframe
     concat_df = concat_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
-                                how="left", suffixes=["_originalOutput", ""])
+                                how="left", suffixes=("_originalOutput", ""))
     print(f"\rFinished assignment merge!          ")
     # To further clean up mixed columns, just retain the ones we care about!
     keep_columns = ["lib",
