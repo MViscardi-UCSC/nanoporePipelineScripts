@@ -10,9 +10,10 @@ from step0_nanopore_pipeline import meshSetsAndArgs, main, live_cmd_call
 from nanoporePipelineCommon import get_dt
 
 
-def per_library_run(lib_name, path_to_settings):
+def per_library_run(lib_name, path_to_settings, overriding_settings_dict=None):
     print(f"##Starting run for {lib_name} @ {get_dt(for_print=True)}##")
     start = datetime.now()
+    # Values can be edited here or by using the overriding_settings_dict param!
     settings_dict = {"settings": path_to_settings,
                      # Steps to run within the pipeline: *=not default
                      #     (G)uppy basecalling,
@@ -30,6 +31,8 @@ def per_library_run(lib_name, path_to_settings):
                      "callWithJoshMethod": False,
                      "regenerate": True,
                      }
+    if isinstance(overriding_settings_dict, dict):
+        settings_dict.update(overriding_settings_dict)
     # For roach data:
     if lib_name.startswith('roach'):
         settings_dict["nestedData"] = True
@@ -58,10 +61,10 @@ if __name__ == '__main__':
         #           "211031_totalRNA_0639_L3_settingsFile.txt",
         # xrn1="/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
         #      "211031_totalRNA_5108_xrn-1-KD_settingsFile.txt",
-        # wt_5tera="/211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/"
-        #          "211118_totalRNA_5108_xrn-1-KD_settingsFile.txt",
-        # smg6_5tera="/211210_nanoporeRun_totalRNA_2102_xrn-1-KD_5TERA/"
-        #            "211210_totalRNA_2102_xrn-1-KD_settingsFile.txt",
+        wt_5tera="/211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/"
+                 "211118_totalRNA_5108_xrn-1-KD_settingsFile.txt",
+        smg6_5tera="/211210_nanoporeRun_totalRNA_2102_xrn-1-KD_5TERA/"
+                   "211210_totalRNA_2102_xrn-1-KD_settingsFile.txt",
         # totalRNA3="/220131_nanoporeRun_totalRNA_0639_L3_third/"
         #           "220131_totalRNA_0639_L3_third_settingsFile.txt",
         # polyA3="/220131_nanoporeRun_polyA_0639_L3_third/"
@@ -92,7 +95,8 @@ if __name__ == '__main__':
         print("###########################################\n" * 10,
               library, settings_file, sep='\n')
         time_dict[library] = per_library_run(lib_name=library,
-                                             path_to_settings=settings_file)
+                                             path_to_settings=settings_file,
+                                             overriding_settings_dict={"stepsToRun": "GTMNFCPL"})
         with open(file_to_save_times_to, "a") as f:
             f.write(f"{library:>10}\t{str(time_dict[library])}\n")
     pprint(time_dict)
