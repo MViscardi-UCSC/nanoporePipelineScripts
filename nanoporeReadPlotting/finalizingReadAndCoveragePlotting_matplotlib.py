@@ -8,8 +8,6 @@ numpySpeedTesting_andCoveragePlotting.ipynb, then setting it up in a way to be i
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-pd.set_option('display.width', 100)
-pd.set_option('display.max_columns', None)
 
 import re
 
@@ -135,11 +133,126 @@ def _get_gene_coordinates(gene_id=None, gene_name=None,
     return gene_name, chromosome, start, end, strand
 
 
+def _add_to_main_array_for_each_read(cigars_and_genomic_starts, chr_length, count_Ds_as_maps=False) -> np.array:
+    coverage_array = np.zeros([chr_length], dtype=np.uint32)
+    cigar_parsing_iterator = tqdm(cigars_and_genomic_starts, desc=f"Building coverage by adding to main array")
+
+    gaps = ['N']  # introns
+    maps = ['M']  # mapped segments
+    if count_Ds_as_maps:
+        maps.append('D')
+    else:
+        gaps.append('D')
+    for cigar, genomic_start in cigar_parsing_iterator:
+        genomic_pos = genomic_start
+        parsed_cigar = re.findall(rf'(\d+)([MDNSIX])', cigar)
+        parsed_cigar = [(int(length), code) for (length, code) in parsed_cigar]
+
+        for length, code in parsed_cigar:
+            if code in gaps:
+                genomic_pos += length
+            elif code in maps:  # TODO: the D "belongs" above, but not yet...
+                coverage_array[genomic_pos:genomic_pos + length] += 1
+                genomic_pos += length
+    return coverage_array
+
+
+def _run_coverage_calc(bam_df, chrs=("I", "II", "III", "IV", "V", "X", "MtDNA"), count_Ds_as_maps=False):
+    if "original_chr_pos" in bam_df.columns:
+        gen_pos_col = "original_chr_pos"
+    else:
+        gen_pos_col = "chr_pos"
+
+    # These are actually annotation ends:
+    chr_max_length_dict = {'I': 15072426,
+                           'II': 15279420,
+                           'III': 13783459,
+                           'IV': 17493829,
+                           'V': 20922738,
+                           'X': 17718726,
+                           'MtDNA': 13327}
+    # Because of some python weirdness, we need to turn single chromosomes into lists!
+    if not isinstance(chrs, (list, tuple)):
+        chrs = [chrs]
+
+    # First filter the chr dict, so we only use the ones that showed up in the method call:
+    chr_max_length_dict = {chromosome: length for chromosome, length
+                           in chr_max_length_dict.items()
+                           if chromosome in chrs}
+    array_dict = {}
+    for chromosome, chr_length in chr_max_length_dict.items():
+        print(f"Starting to build coverage array for chromosome: {chromosome}")
+        chr_df = bam_df.query(f"chr_id == '{chromosome}'")
+        cigars_and_genomic_start_positions = list(zip(chr_df.cigar.to_list(), chr_df[gen_pos_col].to_list()))
+        coverage_array = _add_to_main_array_for_each_read(cigars_and_genomic_start_positions, chr_length,
+                                                          count_Ds_as_maps=count_Ds_as_maps)
+        array_dict[chromosome] = coverage_array
+    return array_dict
+
+
+def coverage_plotting_5tera(bam_df_for_plot, gene_name=None, gene_id=None,
+                            save_dir=None, save_suffix=None, count_Ds_as_maps=False,
+                            rpm_normalize=False, provide_axes: (plt.Axes, plt.Axes) = (None, None)):
+    if gene_name:
+        _, gene_chr, start, end, strand = _get_gene_coordinates(gene_name=gene_name)
+    elif gene_id:
+        gene_name, gene_chr, start, end, strand = _get_gene_coordinates(gene_id=gene_id)
+    else:
+        raise LookupError(f"Please provide either the gene_name or gene_id for the target gene to plot!")
+    chr_array_ad = _run_coverage_calc(bam_df_for_plot.query("t5 == '+'"),
+                                      chrs=gene_chr, count_Ds_as_maps=count_Ds_as_maps)[gene_chr]
+    chr_array_unad = _run_coverage_calc(bam_df_for_plot.query("t5 == '-'"),
+                                        chrs=gene_chr, count_Ds_as_maps=count_Ds_as_maps)[gene_chr]
+    locus_array_ad = chr_array_ad[start: end]
+    locus_array_unad = chr_array_unad[start: end]
+    if rpm_normalize:
+        norm_factor = bam_df_for_plot.shape[0]
+        # Turn the total number of read hits into the 'million of read hits'
+        rpm_norm_factor = norm_factor / 1000000
+        locus_array_ad = np.divide(locus_array_ad, rpm_norm_factor)
+        locus_array_unad = np.divide(locus_array_unad, rpm_norm_factor)
+
+    index_array = np.arange(len(locus_array_ad))
+    zeros_array = np.zeros(len(locus_array_ad))
+
+    if isinstance(provide_axes[0], plt.Axes) and isinstance(provide_axes[1], plt.Axes):
+        axes: (plt.Axes, plt.Axes) = provide_axes
+    else:
+        fig, axes = plt.subplots(2, 1,
+                                 figsize=(8, 4),
+                                 sharex='all',
+                                 gridspec_kw={"height_ratios": [1, 4]}
+                                 )
+    
+    # Pycharm is being annoying and throwing warning about None not have Axes methods, maybe this will help?
+    axes[0]: plt.Axes
+    axes[1]: plt.Axes
+    
+    axes[0].fill_between(index_array, zeros_array, locus_array_ad, color='red')
+    axes[1].fill_between(index_array, zeros_array, locus_array_unad, color='black')
+    axes[0].set_xticks([])
+    axes[1].set_xticks([])
+    # axes[0].set_xlabel
+    
+    if isinstance(provide_axes[0], plt.Axes) and isinstance(provide_axes[1], plt.Axes):
+        pass
+    else:
+        plt.tight_layout()
+        plt.style.use("seaborn-paper")
+        if isinstance(save_dir, str):
+            save_path = f"{save_dir}/{get_dt(for_file=True)}_readCoveragePlotting_{gene_name}{save_suffix}"
+            print(f"Saving plot to {save_path} + .png/.svg...")
+            plt.savefig(save_path + ".svg")
+            plt.savefig(save_path + ".png")
+        plt.show()
+
+
 def plot_reads(reads_df, gene_id_to_plot=None, gene_name_to_plot=None,
                save_dir=None, save_suffix="", plot_width_and_height=(25, 5),
                subsample_fraction=None, subsample_number=None,
                t5_pos_count=None, t5_neg_count=None,
-               pad_x_axis_bounds_by=None, only_keep_reads_matched_to_gene=True):
+               pad_x_axis_bounds_by=None, only_keep_reads_matched_to_gene=True,
+               provided_axis=None):
     gene_name, chromosome, genomic_start, genomic_end, gene_strand = _get_gene_coordinates(gene_name=gene_name_to_plot,
                                                                                            gene_id=gene_id_to_plot)
 
@@ -169,14 +282,12 @@ def plot_reads(reads_df, gene_id_to_plot=None, gene_name_to_plot=None,
                   f"\nWe are just going to plot all that exist")
     gene_df = pd.concat([gene_df_t5_pos, gene_df_t5_neg])
 
+    # Now for the actual plotting!!
     plt.style.use('default')
-    # fig, ax = plt.subplots()
-    # tqdm.pandas(desc="First pass to extract the length of the first intron called")
-    # gene_df[['genomic_read_length', 'first_n_length']] = gene_df.progress_apply(lambda row: _row_apply_plot_cigar(row, ax), axis=1, result_type='expand')
-    # fig, ax = None, None
-
-    plt.style.use('default')
-    fig, ax = plt.subplots(figsize=plot_width_and_height)
+    if isinstance(provided_axis, plt.Axes):
+        ax = provided_axis
+    else:
+        fig, ax = plt.subplots(figsize=plot_width_and_height)
 
     if gene_strand == "-":
         sort_order = ["t5", "chr_pos", "original_chr_pos", "read_length"]
@@ -197,115 +308,17 @@ def plot_reads(reads_df, gene_id_to_plot=None, gene_name_to_plot=None,
     else:
         ax.set_xlim(genomic_start, genomic_end)
 
-    plt.xticks([])
-    plt.yticks([])
-    if isinstance(save_dir, str):
-        save_path = f"{save_dir}/{get_dt(for_file=True)}_readPlotting_{gene_name}{save_suffix}"
-        print(f"Saving plot to {save_path} + .png/.svg...")
-        plt.savefig(save_path + ".svg")
-        plt.savefig(save_path + ".png")
-    # plt.show()
+    ax.set_xticks([])
+    ax.set_yticks([])
+    if isinstance(provided_axis, plt.Axes):
+        pass
+    else:
+        if isinstance(save_dir, str):
+            save_path = f"{save_dir}/{get_dt(for_file=True)}_readPlotting_{gene_name}{save_suffix}"
+            print(f"Saving plot to {save_path} + .png/.svg...")
+            plt.savefig(save_path + ".svg")
+            plt.savefig(save_path + ".png")
     return gene_df
-
-
-def add_to_main_array_for_each_read(cigars_and_genomic_starts, chr_length, count_Ds_as_maps=False) -> np.array:
-    coverage_array = np.zeros([chr_length], dtype=np.uint32)
-    cigar_parsing_iterator = tqdm(cigars_and_genomic_starts, desc=f"Building coverage by adding to main array")
-
-    gaps = ['N']  # introns
-    maps = ['M']  # mapped segments
-    if count_Ds_as_maps:
-        maps.append('D')
-    else:
-        gaps.append('D')
-    for cigar, genomic_start in cigar_parsing_iterator:
-        genomic_pos = genomic_start
-        parsed_cigar = re.findall(rf'(\d+)([MDNSIX])', cigar)
-        parsed_cigar = [(int(length), code) for (length, code) in parsed_cigar]
-
-        for length, code in parsed_cigar:
-            if code in gaps:
-                genomic_pos += length
-            elif code in maps:  # TODO: the D "belongs" above, but not yet...
-                coverage_array[genomic_pos:genomic_pos + length] += 1
-                genomic_pos += length
-    return coverage_array
-
-
-def run_coverage_calc(bam_df, chrs=("I", "II", "III", "IV", "V", "MtDNA"), count_Ds_as_maps=False):
-    if "original_chr_pos" in bam_df.columns:
-        gen_pos_col = "original_chr_pos"
-    else:
-        gen_pos_col = "chr_pos"
-
-    # These are actually annotation ends:
-    chr_max_length_dict = {'I': 15072426,
-                           'II': 15279420,
-                           'III': 13783459,
-                           'IV': 17493829,
-                           'V': 20922738,
-                           'X': 17718726,
-                           'MtDNA': 13327}
-    # Because of some python weirdness, we need to turn single chromosomes into lists!
-    if not isinstance(chrs, (list, tuple)):
-        chrs = [chrs]
-
-    # First filter the chr dict, so we only use the ones that showed up in the method call:
-    chr_max_length_dict = {chromosome: length for chromosome, length
-                           in chr_max_length_dict.items()
-                           if chromosome in chrs}
-    array_dict = {}
-    for chromosome, chr_length in chr_max_length_dict.items():
-        print(f"Starting to build coverage array for chromosome: {chromosome}")
-        chr_df = bam_df.query(f"chr_id == '{chromosome}'")
-        cigars_and_genomic_start_positions = list(zip(chr_df.cigar.to_list(), chr_df[gen_pos_col].to_list()))
-        coverage_array = add_to_main_array_for_each_read(cigars_and_genomic_start_positions, chr_length,
-                                                         count_Ds_as_maps=count_Ds_as_maps)
-        array_dict[chromosome] = coverage_array
-    return array_dict
-
-
-def coverage_plotting_5tera(bam_df_for_plot, gene_name=None, gene_id=None,
-                            save_dir=None, save_suffix=None, count_Ds_as_maps=False, rpm_normalize=False):
-    if gene_name:
-        _, gene_chr, start, end, strand = _get_gene_coordinates(gene_name=gene_name)
-    elif gene_id:
-        gene_name, gene_chr, start, end, strand = _get_gene_coordinates(gene_id=gene_id)
-    else:
-        raise LookupError(f"Please provide either the gene_name or gene_id for the target gene to plot!")
-    chr_array_ad = run_coverage_calc(bam_df_for_plot.query("t5 == '+'"),
-                                     chrs=gene_chr, count_Ds_as_maps=count_Ds_as_maps)[gene_chr]
-    chr_array_unad = run_coverage_calc(bam_df_for_plot.query("t5 == '-'"),
-                                       chrs=gene_chr, count_Ds_as_maps=count_Ds_as_maps)[gene_chr]
-    locus_array_ad = chr_array_ad[start: end]
-    locus_array_unad = chr_array_unad[start: end]
-    if rpm_normalize:
-        norm_factor = bam_df_for_plot.shape[0]
-        # Turn the total number of read hits into the 'million of read hits'
-        rpm_norm_factor = norm_factor / 1000000
-        locus_array_ad = np.divide(locus_array_ad, rpm_norm_factor)
-        locus_array_unad = np.divide(locus_array_unad, rpm_norm_factor)
-
-    index_array = np.arange(len(locus_array_ad))
-    zeros_array = np.zeros(len(locus_array_ad))
-
-    fig, ax = plt.subplots(2, 1,
-                           figsize=(8, 4),
-                           sharex=True,
-                           gridspec_kw={"height_ratios": [1, 4]}
-                           )
-
-    ax[1].fill_between(index_array, zeros_array, locus_array_unad, color='black')
-    ax[0].fill_between(index_array, zeros_array, locus_array_ad, color='red')
-
-    plt.tight_layout()
-    plt.style.use("seaborn-paper")
-    if isinstance(save_dir, str):
-        save_path = f"{save_dir}/{get_dt(for_file=True)}_readCoveragePlotting_{gene_name}{save_suffix}"
-        print(f"Saving plot to {save_path} + .png/.svg...")
-        plt.savefig(save_path + ".svg")
-        plt.savefig(save_path + ".png")
-    plt.show()
 
 
 if __name__ == '__main__':
