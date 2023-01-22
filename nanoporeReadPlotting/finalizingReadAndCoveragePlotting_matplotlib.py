@@ -18,11 +18,13 @@ import matplotlib.pyplot as plt
 import sys
 
 import warnings
-sys.path.insert(0, '/data16/marcus/scripts/nanoporePipelineScripts')
-from nanoporePipelineCommon import *
 
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle
+sys.path.insert(0, '/data16/marcus/scripts/nanoporePipelineScripts')
+from nanoporePipelineCommon import *
+pd.set_option('display.width', 100)
+pd.set_option('display.max_columns', None)
 
 
 def _make_rectangle_patch(genome_start, length, y_center, thickness, color='gray'):
@@ -95,10 +97,8 @@ def _row_apply_plot_cigar(row, axes, plot_introns=True):
 
 def _get_gene_coordinates(gene_id=None, gene_name=None,
                           parsed_gtf_path="/data16/marcus/genomes/elegansRelease100"
-                                          "/Caenorhabditis_elegans.WBcel235.100.gtf.parquet") -> (str,
-                                                                                                  str,
-                                                                                                  int,
-                                                                                                  int):
+                                          "/Caenorhabditis_elegans.WBcel235.100.gtf.parquet",
+                          ) -> (str, str, int, int):
     # First make sure we got something to look up:
     gene_id_bool = isinstance(gene_id, str)
     gene_name_bool = isinstance(gene_name, str)
