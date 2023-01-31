@@ -1,5 +1,5 @@
 """
-220921_version2_mappingStandardsMethod.py
+version2_mappingStandardsMethod.py
 Marcus Viscardi,    September 21, 2022
 
 Taking things from generatingFakeReadsForTesting.ipynb and pulling them into a single method.
@@ -54,13 +54,14 @@ pd.set_option("display.max_columns", None)
 
 def print_mappy_hit_alignment(mappy_hit_obj: mappy.Alignment,
                               read_seq: str, ref_seq: str,
-                              line_print_width=None) -> None:
+                              line_print_width=None,
+                              do_not_print=False) -> Tuple[str, str, str]:
     import re
     parsed_cigar = re.findall(rf'(\d+)([MDNSIX])', mappy_hit_obj.cigar_str)
     parsed_cigar = [(int(num), char) for num, char in parsed_cigar]
-    ref_seq = ref_seq[mappy_hit_obj.r_st: mappy_hit_obj.r_en]
+    ref_seq = ref_seq[mappy_hit_obj.r_st: mappy_hit_obj.r_en].upper()
     ref_pos = 0
-    read_seq = read_seq[mappy_hit_obj.q_st: mappy_hit_obj.q_en]
+    read_seq = read_seq[mappy_hit_obj.q_st: mappy_hit_obj.q_en].upper()
     read_pos = 0
     if mappy_hit_obj.strand == -1:
         read_seq = mp.revcomp(read_seq)
@@ -95,6 +96,8 @@ def print_mappy_hit_alignment(mappy_hit_obj: mappy.Alignment,
             middle_line += " " * length
             bottom_line += ref_seq[ref_pos:ref_pos + length]
             ref_pos += length
+    if do_not_print:
+        return top_line, middle_line, bottom_line
     if isinstance(line_print_width, int):
         num_blocks = int(np.ceil(len(top_line) / line_print_width))
         print_blocks = []
@@ -109,8 +112,10 @@ def print_mappy_hit_alignment(mappy_hit_obj: mappy.Alignment,
             print(f"Read: {top}")
             print(f"      {mid}")
             print(f"Ref:  {bot}")
+        return top_line, middle_line, bottom_line
     else:
         print(top_line, middle_line, bottom_line, sep='\n')
+        return top_line, middle_line, bottom_line
 
 
 def apply_extract_mappy_hit_obj(**columns) -> mp.Alignment or None:

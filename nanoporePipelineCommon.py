@@ -408,6 +408,8 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
     # Need to first create columns of NA values, tobe overwritten
     compressed_df[f"{compressed_prefix}_rpm"] = pd.NA
     compressed_df[f"{compressed_prefix}_frac_hits"] = pd.NA
+    if group_by_t5:
+        compressed_df[f"{compressed_prefix}_t5group_rpm"] = pd.NA
     # Only look at one library at a time (so the normalization is per lib not whole df)
     for lib in compressed_df.index.unique(level='lib').to_list():
         # Create the 'norm_factor' which will be the total # of read hits in that lib
@@ -415,14 +417,25 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
         # Turn the total number of read hits into the 'million of read hits'
         rpm_norm_factor = norm_factor / 1000000
         # For each library divide gene_hits by the rpm norm factor to get rpm
-        gene_rpm_series = compressed_df.query(f"lib == '{lib}'")[f"{compressed_prefix}_hits"] / rpm_norm_factor
-        # Use a series fill, so that we can fill that library's part of the DF without effecting others
-        compressed_df[f"{compressed_prefix}_rpm"] = compressed_df[f"{compressed_prefix}_rpm"]. \
-            fillna(value=gene_rpm_series)
+        rpm_series = compressed_df.query(f"lib == '{lib}'")[f"{compressed_prefix}_hits"] / rpm_norm_factor
+        # Use a series fill, so that we can fill that library's part of the DF without effecting others.
+        #       This step is reliant on the gene_rpm_series carrying over the indexes.
+        #       That's how the 'fillna()' matches the right values!
+        compressed_df[f"{compressed_prefix}_rpm"] = compressed_df[
+            f"{compressed_prefix}_rpm"].fillna(value=rpm_series)
         # Same as above, but with fraction of hits, rather than a rpm calc (practically same thing)
         gene_frac_hits_series = compressed_df.query(f"lib == '{lib}'")[f"{compressed_prefix}_hits"] / norm_factor
         compressed_df[f"{compressed_prefix}_frac_hits"] = compressed_df[f"{compressed_prefix}_frac_hits"]. \
             fillna(value=gene_frac_hits_series)
+        if group_by_t5:
+            # We can also calculate an adapted-specific RPM:
+            for adapted_or_not in ["+", "-"]:
+                norm_factor = compressed_df.query(f"lib == '{lib}'")\
+                    .query(f"t5 == '{adapted_or_not}'")[f"{compressed_prefix}_hits"].sum()
+                rpm_norm_factor = norm_factor / 1_000_000
+                rpm_series = compressed_df.query(f"lib == '{lib}'")[f"{compressed_prefix}_hits"] / rpm_norm_factor
+                compressed_df[f"{compressed_prefix}_t5group_rpm"] = compressed_df[
+                    f"{compressed_prefix}_rpm"].fillna(value=rpm_series)
     # Requirement for min number of gene/transcript hits
     if isinstance(drop_sub_n, int):
         print(f"Gene counts pre sub-{drop_sub_n} {compressed_prefix}_hits drop:  {compressed_df.shape[0]}")
