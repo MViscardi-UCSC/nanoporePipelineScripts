@@ -1004,7 +1004,7 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
                   "N": [nanopolish_index_and_polya, "Nanopolish Index and polyA Calling"],
                   "F": [feature_counts, "FeatureCounts"],
                   "P": [merge_results, "Merging Results w/ Pandas"],
-                  "S": [map_standards, "Mapping Standards (still experimental!!)"],
+                  "S": [map_standards, "Mapping Old Standards (still experimental!!)"],
                   "L": [flair, "Calling Transcripts w/ Flair"],
                   "X": [extra_steps, "Running random eXtra steps"]
                   }
