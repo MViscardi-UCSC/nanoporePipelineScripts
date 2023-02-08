@@ -174,8 +174,8 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
         """
         Will loop through and replace variables that are None
         """
-        # first, parse the settings file to a dictionary called settingsDict
-        settingsDict = {}
+        # first, parse the settings file to a dictionary called _settingsDict
+        _settingsDict = {}
         with open(settings, 'r') as f:
             for line in f:
                 if not line.startswith('#'):
@@ -184,22 +184,22 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                         line = line.split('|')
                         if len(line) == 2:
                             if line[0] == "altGenomeDirs":
-                                settingsDict[line[0]] = line[1].split(",")
+                                _settingsDict[line[0]] = line[1].split(",")
                             else:
-                                settingsDict[line[0]] = line[1]
+                                _settingsDict[line[0]] = line[1]
                         else:
                             print("\033[31;1m\nRemove pipes ('|') from settings "
                                   "file arguments (or rewrite parser)\n\033[0m")
                             exit()
         if printArgs:
             print(f"\nSettings Arguments (file: '{settings}')")
-            for key, arg in settingsDict.items():
+            for key, arg in _settingsDict.items():
                 if not arg:
                     print(f"\t{key} = {arg} -> (Will not be passed)")
                 else:
                     print(f"\t{key} = {arg}")
-        settingsDict = {k: v for k, v in settingsDict.items() if v is not None and v != ''}
-        return settingsDict
+        _settingsDict = {k: v for k, v in _settingsDict.items() if v is not None and v != ''}
+        return _settingsDict
 
     # Merge these dictionaries!
     absoluteDefDict = dict(printArgs=False,
