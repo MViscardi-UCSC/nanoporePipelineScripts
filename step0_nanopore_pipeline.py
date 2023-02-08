@@ -189,9 +189,8 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                             else:
                                 _settingsDict[line[0]] = line[1]
                         else:
-                            print("\033[31;1m\nRemove pipes ('|') from settings "
-                                  "file arguments (or rewrite parser)\n\033[0m")
-                            exit()
+                            raise NotImplementedError("\033[31;1m\nRemove pipes ('|') from settings "
+                                                      "file arguments (or rewrite parser)\n\033[0m")
         if printArgs:
             print(f"\nSettings Arguments (file: '{settings}')")
             for key, arg in _settingsDict.items():
