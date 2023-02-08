@@ -48,16 +48,12 @@ from nanoporePipelineCommon import find_newest_matching_file, get_dt, \
 import numpy as np
 import pandas as pd
 
-pd.set_option('display.width', 400)
-pd.set_option('display.max_columns', None)
 
 # This is also in my .bashrc but that doesn't always seem to trigger,
 #   ie. if I run the script from inside pycharm.
 # If the HDF5 path isn't specified nanopolish freaks out, this solution is based on:
 #   https://stackoverflow.com/questions/5971312/how-to-set-environment-variables-in-python
 environ['HDF5_PLUGIN_PATH'] = '/usr/local/hdf5/lib/plugin'
-
-pd.set_option("display.max_columns", None)
 
 
 def live_cmd_call(command):
@@ -284,8 +280,7 @@ def buildOutputDirs(stepsToRun, **kwargs) -> None:
 
 
 #################################################################################
-# Step1: Trigger Docker Container which will do the actual guppy base-calling
-#        (eventually I'll want to have this function outside of docker!)
+# Step1: Guppy Basecalling!
 #################################################################################
 def guppy_basecall_w_gpu(dataDir, outputDir, threads, guppyConfig, regenerate,
                          freezeGuppyVersion6_3_8, extraGuppyOptions, nestedData, **other_kwargs):
@@ -637,7 +632,7 @@ def nanopolish_index_and_polya(genomeDir, dataDir, outputDir, threads, regenerat
 
     # Now we are able to run the nanopolish polya script, this will throw an error if minimap2
     #   has not ran yet!!!!
-    nanopolish_polya_flag = regenerate or not path.exists(f"{outputDir}/nanopolish/polya.tsv")
+    nanopolish_polya_flag = regenerate or not path.exists(f"{outputDir}/nanopolish/polya.passed.tsv")
     if nanopolish_polya_flag:
         genome_fa_file = glob(f"{genomeDir}/*allChrs.fa")
         if len(genome_fa_file) != 1:
