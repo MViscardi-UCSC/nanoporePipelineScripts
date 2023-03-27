@@ -199,6 +199,32 @@ def align_stds_from_fastx(fastx: str, mappy_aligner: mp.Aligner,
     return storage_dict
 
 
+def align_stds_from_merge_df(merge_df,
+                             mappy_aligner: mp.Aligner,
+                             print_weird_results: bool = False):
+    """
+    For this to work well in the pipeline, all I really need is to
+    extract the reads that mapped initially to the ENO2 chromosome,
+    then get the assignments from those. Finally, I'll return a very
+    simple dataframe with just these columns:
+        read_id
+        standard_assignment
+    This might even just be a series?!
+    I can decide if we want more information later!
+    
+    :param merge_df: 
+    :param mappy_aligner: 
+    :param print_weird_results: 
+    :return: 
+    """
+    # First lets just collapse the df into the columns we care about:
+    columns_to_keep = ['read_id',
+                       'chr_id',
+                       'sequence']
+    merge_df = merge_df[columns_to_keep]
+    
+    
+
 def standards_aligner_v2(path_to_standards_ref_fasta: str,
                          fastx_file: str = None,
                          sam_df: pd.DataFrame = None,
@@ -254,8 +280,8 @@ def standards_aligner_v2(path_to_standards_ref_fasta: str,
             pprint(df.correct_hit.value_counts())
             pd.options.mode.chained_assignment = 'warn'
     elif isinstance(mjv_compressed_df, pd.DataFrame):
-        df = None
-        # First check that the pTRI chr_id shows up in the compressed on reads dataframe:
+        df = mjv_compressed_df
+        # First check that the cerENO2 chr_id shows up in the compressed on reads dataframe:
         if "cerENO2" not in mjv_compressed_df['chr_id'].unique().tolist():
             return f"Chromosome cerENO2 not found in dataframe, please run minimap2 w/ genome that has cerENO2 added!!"
         # Todo: Write this section up. It would be nice to have this work with the compressed dataframes I'll actually
@@ -446,12 +472,14 @@ if __name__ == '__main__':
     # Nano3P Post Porechop trimming
     # fastq = "/data16/marcus/working/221028_nanoporeRun_ENO2RNAStds_Nano3P/output_dir/cat_files/cat.trimmed.fastq"
     
-    # dRNA Seq Library
-    fastq = "/data16/marcus/working/221112_nanoporeRun_ENO2RNAStds_dRNA/output_dir/cat_files/cat.fastq"
+    # Seq Library
+    lib_type = 'cDNA'  # or 'RNA'
+    output_dir = f"/data16/marcus/working/230224_nanoporeRun_RNAStds_SY-TGIRT-50ng_Nano3P/output_dir"
+    fastq = f"{output_dir}/cat_files/cat.fastq"
     assigned_df = standards_aligner_v2(ref_fasta, fastq,
                                        testing_generated_data=False,
                                        threads_for_aligner=20,
-                                       library_type="dRNA")
+                                       library_type=lib_type)
     pprint(assigned_df)
     pprint(assigned_df.assignment.value_counts(normalize=True))
     fig = px.bar(assigned_df.assignment.value_counts(normalize=False))
@@ -470,8 +498,16 @@ if __name__ == '__main__':
     rc_barcode_dict = {key: mp.revcomp(value) for key, value in barcode_dict.items()}
 
     hit_df = assigned_df[assigned_df.assignment.isin(['00', '05', '10', '15', '30', '60'])]
+    
+    if lib_type == 'cDNA':
+        barcode_dict_to_check = rc_barcode_dict
+    elif lib_type == 'RNA':
+        barcode_dict_to_check = barcode_dict
+    else:
+        raise NotImplementedError
     # It's important to use the barcode_dict or the rc_barcode_dict depending on if we are using cDNA reads or RNA reads
-    hit_df['perfect_barcode'] = hit_df.apply(lambda row: check_for_perfect_matches(barcode_dict, **row), axis=1)
+    hit_df['perfect_barcode'] = hit_df.apply(lambda row: check_for_perfect_matches(barcode_dict_to_check,
+                                                                                   **row), axis=1)
 
     hit_df_groupby = hit_df.groupby("assignment")
 
@@ -494,4 +530,8 @@ if __name__ == '__main__':
         xanchor="left",
         x=0.01
     ))
+    save_path = f"{output_dir}/{get_dt()}_barcodeHits"
+    fig.write_html(f"{save_path}.html")
+    fig.write_image(f"{save_path}.svg")
+    fig.write_image(f"{save_path}.png")
     fig.show()

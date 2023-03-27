@@ -35,7 +35,6 @@ Late 2021:
 # TODO: add regen tag whenever a upstream file is missing!
 from os import path, listdir, mkdir, environ
 from argparse import ArgumentParser
-from subprocess import Popen, CalledProcessError, PIPE
 from typing import List
 from glob import glob
 import logging
@@ -44,7 +43,7 @@ import warnings
 from tqdm import tqdm
 
 from nanoporePipelineCommon import find_newest_matching_file, get_dt, \
-    gene_names_to_gene_ids, SamOrBamFile, FastqFile, assign_with_josh_method
+    gene_names_to_gene_ids, SamOrBamFile, FastqFile, assign_with_josh_method, live_cmd_call
 
 import numpy as np
 import pandas as pd
@@ -55,15 +54,6 @@ import pandas as pd
 # If the HDF5 path isn't specified nanopolish freaks out, this solution is based on:
 #   https://stackoverflow.com/questions/5971312/how-to-set-environment-variables-in-python
 environ['HDF5_PLUGIN_PATH'] = '/usr/local/hdf5/lib/plugin'
-
-
-def live_cmd_call(command):
-    with Popen(command, stdout=PIPE, shell=True,
-               bufsize=1, universal_newlines=True) as p:
-        for line in p.stdout:
-            print(line, end="")
-    if p.returncode != 0:
-        raise CalledProcessError(p.returncode, p.args)
 
 
 #################################################################################
@@ -762,6 +752,7 @@ def merge_results(**other_kwargs):
         #   This filtering should be easy to do in later scripts.
         if "F" in stepsToRun:
             sam_featc_df = sam_df.merge(featc_df, how="left", on=["read_id"])
+            sam_featc_df['gene_name'].fillna("unNamed", inplace=True)
             merge_reads_df = sam_featc_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
         else:
             merge_reads_df = sam_df.merge(polya_df, how="left", on=["read_id", "chr_id", "chr_pos"])
@@ -868,8 +859,8 @@ def merge_results(**other_kwargs):
     return merge_df, genes_df
 
 
-def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
-    from standardsAlignment.early2022versions.standardsAssignmentWithMinimap2 import align_standards, plot_value_counts
+def map_standards(outputDir, guppyConfig: str, df: pd.DataFrame = None, **other_kwargs):
+    from standardsAlignment.version2_mappingStandardsMethod_classBased import StandardsAlignerENO2
     if not isinstance(df, pd.DataFrame):
         merge_dir = f"{outputDir}/merge_files"
         try:
@@ -879,15 +870,19 @@ def map_standards(outputDir, df: pd.DataFrame = None, **other_kwargs):
             print(f"Could not find a mergedOnReads parquet file in directory:\n\t{merge_dir}")
             merge_on_reads_path = find_newest_matching_file(f"{merge_dir}/*mergedOnReads.tsv")
             df = pd.read_csv(merge_on_reads_path, sep="\t", low_memory=False)
-    stds_mini_df = align_standards(compressed_df=df, keep_read_id=True, **other_kwargs)
-    if isinstance(stds_mini_df, pd.DataFrame):
-        df = df.merge(stds_mini_df, on="read_id")
-        out_file = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet"
-        print(f"Saving parquet file to:\n\t{out_file}")
-        df.to_parquet(out_file)
-        plot_value_counts(df)
+    
+    if guppyConfig.startswith('rna'):
+        library_type = 'dRNA'
+    elif guppyConfig.startswith('dna'):
+        library_type = 'cDNA'
     else:
-        print(stds_mini_df)
+        library_type = None  # idk...
+    
+    output_df = StandardsAlignerENO2(mjv_compressed_df=df,
+                                     library_type=library_type).run_alignments()
+    out_file_path = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet"
+    print(f"Saving parquet file to:\n\t{out_file_path}")
+    output_df.to_parquet(out_file_path)
 
 
 def flair(outputDir, **other_kwargs):
@@ -901,16 +896,22 @@ def flair(outputDir, **other_kwargs):
 
             call = f"cd {outputDir}/flair ; python3 /data16/marcus/scripts/brooksLabUCSC_flair/flair.py " \
                    f"quantify -t {threads} --generate_map -r {manifest_path} " \
-                   f"-i {genomeDir}/Caenorhabditis_elegans.WBcel235.cdna.all.fa ; cd -"
-
+                   f"-i {genomeDir}/*cdna.all.fa ; cd -"
+            print(f"Starting FLAIR quantify at {get_dt(for_print=True)}\nUsing call:\t{call}\n")
             live_cmd_call(call)
-        fl_df = pd.read_csv(flair_map_path, sep="\t", header=None)
-        fl_df[1] = fl_df[1].str.split(",")
-        fl_df = fl_df.explode(1).reset_index(drop=True)
-        fl_df.rename(columns={0: "transcript_id",
-                              1: "read_id"},
-                     inplace=True)
-        print(f"Loaded map file from FLAIR. . .\n")
+            print(f"\n\nFinished FLAIR quantify at {get_dt(for_print=True)}")
+        try:
+            fl_df = pd.read_csv(flair_map_path, sep="\t", header=None)
+            fl_df[1] = fl_df[1].str.split(",")
+            fl_df = fl_df.explode(1).reset_index(drop=True)
+            fl_df.rename(columns={0: "transcript_id",
+                                  1: "read_id"},
+                         inplace=True)
+            print(f"Loaded map file from FLAIR. . .\n")
+        except FileNotFoundError:
+            print(f"No FLAIR output file found at {flair_map_path}...\n"
+                  f"This is likely due to FLAIR failing during it's run, look into errors it might have thrown")
+            raise FileNotFoundError
         return fl_df
 
     def merge_some_more(flair_df: pd.DataFrame, outputDir, dropGeneWithHitsLessThan: int = None,
@@ -1004,7 +1005,7 @@ def main(stepsToRun, **kwargs) -> (pd.DataFrame, pd.DataFrame) or None:
                   "N": [nanopolish_index_and_polya, "Nanopolish Index and polyA Calling"],
                   "F": [feature_counts, "FeatureCounts"],
                   "P": [merge_results, "Merging Results w/ Pandas"],
-                  "S": [map_standards, "Mapping Old Standards (still experimental!!)"],
+                  "S": [map_standards, "Mapping ENO2 Standards (version 2 assignment method)"],
                   "L": [flair, "Calling Transcripts w/ Flair"],
                   "X": [extra_steps, "Running random eXtra steps"]
                   }
