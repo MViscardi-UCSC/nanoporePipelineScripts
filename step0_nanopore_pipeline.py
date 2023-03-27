@@ -883,6 +883,7 @@ def map_standards(outputDir, guppyConfig: str, df: pd.DataFrame = None, **other_
     out_file_path = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet"
     print(f"Saving parquet file to:\n\t{out_file_path}")
     output_df.to_parquet(out_file_path)
+    print(output_df.assignment.value_counts())
 
 
 def flair(outputDir, **other_kwargs):
