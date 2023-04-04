@@ -692,6 +692,53 @@ def tsv_to_parquet(tsv_path) -> str:
     return parquet_path
 
 
+def gtf_to_df(gtf_path: str) -> pd.DataFrame:
+    gtf_header = ["chr",
+                  "source",
+                  "feature",
+                  "start",
+                  "end",
+                  "score",
+                  "strand",
+                  "frame",
+                  "attributes"]
+    gtf_attributes = ["gene_name",
+                      "gene_id",
+                      "gene_version",
+                      "gene_source",
+                      "gene_biotype",
+                      "transcript_id",
+                      "transcript_source",
+                      "transcript_biotype",
+                      "exon_number",
+                      "exon_id",
+                      ]
+    gtf_dtypes = {'chr': 'O',
+                  'source': 'O',
+                  'feature': 'O',
+                  'start': 'Int64',
+                  'end': 'Int64',
+                  'score': 'O',
+                  'strand': 'category',
+                  'frame': 'O',
+                  'gene_name': 'O',
+                  'gene_id': 'O',
+                  'gene_version': 'Int64',
+                  'gene_source': 'O',
+                  'gene_biotype': 'O',
+                  'transcript_id': 'O',
+                  'transcript_source': 'O',
+                  'transcript_biotype': 'O',
+                  'exon_number': 'float64',
+                  'exon_id': 'O'}
+    gtf_df = pd.read_csv(gtf_path, sep="\t", comment="#", names=gtf_header)
+    for attribute in gtf_attributes:
+        gtf_df[attribute] = gtf_df["attributes"].str.extract(rf"""{attribute} "(.*?)";""")
+    gtf_df.drop(columns=["attributes"], inplace=True)
+    gtf_df = gtf_df.astype(gtf_dtypes)
+    return gtf_df
+
+
 def find_newest_matching_file(path_str):
     # A tool that I'll want to use to grab the most recent file
     from os import path
