@@ -12,6 +12,62 @@ import os
 pd.set_option('display.width', 400)
 pd.set_option('display.max_columns', None)
 
+OUTPUT_DIR_DICT = {
+    "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/"
+             "output_dir",
+    "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
+                "output_dir",
+    "totalRNA1": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
+                 "output_dir",
+    "totalRNA2": "/data16/marcus/working/"
+                 "210720_nanoporeRun_totalRNA_0639_L3_replicate/"
+                 "output_dir",
+    "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/"
+             "output_dir",
+    "polyA1": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/"
+              "output_dir",
+    "polyA2": "/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/"
+              "output_dir",
+    "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/"
+             "output_dir",
+    "xrn-1-5tera": "/data16/marcus/working/211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/"
+                   "output_dir",
+    "pTRI-stds": "/data16/marcus/working/211121_nanoporeRun_pTRIstds/"
+                 "output_dir",
+    "xrn-1-5tera-smg-6": "/data16/marcus/working/211210_nanoporeRun_totalRNA_2102_xrn-1-KD_5TERA/"
+                         "output_dir",
+    "pTRI-stds-tera3": "/data16/marcus/working/211212_nanoporeRun_pTRIstds_TERA3/"
+                       "output_dir",
+    "polyA3": "/data16/marcus/working/220131_nanoporeRun_polyA_0639_L3_third/"
+              "output_dir",
+    "totalRNA3": "/data16/marcus/working/220131_nanoporeRun_totalRNA_0639_L3_third/"
+                 "output_dir",
+    "roach_L3_1": "/data16/marcus/working/220222_roach_analysis_revisit/L3_techRep1/"
+                  "output_dir",
+    "roach_L3_2": "/data16/marcus/working/220222_roach_analysis_revisit/L3_techRep2/"
+                  "output_dir",
+    "roach_L4_1": "/data16/marcus/working/220222_roach_analysis_revisit/L4_techRep1/"
+                  "output_dir",
+    "roach_L4_2": "/data16/marcus/working/220222_roach_analysis_revisit/L4_techRep2/"
+                  "output_dir",
+    "5tera_xrn-1-KD_wt": "/data16/marcus/working/221216_nanoporeRun_totalRNA_wt_xrn-1-KD_5TERA/"
+                         "output_dir",
+    "5tera_xrn-1-KD_smg-5": "/data16/marcus/working/221216_nanoporeRun_totalRNA_smg-5_xrn-1-KD_5TERA/"
+                            "output_dir",
+    "5tera_xrn-1-KD_smg-6": "/data16/marcus/working/221216_nanoporeRun_totalRNA_smg-6_xrn-1-KD_5TERA/"
+                            "output_dir",
+    "5tera_xrn-1-KD_smg-7": "/data16/marcus/working/221216_nanoporeRun_totalRNA_smg-7_xrn-1-KD_5TERA/"
+                            "output_dir",
+    "sPM58": "/data16/marcus/working/230207_nanoporeRun_totalRNA_sPM58_xrn-1-KD_5PTERA/"
+             "output_dir",
+    "sPM57": "/data16/marcus/working/230130_nanoporeRun_totalRNA_sPM57_xrn-1-KD_5PTERA/"
+             "output_dir",
+    "5tera_xrn-1-KD_wt_rerun": "/data16/marcus/working/230327_nanoporeRun_totalRNA_wt_xrn-1-KD_5TERA_rerun/"
+                               "output_dir",
+    "5tera_xrn-1-KD_smg-6_rerun": "/data16/marcus/working/230403_nanoporeRun_totalRNA_smg-6_xrn-1-KD_5TERA_rerun/"
+                                  "output_dir",
+}
+
 
 class FastqFile:
     def __init__(self, path, head=None):
@@ -506,33 +562,7 @@ def boolDF_to_upsetPlot(input_df: pd.DataFrame,
 def pick_libs_return_paths_dict(lib_list: list, output_dir_folder="merge_files",
                                 file_midfix="_mergedOnReads", file_suffix="parquet",
                                 return_all: bool = False, ignore_unmatched_keys: bool = False) -> dict:
-    output_dir_dict = {
-        "riboD": "/data16/marcus/working/210706_NanoporeRun_riboD-and-yeastCarrier_0639_L3/output_dir",
-        "totalRNA": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
-                    "output_dir",
-        "totalRNA1": "/data16/marcus/working/210709_NanoporeRun_totalRNA_0639_L3/"
-                    "output_dir",
-        "totalRNA2": "/data16/marcus/working/"
-                     "210720_nanoporeRun_totalRNA_0639_L3_replicate/output_dir",
-        "polyA": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir",
-        "polyA1": "/data16/marcus/working/210528_NanoporeRun_0639_L3s/output_dir",
-        "polyA2": "/data16/marcus/working/210719_nanoporeRun_polyA_0639_L3_replicate/output_dir",
-        "xrn-1": "/data16/marcus/working/210905_nanoporeRun_totalRNA_5108_xrn-1-KD/output_dir",
-        "xrn-1-5tera": "/data16/marcus/working/211118_nanoporeRun_totalRNA_5108_xrn-1-KD_5TERA/output_dir",
-        "pTRI-stds": "/data16/marcus/working/211121_nanoporeRun_pTRIstds/output_dir",
-        "xrn-1-5tera-smg-6": "/data16/marcus/working/211210_nanoporeRun_totalRNA_2102_xrn-1-KD_5TERA/output_dir",
-        "pTRI-stds-tera3": "/data16/marcus/working/211212_nanoporeRun_pTRIstds_TERA3/output_dir",
-        "polyA3": "/data16/marcus/working/220131_nanoporeRun_polyA_0639_L3_third/output_dir",
-        "totalRNA3": "/data16/marcus/working/220131_nanoporeRun_totalRNA_0639_L3_third/output_dir",
-        "roach_L3_1": "/data16/marcus/working/220222_roach_analysis_revisit/L3_techRep1/output_dir",
-        "roach_L3_2": "/data16/marcus/working/220222_roach_analysis_revisit/L3_techRep2/output_dir",
-        "roach_L4_1": "/data16/marcus/working/220222_roach_analysis_revisit/L4_techRep1/output_dir",
-        "roach_L4_2": "/data16/marcus/working/220222_roach_analysis_revisit/L4_techRep2/output_dir",
-        "5tera_xrn-1-KD_wt": "/data16/marcus/working/221216_nanoporeRun_totalRNA_wt_xrn-1-KD_5TERA/output_dir",
-        "5tera_xrn-1-KD_smg-5": "/data16/marcus/working/221216_nanoporeRun_totalRNA_smg-5_xrn-1-KD_5TERA/output_dir",
-        "5tera_xrn-1-KD_smg-6": "/data16/marcus/working/221216_nanoporeRun_totalRNA_smg-6_xrn-1-KD_5TERA/output_dir",
-        "5tera_xrn-1-KD_smg-7": "/data16/marcus/working/221216_nanoporeRun_totalRNA_smg-7_xrn-1-KD_5TERA/output_dir",
-    }
+    output_dir_dict = OUTPUT_DIR_DICT
     if not isinstance(lib_list, list):
         if not isinstance(lib_list, tuple):
             raise NotImplementedError(f"Please pass a list/tuple of library keys, "
