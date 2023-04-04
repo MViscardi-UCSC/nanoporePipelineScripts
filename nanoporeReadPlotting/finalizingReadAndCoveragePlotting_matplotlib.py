@@ -96,7 +96,7 @@ def _row_apply_plot_cigar(row, axes, plot_introns=True):
 def _get_gene_coordinates(gene_id=None, gene_name=None,
                           parsed_gtf_path="/data16/marcus/genomes/elegansRelease100"
                                           "/Caenorhabditis_elegans.WBcel235.100.gtf.parquet",
-                          ) -> (str, str, int, int):
+                          quiet=False,) -> (str, str, int, int):
     # First make sure we got something to look up:
     gene_id_bool = isinstance(gene_id, str)
     gene_name_bool = isinstance(gene_name, str)
@@ -123,19 +123,38 @@ def _get_gene_coordinates(gene_id=None, gene_name=None,
             entry_of_interest = gtf_df.query(f"gene_name == '{gene_name}'").reset_index(drop=True).iloc[0].to_dict()
             gene_id = entry_of_interest["gene_id"]
     except IndexError:
-        raise IndexError(f"Gene of interest (gene_id: {gene_id} / gene_name: {gene_name}) not found!")
+        if gene_id_bool:
+            lookup_attempt = 'gene_id'
+            lookup_target = gene_id
+            retry_target = 'gene_name'
+        else:
+            lookup_attempt = 'gene_name'
+            lookup_target = gene_name
+            retry_target = 'gene_id'
+        input_raise = input(f"Retry with {retry_target} rather than {lookup_attempt}?")
+        if input_raise.lower() == 'y':
+            entry_of_interest = gtf_df.query(f"{retry_target} == '{lookup_target}'").reset_index(drop=True).iloc[0].to_dict()
+            print(entry_of_interest)
+        raise IndexError(f"Gene of interest (gene_id: {gene_id} / gene_name: {gene_name}) not found!"
+                         f"\nUsed parsed GTF from: {parsed_gtf_path}"
+                         f"\nTried to use {lookup_attempt} to find {lookup_target}")
     chromosome = entry_of_interest["chr"]
     start = entry_of_interest["start"]
     end = entry_of_interest["end"]
     strand = entry_of_interest["strand"]
-    print(f"Found entry for {gene_name} ({gene_id}) on chromosome "
-          f"{chromosome:>5} at ({start}, {end}) on the '{strand}' strand")
+    if not quiet:
+        print(f"Found entry for {gene_name} ({gene_id}) on chromosome "
+              f"{chromosome:>5} at ({start}, {end}) on the '{strand}' strand")
     return gene_name, chromosome, start, end, strand
 
 
-def _add_to_main_array_for_each_read(cigars_and_genomic_starts, chr_length, count_Ds_as_maps=False) -> np.array:
+def _add_to_main_array_for_each_read(cigars_and_genomic_starts, chr_length, count_Ds_as_maps=False,
+                                     quiet=False) -> np.array:
     coverage_array = np.zeros([chr_length], dtype=np.uint32)
-    cigar_parsing_iterator = tqdm(cigars_and_genomic_starts, desc=f"Building coverage by adding to main array")
+    if quiet:
+        cigar_parsing_iterator = cigars_and_genomic_starts
+    else:
+        cigar_parsing_iterator = tqdm(cigars_and_genomic_starts, desc=f"Building coverage by adding to main array")
 
     gaps = ['N']  # introns
     maps = ['M']  # mapped segments
@@ -157,7 +176,8 @@ def _add_to_main_array_for_each_read(cigars_and_genomic_starts, chr_length, coun
     return coverage_array
 
 
-def _run_coverage_calc(bam_df, chrs=("I", "II", "III", "IV", "V", "X", "MtDNA"), count_Ds_as_maps=False):
+def _run_coverage_calc(bam_df, chrs=("I", "II", "III", "IV", "V", "X", "MtDNA"), count_Ds_as_maps=False,
+                       quiet=False):
     if "original_chr_pos" in bam_df.columns:
         gen_pos_col = "original_chr_pos"
     else:
@@ -170,7 +190,9 @@ def _run_coverage_calc(bam_df, chrs=("I", "II", "III", "IV", "V", "X", "MtDNA"),
                            'IV': 17493829,
                            'V': 20922738,
                            'X': 17718726,
-                           'MtDNA': 13327}
+                           'MtDNA': 13327,
+                           'unc-54': 8636,  # For Parissa's reporter
+                           }
     # Because of some python weirdness, we need to turn single chromosomes into lists!
     if not isinstance(chrs, (list, tuple)):
         chrs = [chrs]
@@ -181,28 +203,47 @@ def _run_coverage_calc(bam_df, chrs=("I", "II", "III", "IV", "V", "X", "MtDNA"),
                            if chromosome in chrs}
     array_dict = {}
     for chromosome, chr_length in chr_max_length_dict.items():
-        print(f"Starting to build coverage array for chromosome: {chromosome}")
+        if not quiet:
+            print(f"Starting to build coverage array for chromosome: {chromosome}")
         chr_df = bam_df.query(f"chr_id == '{chromosome}'")
         cigars_and_genomic_start_positions = list(zip(chr_df.cigar.to_list(), chr_df[gen_pos_col].to_list()))
         coverage_array = _add_to_main_array_for_each_read(cigars_and_genomic_start_positions, chr_length,
-                                                          count_Ds_as_maps=count_Ds_as_maps)
+                                                          count_Ds_as_maps=count_Ds_as_maps,
+                                                          quiet=quiet)
         array_dict[chromosome] = coverage_array
     return array_dict
 
 
 def coverage_plotting_5tera(bam_df_for_plot, gene_name=None, gene_id=None,
                             save_dir=None, save_suffix=None, count_Ds_as_maps=False,
-                            rpm_normalize=False, provide_axes: (plt.Axes, plt.Axes) = (None, None)):
+                            rpm_normalize=False, provide_axes: (plt.Axes, plt.Axes) = (None, None),
+                            specify_gtf_path=None, additional_plot_df_query: str = None,
+                            quiet=False, adapted_color='red', unadapted_color='black'):
+    if isinstance(specify_gtf_path, str):
+        kwargs_to_get_gene_coord = {"parsed_gtf_path": specify_gtf_path}
+    else:
+        kwargs_to_get_gene_coord = {}
     if gene_name:
-        _, gene_chr, start, end, strand = _get_gene_coordinates(gene_name=gene_name)
+        _, gene_chr, start, end, strand = _get_gene_coordinates(gene_name=gene_name,
+                                                                quiet=quiet,
+                                                                **kwargs_to_get_gene_coord)
     elif gene_id:
-        gene_name, gene_chr, start, end, strand = _get_gene_coordinates(gene_id=gene_id)
+        gene_name, gene_chr, start, end, strand = _get_gene_coordinates(gene_id=gene_id,
+                                                                        quiet=quiet,
+                                                                        **kwargs_to_get_gene_coord)
     else:
         raise LookupError(f"Please provide either the gene_name or gene_id for the target gene to plot!")
-    chr_array_ad = _run_coverage_calc(bam_df_for_plot.query("t5 == '+'"),
-                                      chrs=gene_chr, count_Ds_as_maps=count_Ds_as_maps)[gene_chr]
-    chr_array_unad = _run_coverage_calc(bam_df_for_plot.query("t5 == '-'"),
-                                        chrs=gene_chr, count_Ds_as_maps=count_Ds_as_maps)[gene_chr]
+    
+    if isinstance(additional_plot_df_query, str):
+        target_df = bam_df_for_plot.query(additional_plot_df_query)
+    else:
+        target_df = bam_df_for_plot
+    chr_array_ad = _run_coverage_calc(target_df.query("t5 == '+'"),
+                                      chrs=gene_chr, count_Ds_as_maps=count_Ds_as_maps,
+                                      quiet=quiet)[gene_chr]
+    chr_array_unad = _run_coverage_calc(target_df.query("t5 == '-'"),
+                                        chrs=gene_chr, count_Ds_as_maps=count_Ds_as_maps,
+                                        quiet=quiet)[gene_chr]
     locus_array_ad = chr_array_ad[start: end]
     locus_array_unad = chr_array_unad[start: end]
     if rpm_normalize:
@@ -228,8 +269,8 @@ def coverage_plotting_5tera(bam_df_for_plot, gene_name=None, gene_id=None,
     axes[0]: plt.Axes
     axes[1]: plt.Axes
     
-    axes[0].fill_between(index_array, zeros_array, locus_array_ad, color='red')
-    axes[1].fill_between(index_array, zeros_array, locus_array_unad, color='black')
+    axes[0].fill_between(index_array, zeros_array, locus_array_ad, color=adapted_color)
+    axes[1].fill_between(index_array, zeros_array, locus_array_unad, color=unadapted_color)
     axes[0].set_xticks([])
     axes[1].set_xticks([])
     # axes[0].set_xlabel
