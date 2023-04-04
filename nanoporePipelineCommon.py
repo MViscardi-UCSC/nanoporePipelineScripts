@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import os
+from subprocess import Popen, CalledProcessError, PIPE
 
 pd.set_option('display.width', 400)
 pd.set_option('display.max_columns', None)
@@ -285,10 +286,12 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
                                 read_pos_in_groupby=False, add_nucleotide_fractions=False,
                                 add_tail_groupings=True, tail_groupings_cutoff=50,
                                 pass_list_columns=False,
+                                use_josh_assignment=True,
                                 group_by_t5=False) -> [pd.DataFrame, pd.DataFrame]:
     concat_df = library_reads_df_load_and_concat(lib_list, genomeDir=genomeDir,
                                                  drop_unassigned=drop_unassigned, drop_failed_polya=drop_failed_polya,
-                                                 keep_transcript_info=keep_transcript_info, group_by_t5=group_by_t5)
+                                                 keep_transcript_info=keep_transcript_info, group_by_t5=group_by_t5,
+                                                 use_josh_assignment=use_josh_assignment)
 
     compressed_df = compress_concat_df_of_libs(concat_df,
                                                drop_sub_n=drop_sub_n, read_pos_in_groupby=read_pos_in_groupby,
@@ -304,15 +307,20 @@ def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/ele
 def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genomes/elegansRelease100/",
                                      drop_unassigned=True, drop_failed_polya=True,
                                      keep_transcript_info=False,
+                                     use_josh_assignment=True,
                                      group_by_t5=False):
-    # Initially load the read assignments file:
-    read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
-    print(f"Loading readAssignments file from: {read_assignment_path}...", end=' ')
-    read_assignment_df = pd.read_parquet(read_assignment_path)
-    print("Done.")
+    # TODO: Why am I not trusting the gene_assignment from featureCounts? I am using Josh's method here?!
+    #       I really think that this is what is throwing off all the errors w/ Parissa's unc-54.
+    #       Primarily b/c I can see the correct gene assignment in the *_mergedOnReads.parquet files!!
+    if use_josh_assignment:
+        # Initially load the read assignments file:
+        read_assignment_path = find_newest_matching_file(f"{genomeDir}/*.allChrs.parquet")
+        print(f"Loading readAssignments file from: {read_assignment_path}...", end=' ')
+        read_assignment_df = pd.read_parquet(read_assignment_path)
+        print("Done.")
     # Loop through each library name in the list and for each:
     #   1. Load the Parquet
-    #   2. Merge this w/ Josh's assign reads based on chr_pos
+    #   2. Merge this w/ Josh's assign reads based on chr_pos (if wanted!!)
     #   3. Create a column to retain the library identity
     #   3. Concatenate these dataframe into one large dataframe
     #       NOTE: This structure can be seperated again based on
@@ -329,7 +337,7 @@ def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genome
         print(f"Loading parquet for {library_name} lib...", end=' ')
         lib_df = pd.read_parquet(parquet_path)
         print("Done.")
-
+        
         # Make sure that 5' end adjustments happened, do so if not!
         lib_df = adjust_5_ends(lib_df)
         # Store the library dataframe in the temporary dictionary
@@ -341,20 +349,23 @@ def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genome
                          keys=df_dict.keys())
     multi_df.index.set_names(("lib", "old_index"), inplace=True)
     concat_df = multi_df.reset_index(level="lib").reset_index(drop=True)
-    # Some major issues with ugly column names coming through, plan to clean them up:
-    read_assignment_cols = read_assignment_df.columns.to_list()
-    read_assignment_cols.remove('chr_id')
-    read_assignment_cols.remove('chr_pos')
-    # Only retain columns that don't show up in both the read assignment df and the super merge df:
-    read_assignment_cols_to_drop = [col for col in read_assignment_cols if col in concat_df.columns]
-    # Drop those 'unique' columns
-    concat_df.drop(columns=read_assignment_cols_to_drop,
-                   inplace=True)
-    print(f"Starting assignment merge . . .", end="")
-    # Add read assignments w/ josh's read_assignment dataframe
-    concat_df = concat_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
-                                how="left", suffixes=("_originalOutput", ""))
-    print(f"\rFinished assignment merge!          ")
+    if use_josh_assignment:
+        # Some major issues with ugly column names coming through, plan to clean them up:
+        read_assignment_cols = read_assignment_df.columns.to_list()
+        read_assignment_cols.remove('chr_id')
+        read_assignment_cols.remove('chr_pos')
+        # Only retain columns that don't show up in both the read assignment df and the super merge df:
+        read_assignment_cols_to_drop = [col for col in read_assignment_cols if col in concat_df.columns]
+        # Drop those 'unique' columns
+        concat_df.drop(columns=read_assignment_cols_to_drop,
+                       inplace=True)
+        print(f"Starting assignment merge . . .", end="")
+        # Add read assignments w/ josh's read_assignment dataframe
+        concat_df = concat_df.merge(read_assignment_df, on=["chr_id", "chr_pos"],
+                                    how="left", suffixes=("_originalOutput", ""))
+        print(f"\rFinished assignment merge!          ")
+    else:
+        print(f"Skipping assignment with Josh method and relying on whatever assignment was made by the pipeline!")
     # To further clean up mixed columns, just retain the ones we care about!
     keep_columns = ["lib",
                     "read_id",
@@ -368,12 +379,12 @@ def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genome
                     "polya_length",
                     "strand",
                     ]
-    if keep_transcript_info:
+    if keep_transcript_info and use_josh_assignment:
         # Add transcript info to the columns we care about if requested
         for col in ["transcript_id", "to_start", "to_stop"]:
             keep_columns.append(col)
     else:
-        print(f"Not keeping transcript information. . .")
+        print(f"Not keeping transcript information. . . (not using Josh assignment method will also force this!)")
     if group_by_t5:
         # Add 5TERA information to the columns we care about if requested
         keep_columns.append('t5')
@@ -514,6 +525,17 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
             gc_df = pd.read_parquet(path_to_gc).drop(columns=["chr_id"])
             compressed_df = compressed_df.merge(gc_df, on=["gene_id", "gene_name", "transcript_id"], how="left")
     return compressed_df
+
+
+def live_cmd_call(command):
+    with Popen(command, stdout=PIPE, shell=True,
+               bufsize=1, universal_newlines=True) as p:
+        for line in p.stdout:
+            print(line, end="")
+    if p.returncode != 0:
+        raise CalledProcessError(p.returncode, p.args)
+    else:
+        return p.returncode
 
 
 def sam_or_bam_class_testing():
@@ -696,9 +718,7 @@ def adjust_5_ends(df: pd.DataFrame):
     return df
 
 
-def gene_names_to_gene_ids(parquet_path: str = "/data16/marcus/genomes/elegansRelease100"
-                                               "/Caenorhabditis_elegans.WBcel235.100.gtf"
-                                               ".parquet") -> pd.DataFrame:
+def gene_names_to_gene_ids(parquet_path: str = "/data16/marcus/genomes/elegansRelease100/Caenorhabditis_elegans.WBcel235.100.gtf.parquet") -> pd.DataFrame:
     df = pd.read_parquet(parquet_path)[["gene_name", "gene_id", "chr"]].drop_duplicates(ignore_index=True)
     return df
 
