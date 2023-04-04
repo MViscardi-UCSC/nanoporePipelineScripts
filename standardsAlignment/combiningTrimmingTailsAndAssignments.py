@@ -35,7 +35,7 @@ sys.path.insert(0, '/data16/marcus/scripts/nanoporePipelineScripts')
 from nanoporePipelineCommon import *
 
 sys.path.insert(0, '/data16/marcus/scripts/nanoporePipelineScripts/standardsAlignment')
-std_align = __import__('220921_version2_mappingStandardsMethod')
+import version2_mappingStandardsMethod as std_align
 
 pd.set_option('display.width', 200)
 pd.set_option('display.max_columns', None)
@@ -115,7 +115,11 @@ class StdLibrary:
         self.hit_df = self.hit_df.astype({"r_st": int, "r_en": int, "q_st": int, "q_en": int})
         
         # TODO: It would be nice to have this not be hardcoded!
-        barcode_dict = {'00': 'GGTGTTGTT', '05': 'CGGCAATAA', '10': 'TAATCGTCC', '15': 'CCTTCTAGG', '30': 'ACACACACC',
+        barcode_dict = {'00': 'GGTGTTGTT',
+                        '05': 'CGGCAATAA',
+                        '10': 'TAATCGTCC',
+                        '15': 'CCTTCTAGG',
+                        '30': 'ACACACACC',
                         '60': 'AAGAGGAGG'}
         if self.is_Nano3P:
             # We'll flip (rev. comp.) the barcode dict if we are working with nano3P data (cDNA sequences)
@@ -258,5 +262,8 @@ class StdLibrary:
                                                                **row), axis=1)
 
 if __name__ == '__main__':
-    dRNA = StdLibrary(f"/data16/marcus/nanoporeSoftLinks/221112_nanoporeRun_ENO2RNAStds_dRNA/output_dir", True)
+    SY_nano3P = StdLibrary(f"/data16/marcus/nanoporeSoftLinks/"
+                           f"230224_nanoporeRun_RNAStds_SY-TGIRT-50ng_Nano3P/output_dir", False)
+    # dRNA = StdLibrary(f"/data16/marcus/nanoporeSoftLinks/"
+    #                   f"221112_nanoporeRun_ENO2RNAStds_dRNA/output_dir", True)
     print("done.")

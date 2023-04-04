@@ -12,26 +12,23 @@ class_based_nanopore_pipeline.py code!
 ALSO, I'm going to trim a lot of the fat from version2_mappingStandardsMethod.py,
 as much of that came from the initial setup and building of the algorithm.
 """
-import mappy
 import mappy as mp
-from pprint import pprint
 import pandas as pd
-import numpy as np
 from tqdm import tqdm
-from typing import Union, List, Tuple, Any
-import random
-from nanoporePipelineCommon import find_newest_matching_file, pick_libs_return_paths_dict, get_dt
-import textwrap
-
 from pathlib import Path
 
 
 class StandardsAlignerENO2:
-    def __init__(self,
-                 path_to_standards_ref_fasta: str = "220902_version2.0_releventSequences_wOutTails.fasta",
-                 fastx_file: str = None, sam_path: str = None, mjv_compressed_df: pd.DataFrame = None,
-                 threads_for_aligner: int = 10, library_type: str = "dRNA", try_to_align_everything=False):
-        self.stds_ref_fasta = path_to_standards_ref_fasta
+    def __init__(self, path_to_standards_ref_fasta: str = None, fastx_file: str = None,
+                 sam_path: str = None, mjv_compressed_df: pd.DataFrame = None,
+                 threads_for_aligner: int = 10, library_type: str = "dRNA",
+                 try_to_align_everything=False):
+        if isinstance(path_to_standards_ref_fasta, str) and Path(path_to_standards_ref_fasta).exists():
+            self.stds_ref_fasta = path_to_standards_ref_fasta
+        else:
+            self.stds_ref_fasta = "/data16/marcus/scripts/nanoporePipelineScripts/standardsAlignment/" \
+                                  "220902_version2.0_releventSequences_wOutTails.fasta"
+            print(f"Using default path to reference standards' barcodes:\n{self.stds_ref_fasta}")
 
         self.library_type = library_type
         # From: https://github.com/lh3/minimap2/blob/master/minimap.h
@@ -53,6 +50,7 @@ class StandardsAlignerENO2:
                                   n_threads=threads_for_aligner)
         if not self.aligner:
             # This was in the tutorial, haven't seen this yet.
+            print(self.stds_ref_fasta)
             raise Exception("ERROR: failed to load/build index")
         else:
             print(f"Aligner indexes build for adapters named: {self.aligner.seq_names}")
@@ -77,6 +75,7 @@ class StandardsAlignerENO2:
                 print(f"\nChromosome cerENO2 not found in dataframe, "
                       f"please run minimap2 w/ genome that has cerENO2 added!!\n\n"
                       f"No reads will end up being assigned!\n")
+                return self.input_df
             assignment_df = self._align_standards_from_merge_df()
             self.output_df = self.input_df.merge(assignment_df, on='read_id', how='left')
             return self.output_df
@@ -96,16 +95,13 @@ class StandardsAlignerENO2:
                                                                          axis=1)
         return cutdown_input_df[['read_id', 'assignment']]
 
-    def __per_read_mapping(self, read_id: str,
-                           sequence: str,
-                           dict_or_assignment: str,
-                           chr_id: str = 'cerENO2'):
+    def __per_read_mapping(self, read_id: str, sequence: str, dict_or_assignment: str, chr_id: str = 'cerENO2'):
         per_read_dict = {  # This will be a dictionary to hold more general information about the read & mapping
             'read_id': read_id,
             'sequence': sequence,
         }
         if chr_id != 'cerENO2' and not self.align_everything:
-            per_read_dict['assignment'] = None
+            per_read_dict['assignment'] = 'NotAStandard'
             if dict_or_assignment == 'return_dict':
                 return per_read_dict
             else:

@@ -100,7 +100,7 @@ def meshSetsAndArgs(skip_cli_dict: dict = None) -> dict:
                                  "(T)rim TERA-Seq adapters, "
                                  "(M)inimap, (N)anopolish, (F)eature counts, (C)oncat files, "
                                  "merge with (P)andas, use f(L)air to ID transcripts, "
-                                 "map pTRI nanopore (S)tandards, and/or random e(X)tra "
+                                 "map ENO2 nanopore (S)tandards, and/or random e(X)tra "
                                  "steps (plotting). [GMNCFPS]")
         parser.add_argument('--sampleID', metavar='sampleID',
                             type=int, default=None,
@@ -859,7 +859,7 @@ def merge_results(**other_kwargs):
     return merge_df, genes_df
 
 
-def map_standards(outputDir, guppyConfig: str, df: pd.DataFrame = None, **other_kwargs):
+def map_standards(outputDir, guppyConfig, df: pd.DataFrame = None, **other_kwargs):
     from standardsAlignment.version2_mappingStandardsMethod_classBased import StandardsAlignerENO2
     if not isinstance(df, pd.DataFrame):
         merge_dir = f"{outputDir}/merge_files"
@@ -878,12 +878,12 @@ def map_standards(outputDir, guppyConfig: str, df: pd.DataFrame = None, **other_
     else:
         library_type = None  # idk...
     
-    output_df = StandardsAlignerENO2(mjv_compressed_df=df,
+    output_df = StandardsAlignerENO2(mjv_compressed_df=df.sort_values("chr_id"),
                                      library_type=library_type).run_alignments()
     out_file_path = f"{outputDir}/merge_files/{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet"
     print(f"Saving parquet file to:\n\t{out_file_path}")
     output_df.to_parquet(out_file_path)
-    print(output_df.assignment.value_counts())
+    print(output_df.assignment.value_counts().head(10))
 
 
 def flair(outputDir, **other_kwargs):
