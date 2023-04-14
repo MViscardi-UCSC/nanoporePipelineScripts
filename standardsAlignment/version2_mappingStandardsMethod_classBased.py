@@ -68,16 +68,25 @@ class StandardsAlignerENO2:
             raise NotImplementedError("Please provide either a path to a fastx or a sam file, or a merge_df DataFrame.")
         self.align_everything = try_to_align_everything
         self.output_df = None
+        self.alignments_run = False
 
-    def run_alignments(self):
+    def run_alignments(self, report_alignments=False):
         if self.input_type == "merge_df":
-            if "cerENO2" not in self.input_df['chr_id'].unique().tolist() and not self.align_everything:
-                print(f"\nChromosome cerENO2 not found in dataframe, "
-                      f"please run minimap2 w/ genome that has cerENO2 added!!\n\n"
-                      f"No reads will end up being assigned!\n")
-                return self.input_df
+            if "cerENO2" not in self.input_df['chr_id'].unique().tolist():
+                if not self.align_everything:
+                    print(f"\nChromosome cerENO2 not found in dataframe, "
+                          f"please run minimap2 w/ genome that has cerENO2 added!!\n\n"
+                          f"No reads will end up being assigned!\n")
+                    return self.input_df
+                else:
+                    print(f"\nChromosome cerENO2 not found in dataframe, "
+                          f"please run minimap2 w/ genome that has cerENO2 added!!\n\n"
+                          f"Because of the align_everything tag, we'll try to align things!\n")
             assignment_df = self._align_standards_from_merge_df()
             self.output_df = self.input_df.merge(assignment_df, on='read_id', how='left')
+            self.alignments_run = True
+            if report_alignments:
+                print(self.output_df.assignment.value_counts().head(10))
             return self.output_df
 
     def _align_standards_from_merge_df(self):
@@ -148,17 +157,43 @@ class StandardsAlignerENO2:
             else:
                 return per_read_dict['assignment']
 
+    def plot_alignments(self,
+                        save_dir_path=""):
+        import matplotlib.pyplot as plt
+        if not self.alignments_run:
+            print(f"Please run alignments first!")
+            return None
+        self.output_df.assignment.value_counts().head(7).plot(kind='pie',
+                                                              autopct=lambda x:
+                                                              '{:,.0f}'.format(
+                                                                  x * (self.output_df['assignment'].count()) / 100
+                                                              ))
+        plt.show()
+        ax = self.output_df.assignment.value_counts().head(9).plot(kind='bar', logy=False,
+                                                                   figsize=(7, 4))
+        for p in ax.patches:
+            ax.annotate(f"{p.get_height():,g}", (p.get_x() * 1.000, p.get_height() * 1.005))
+        plt.tight_layout()
+        if save_dir_path != "":
+            save_dir_path_obj = Path(save_dir_path)
+            if not save_dir_path_obj.exists() or not save_dir_path_obj.is_dir():
+                print(f"Provide save directory: {save_dir_path}\neither doesn't exist or isn't a directory!")
+                plt.show()
+                return None
+            save_path_obj = save_dir_path_obj / f"{get_dt()}_assignmentBarPlot"
+            for file_type in [".svg", ".png"]:
+                plt.savefig(save_path_obj.with_suffix(file_type))
+        plt.show()
+        return None
+
 
 if __name__ == '__main__':
-    import nanoporePipelineCommon as npCommon
-
-    merge_df, compress_df = npCommon.load_and_merge_lib_parquets(["5tera_xrn-1-KD_wt"],
-                                                                 drop_sub_n=1,
-                                                                 add_tail_groupings=False,
-                                                                 drop_failed_polya=False,
-                                                                 group_by_t5=True,
-                                                                 use_josh_assignment=False)
-    output_df = StandardsAlignerENO2(mjv_compressed_df=merge_df,
-                                     try_to_align_everything=True).run_alignments()
-    print(output_df)
-    print(output_df.columns)
+    from nanoporePipelineCommon import get_dt, pick_lib_return_path
+    merge_df_path = pick_lib_return_path("5tera_xrn-1-KD_smg-6_rerun")
+    merge_df = pd.read_parquet(merge_df_path)
+    aligner_obj = StandardsAlignerENO2(mjv_compressed_df=merge_df,
+                                       try_to_align_everything=False,
+                                       )
+    print(merge_df.chr_id.unique())
+    aligner_obj.run_alignments(report_alignments=True)
+    aligner_obj.plot_alignments(save_dir_path="/home/marcus/Desktop/")
