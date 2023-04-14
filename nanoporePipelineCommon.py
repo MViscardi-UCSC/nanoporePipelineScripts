@@ -4,13 +4,21 @@ Marcus Viscardi,    September 22, 2021
 
 A common location for some often used methods.
 """
+
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import os
 from subprocess import Popen, CalledProcessError, PIPE
+from pathlib import Path
+import datetime
 
-pd.set_option('display.width', 400)
+import seaborn as sea
+import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
+
+pd.set_option('display.width', 100)
 pd.set_option('display.max_columns', None)
 
 OUTPUT_DIR_DICT = {
@@ -67,54 +75,28 @@ OUTPUT_DIR_DICT = {
                                "output_dir",
     "5tera_xrn-1-KD_smg-6_rerun": "/data16/marcus/working/230403_nanoporeRun_totalRNA_smg-6_xrn-1-KD_5TERA_rerun/"
                                   "output_dir",
+    "5tera_xrn-1-KD_smg-5_rerun": "/data16/marcus/working/230410_nanoporeRun_totalRNA_smg-5_xrn-1-KD_5TERA_rerun/"
+                                  "output_dir",
 }
+REV_OUTPUT_DIR_DICT = {v: k for k, v in OUTPUT_DIR_DICT.items()}
 
-
-class FastqFile:
-    def __init__(self, path, head=None):
-        from tqdm import tqdm
-        import mappy as mp
-        self.path = path
-        self.subset = isinstance(head, int)
-        fastq_items_list = []  # List to hold fastq items as we iterate over
-        print(f"\nStarting fastq iterative load @ {get_dt(for_print=True)}", end="\n")
-        # Below will allow us to track how long the fastq parse is taking:
-        row_iterator = tqdm(mp.fastx_read(path, read_comment=True),
-                            total=sum(1 for line in open(path)) // 4)
-        for line, (read_id, sequence, quality, comment) in enumerate(row_iterator):
-            fastq_items_list.append([read_id, sequence, "+", quality, comment])
-            row_iterator.set_description(f"Processing {read_id}")
-            if self.subset and line >= head:
-                break
-        # Convert the fastq items list into a pandas dataframe so it can be filtered by the alt_mapped_reads_df
-        self.df = pd.DataFrame(fastq_items_list, columns=["read_id", "sequence", "plus", "quality", "comment"])
-
-    def __str__(self):
-        return str(self.df)
-
-    def filter_against(self, df_w_read_id):
-        # Cool way to only keep values that don't appear in alt_mapped_read_df:
-        #   (From: https://tinyurl.com/22czvzua)
-        # Also trying out query operator, some notes on this here:
-        #   https://stackoverflow.com/questions/67341369/pandas-why-query-instead-of-bracket-operator
-        self.df = pd.merge(self.df, df_w_read_id,
-                           on="read_id",
-                           indicator=True,
-                           how="outer").query('_merge=="left_only"').drop('_merge', axis=1)
-
-    def save_to_fastq(self, output_path):
-        from csv import QUOTE_NONE
-        self.df["read_id"] = "@" + self.df["read_id"] + " " + \
-                             self.df["comment"]
-        self.df.drop("comment", axis=1).to_csv(output_path,
-                                               index=False,
-                                               header=False,
-                                               sep="\n",
-                                               quoting=QUOTE_NONE)
+CONVERSION_DICT = {"xrn-1-5tera": "oldN2",
+                   "xrn-1-5tera-smg-6": "oldS6",
+                   "5tera_xrn-1-KD_wt": "newN2",
+                   "5tera_xrn-1-KD_smg-5": "newS5",
+                   "5tera_xrn-1-KD_smg-6": "newS6",
+                   "5tera_xrn-1-KD_smg-7": "newS7",
+                   "5tera_xrn-1-KD_wt_rerun": "newerN2",
+                   "5tera_xrn-1-KD_smg-6_rerun": "newerS6",
+                   "5tera_xrn-1-KD_smg-5_rerun": "newerS5",
+                   "sPM57": "sPM57",
+                   "sPM58": "sPM58",
+                   }
+REV_CONVERSION_DICT = {val: key for key, val in CONVERSION_DICT.items()}
 
 
 class SamOrBamFile:
-    def __init__(self, path, header_source=None, subsample=None):
+    def __init__(self, path, header_source=None, subsample=-1):
         from subprocess import check_output
 
         self.path = path
@@ -178,10 +160,7 @@ class SamOrBamFile:
             self.header = check_output(f"samtools view --no-PG -H {path}", shell=True).decode("utf-8")
             self.header_lines = len(self.header.split('\n')) - 1
 
-        if isinstance(subsample, int):
-            self.subsample = subsample
-        else:
-            self.subsample = None
+        self.subsample = subsample
 
         self.df = self.__build_df__()
 
@@ -193,14 +172,15 @@ class SamOrBamFile:
         print(f"{get_dt(for_print=True)}: Starting to load {self.file_type} file from: {self.path}")
         sam_list_of_dicts = []
         with ssam.Reader(open(self.path, 'r')) as in_sam:
-            to_subsample = isinstance(self.subsample, int)
+            to_subsample = self.subsample > 0
             if to_subsample:
                 max_to_load = self.subsample
             else:
                 if self.file_type == 'bam':
                     max_to_load = len(in_sam)  # TODO: Change this step so it ignores header lines!!
                 else:
-                    max_to_load = sum(1 for line in open(self.path) if not line.startswith("@"))  # TODO: This may cause an issue with nanopore reads who's names start with @!!
+                    max_to_load = sum(1 for line in open(self.path) if not line.startswith(
+                        "@"))  # TODO: This may cause an issue with nanopore reads who's names start with @!!
             sam_iterator = tqdm(enumerate(in_sam), total=max_to_load)
             for i, read in sam_iterator:
                 sam_iterator.set_description(f"Processing {read.qname}")
@@ -222,7 +202,7 @@ class SamOrBamFile:
         final_df = final_df.astype(self.dtype_dict)
         print(f"{get_dt(for_print=True)}: Finished loading {self.file_type} file!")
         return final_df
-    
+
     def add_column_w_merge(self, df_to_merge_with: pd.DataFrame, cols_to_merge_on: list or tuple):
         self.df = self.df.merge(df_to_merge_with, on=cols_to_merge_on, how='left')
         print(f"Completed merge using columns: {cols_to_merge_on}")
@@ -274,6 +254,265 @@ class SamOrBamFile:
 
     def to_bam(self, output_path):
         self.to_sam(output_path=output_path, to_bam=True)
+
+    def __str__(self):
+        return self.df.__str__()
+
+
+class FastqFile:
+    def __init__(self, path, subset_entries=-1):
+        from tqdm import tqdm
+        import mappy as mp
+        self.path = path
+        self.subset = isinstance(subset_entries, int) and subset_entries > 0
+        fastq_items_list = []  # List to hold fastq items as we iterate over
+        print(f"\nStarting fastq iterative load @ {get_dt(for_print=True)}", end="\n")
+        # Below will allow us to track how long the fastq parse is taking:
+        row_iterator = tqdm(mp.fastx_read(path, read_comment=True),
+                            total=sum(1 for line in open(path)) // 4)
+        for line, (read_id, sequence, quality, comment) in enumerate(row_iterator):
+            fastq_items_list.append([read_id, sequence, "+", quality, comment])
+            row_iterator.set_description(f"Processing {read_id}")
+            if self.subset and line >= subset_entries:
+                break
+        # Convert the fastq items list into a pandas dataframe so it can be filtered by the alt_mapped_reads_df
+        self.df = pd.DataFrame(fastq_items_list, columns=["read_id", "sequence", "plus", "quality", "comment"])
+
+    def __str__(self):
+        return self.save_to_fastq()
+
+    def filter_against(self, filter_df_w_read_ids, overwrite_df=False):
+        # Cool way to only keep values that don't appear in filter_df_w_read_ids:
+        #   (From: https://tinyurl.com/22czvzua)
+        # Also trying out query operator, some notes on this here:
+        #   https://stackoverflow.com/questions/67341369/pandas-why-query-instead-of-bracket-operator
+        filtered_df = pd.merge(self.df, filter_df_w_read_ids,
+                               on="read_id",
+                               indicator=True,
+                               how="outer").query('_merge=="left_only"').drop('_merge', axis=1)
+        if overwrite_df:
+            self.df = filtered_df
+        return filtered_df
+
+    def filter_for(self, filter_df_w_read_ids, overwrite_df=False):
+        # Only keep values that do appear in filter_df_w_read_ids:
+        filtered_df = pd.merge(self.df, filter_df_w_read_ids, on="read_id", how="inner")
+        if overwrite_df:
+            self.df = filtered_df
+        return filtered_df
+
+    def save_to_fastq(self, output_path=None) -> str:
+        from csv import QUOTE_NONE
+        output_df = self.df.copy()
+        output_df["read_id"] = ">@" + output_df["read_id"] + " " + output_df["comment"]
+        if output_path:
+            output_df.drop("comment", axis=1).to_csv(output_path,
+                                                     index=False,
+                                                     header=False,
+                                                     sep="\n",
+                                                     quoting=QUOTE_NONE)
+            return f"Saved to {output_path}"
+        else:
+            return output_df.drop("comment", axis=1).to_csv(index=False,
+                                                            header=False,
+                                                            sep="\n",
+                                                            quoting=QUOTE_NONE)
+
+
+class NanoporeRun:
+    def __init__(self, run_name: str = None, run_nickname: str = None,
+                 run_dir_name: str = None, run_dir_abs_path: str = None):
+        self.nanopore_run_soft_link_dir = f"/data16/marcus/nanoporeSoftLinks"
+        self.run_name = run_name
+        self.run_nickname = run_nickname
+        self.run_dir_name = run_dir_name
+        self.run_dir_abs_path = run_dir_abs_path
+
+        if sum([bool(self.run_name), bool(self.run_nickname), bool(self.run_dir_name),
+                bool(self.run_dir_abs_path)]) != 1:
+            raise ValueError("Must provide one of run_name, run_nickname, run_dir_name, run_dir_abs_path")
+
+        if self.run_name:
+            self.run_nickname = CONVERSION_DICT[self.run_name]
+            self.run_dir_abs_path = OUTPUT_DIR_DICT[self.run_name]
+            self.run_dir_name = self.run_dir_abs_path.split("/")[-2]
+        elif self.run_nickname:
+            self.run_name = REV_CONVERSION_DICT[self.run_nickname]
+            self.run_dir_abs_path = OUTPUT_DIR_DICT[self.run_name]
+            self.run_dir_name = self.run_dir_abs_path.split("/")[-2]
+        elif self.run_dir_name:
+            self.run_dir_abs_path = f"{self.nanopore_run_soft_link_dir}/{self.run_dir_name}/output_dir"
+            self.run_name = REV_OUTPUT_DIR_DICT[self.run_dir_abs_path]
+            self.run_nickname = CONVERSION_DICT[self.run_name]
+        elif self.run_dir_abs_path:
+            self.run_dir_name = self.run_dir_abs_path.split("/")[-2]
+            self.run_name = REV_OUTPUT_DIR_DICT[self.run_dir_abs_path]
+            self.run_nickname = CONVERSION_DICT[self.run_name]
+
+        self.run_dir = Path(self.run_dir_abs_path)
+        if not self.run_dir.exists():
+            raise ValueError(f"Run directory does not exist: {self.run_dir_abs_path}")
+
+        self.cat_dir = self.run_dir / "cat_files"
+        self.merge_dir = self.run_dir / "merge_files"
+        self.fastq_dir = self.run_dir / "fastqs"
+        self.nanopolish_dir = self.run_dir / "nanopolish"
+        self.feature_counts_dir = self.run_dir / "featureCounts"
+        self.logs_dir = self.run_dir / "logs"
+        self.run_date = self.run_dir_name.split("_")[0]
+
+        self.cat_files = list(self.cat_dir.glob("cat*"))
+        # print([file.name for file in self.cat_files])
+
+        self.had_standards = False
+        self.merge_parquet_path_dict = {}
+        for merge_file in self.merge_dir.glob("*.parquet"):
+            short_name = merge_file.name[7:-8]
+            if short_name in self.merge_parquet_path_dict.keys():
+                self.merge_parquet_path_dict[short_name].append(merge_file)
+            else:
+                self.merge_parquet_path_dict[short_name] = [merge_file]
+            if short_name == "mergedOnReads.plusStandards":
+                self.had_standards = True
+        self.merge_df_dict = {}
+        self.mergedOnReads_df = None
+        self.compressedOnGenes_df = None
+
+        self.bam_path = self.cat_dir / "cat.sorted.mappedAndPrimary.bam"
+        self.bam = None
+
+        self.fastq_path = self.cat_dir / "cat.fastq"
+        self.fastq = None
+
+    def print_run_dirs(self) -> None:
+        print(f"Run name: {self.run_name}\n"
+              f"Run nickname: {self.run_nickname}\n"
+              f"Run directory: {self.run_dir}\n")
+        print(f"Run Dir contents:")
+        for output_dir in self.run_dir.iterdir():
+            print(f"--> {output_dir.name}")
+            if len(list(output_dir.iterdir())) <= 15:
+                for file in output_dir.iterdir():
+                    print(f"    --> {file.name}")
+            else:
+                print(f"    --> ({len(list(output_dir.iterdir()))} files)")
+
+    def _load_merge_parquet(self, file_midfix: str = "") -> pd.DataFrame:
+        if file_midfix not in self.merge_parquet_path_dict.keys():
+            raise ValueError(f"Short name {file_midfix} not found in merge_parquet_dict")
+        if not self.had_standards and file_midfix == "mergedOnReads.plusStandards":
+            raise ValueError(f"Run {self.run_name} did not have standards, try short_name='mergedOnReads'")
+
+        if len(self.merge_parquet_path_dict[file_midfix]) == 1:
+            merge_file = self.merge_parquet_path_dict[file_midfix][0]
+        else:  # If there are multiple parquet files, we need to pick the most recent one
+            merge_file = sorted(self.merge_parquet_path_dict[file_midfix], key=lambda x: x.stat().st_mtime)[-1]
+        print(f"Loading {merge_file.name}...", end="")
+        self.merge_df_dict[file_midfix] = pd.read_parquet(merge_file)
+        print(f" Done. Loaded {self.merge_df_dict[file_midfix].shape[0]:,} rows.")
+        if "mergedOnReads" in file_midfix:
+            self.mergedOnReads_df = self.merge_df_dict[file_midfix]
+        elif file_midfix == "compressedOnGenes":
+            self.compressedOnGenes_df = self.merge_df_dict[file_midfix]
+        return self.merge_df_dict[file_midfix]
+
+    def load_mergedOnReads(self) -> pd.DataFrame:
+        if self.had_standards:
+            return self._load_merge_parquet(file_midfix="mergedOnReads.plusStandards")
+        else:
+            return self._load_merge_parquet(file_midfix="mergedOnReads")
+
+    def load_compressedOnGenes(self) -> pd.DataFrame:
+        return self._load_merge_parquet(file_midfix="compressedOnGenes")
+
+    def load_bam(self, subsample=-1) -> SamOrBamFile:
+        if not self.bam_path.exists():
+            raise ValueError(f"BAM file does not exist: {self.bam_path}")
+        if self.bam is None:
+            self.bam = SamOrBamFile(str(self.bam_path), subsample=subsample)
+        return self.bam
+
+    def load_fastq(self, subsample=-1) -> FastqFile:
+        if not self.fastq_path.exists():
+            raise ValueError(f"FASTQ file does not exist: {self.fastq_path}")
+        if self.fastq is None:
+            self.fastq = FastqFile(str(self.fastq_path), subset_entries=subsample)
+        return self.fastq
+
+    def plot_standards(self, save=False, show=True, show_ambiguous=False,
+                       show_non_standards=False, **kwargs) -> (plt.Figure, plt.Axes):
+        if not self.had_standards:
+            raise ValueError(f"Run {self.run_name} did not have standards")
+        if self.mergedOnReads_df is None:
+            self.load_mergedOnReads()
+        if "figsize" not in kwargs.keys():
+            kwargs["figsize"] = (12, 8)
+
+        fig, ax = plt.subplots(**kwargs)
+        assignments_df = self.mergedOnReads_df[['read_id', 'assignment', 'chr_id']]
+        if not show_ambiguous:
+            assignments_df = assignments_df[~assignments_df.assignment.str.contains("Ambiguous")]
+        if not show_non_standards:
+            assignments_df = assignments_df[~assignments_df.assignment.str.contains("NotAStandard")]
+        assignments_df = assignments_df[['assignment']].value_counts(ascending=False).reset_index()
+        sea.barplot(assignments_df, ax=ax,
+                    x='assignment', y=0)
+        ax.set_title(f"{self.run_nickname} Standards")
+        ax.set_ylabel("Number of Reads")
+        ax.set_xlabel("Assigned Standard")
+        plt.tight_layout()
+        if save:
+            fig.savefig(f"{self.run_dir}/standards.png")
+        if show:
+            plt.show()
+        return fig, ax
+
+    def plot_read_length(self, save=False, show=True, **kwargs) -> (plt.Figure, plt.Axes):
+        if self.mergedOnReads_df is None:
+            self.load_mergedOnReads()
+        if "figsize" not in kwargs.keys():
+            kwargs["figsize"] = (12, 8)
+
+        fig, ax = plt.subplots(**kwargs)
+        sea.histplot(self.mergedOnReads_df['read_length'], ax=ax, kde=True)
+        ax.set_title(f"{self.run_nickname} Read Lengths")
+        ax.set_ylabel("Frequency")
+        ax.set_xlabel("Read Length")
+        plt.tight_layout()
+        if save:
+            fig.savefig(f"{self.run_dir}/read_lengths.png")
+        if show:
+            plt.show()
+        return fig, ax
+
+    def plot_tail_length_by_standard(self, save=False, show=True,
+                                     y_lims=(0, 200), **kwargs) -> (plt.Figure, plt.Axes):
+        if not self.had_standards:
+            raise ValueError(f"Run {self.run_name} did not have standards")
+        if self.mergedOnReads_df is None:
+            self.load_mergedOnReads()
+        if "figsize" not in kwargs.keys():
+            kwargs["figsize"] = (12, 8)
+        
+        plot_df = self.mergedOnReads_df[['assignment', 'polya_length']]
+        plot_df = plot_df[~plot_df.assignment.str.contains("Ambiguous")]
+        
+        fig, ax = plt.subplots(**kwargs)
+        sea.boxplot(plot_df, ax=ax,
+                    x='assignment', y='polya_length')
+        ax.set_title(f"{self.run_nickname} Tail Lengths by Standard")
+        ax.set_ylabel("Tail Length")
+        ax.set_xlabel("Assigned Standard")
+        ax.set_ylim(y_lims[0], y_lims[1])
+        
+        plt.tight_layout()
+        if save:
+            fig.savefig(f"{self.run_dir}/tail_lengths_by_standard.png")
+        if show:
+            plt.show()
+        return fig, ax
+    
+    # TODO: Add ability to tag standards reads with "perfect" or "imperfect" based on presence of barcode
 
 
 class NanoJAMDF(pd.DataFrame):
@@ -337,7 +576,7 @@ def library_reads_df_load_and_concat(lib_list, genomeDir=f"/data16/marcus/genome
         print(f"Loading parquet for {library_name} lib...", end=' ')
         lib_df = pd.read_parquet(parquet_path)
         print("Done.")
-        
+
         # Make sure that 5' end adjustments happened, do so if not!
         lib_df = adjust_5_ends(lib_df)
         # Store the library dataframe in the temporary dictionary
@@ -418,7 +657,6 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
                                keep_transcript_info=False, pass_list_columns=False,
                                add_tail_groupings=True, tail_groupings_cutoff=50,
                                group_by_t5=False):
-    
     # Create the groupby dataframe:
     groupby_col_list = ["lib", "chr_id", "gene_id", "gene_name"]
     print(f"Creating groupby dataframe merged on: {groupby_col_list}")
@@ -428,7 +666,7 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
     if group_by_t5:
         print(f"\t+ [t5] tag")
         groupby_col_list.append("t5")
-    
+
     # Holy crap, the observed=True helps to keep this from propagating out to 129,151,669,691,968 rows...
     groupby_obj = concat_df.groupby(groupby_col_list, observed=True)
 
@@ -440,13 +678,13 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
 
     tqdm.pandas(desc=f"Counting reads per {compressed_prefix}")
     compressed_df = groupby_obj["read_id"].progress_apply(len).to_frame(name=f"{compressed_prefix}_hits")
-    
+
     compressed_df["mean_polya_length"] = groupby_obj["polya_length"].mean()
     compressed_df["median_polya_length"] = groupby_obj["polya_length"].median()
-    
+
     compressed_df["mean_read_length"] = groupby_obj["read_length"].mean()
     compressed_df["median_read_length"] = groupby_obj["read_length"].median()
-    
+
     if read_pos_in_groupby:
         tqdm.pandas(desc=f"Storing stop distances as lists")
         compressed_df['stop_distances'] = groupby_obj["to_stop"].progress_apply(list).to_frame(name="stop_distances")
@@ -467,8 +705,8 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
                                                                    / compressed_df[f"{compressed_prefix}_hits"]
         compressed_df['tail_groupings_group'] = pd.cut(compressed_df[f'frac_sub_{tail_groupings_cutoff}_tails'],
                                                        bins=[0.0, 0.1, 0.45, 1.0], labels=['long_tailed',
-                                                                                            'ungrouped',
-                                                                                            'short_tailed'],
+                                                                                           'ungrouped',
+                                                                                           'short_tailed'],
                                                        include_lowest=True)
         print(f"Done.")
     # RPM and fractional hits calculations
@@ -497,7 +735,7 @@ def compress_concat_df_of_libs(concat_df, drop_sub_n=5, read_pos_in_groupby=Fals
         if group_by_t5:
             # We can also calculate an adapted-specific RPM:
             for adapted_or_not in ["+", "-"]:
-                norm_factor = compressed_df.query(f"lib == '{lib}'")\
+                norm_factor = compressed_df.query(f"lib == '{lib}'") \
                     .query(f"t5 == '{adapted_or_not}'")[f"{compressed_prefix}_hits"].sum()
                 rpm_norm_factor = norm_factor / 1_000_000
                 rpm_series = compressed_df.query(f"lib == '{lib}'")[f"{compressed_prefix}_hits"] / rpm_norm_factor
@@ -573,7 +811,8 @@ def boolDF_to_upsetPlot(input_df: pd.DataFrame,
     upset_format_data = upsetplot.from_indicators(lambda lambda_df: lambda_df.select_dtypes(bool), data=input_df)
     fig = plt.figure()
     upset = upsetplot.UpSet(upset_format_data, sort_by=sort_by, sort_categories_by=sort_categories_by,
-                            min_subset_size=min_subset_size, min_degree=min_degree, show_percentages=show_percentages, show_counts=show_counts)
+                            min_subset_size=min_subset_size, min_degree=min_degree, show_percentages=show_percentages,
+                            show_counts=show_counts)
     upset.plot(fig=fig)
     if isinstance(file_name, str):
         fig.savefig(file_name)
@@ -585,12 +824,11 @@ def pick_libs_return_paths_dict(lib_list: list, output_dir_folder="merge_files",
                                 file_midfix="_mergedOnReads", file_suffix="parquet",
                                 return_all: bool = False, ignore_unmatched_keys: bool = False) -> dict:
     output_dir_dict = OUTPUT_DIR_DICT
-    if not isinstance(lib_list, list):
-        if not isinstance(lib_list, tuple):
-            raise NotImplementedError(f"Please pass a list/tuple of library keys, "
-                                      f"you passed a {type(lib_list)}. "
-                                      f"If you only want one value, "
-                                      f"please use the pick_lib_return_path() method.")
+    if not isinstance(lib_list, list) or not isinstance(lib_list, tuple):
+        raise NotImplementedError(f"Please pass a list/tuple of library keys, "
+                                  f"you passed a {type(lib_list)}. "
+                                  f"If you only want one value, "
+                                  f"please use the pick_lib_return_path() method.")
     if return_all:
         lib_list = output_dir_dict.keys()
         lib_list = [lib for lib in lib_list if lib not in ["polyA", "totalRNA"]]
@@ -618,12 +856,13 @@ def pick_libs_return_paths_dict(lib_list: list, output_dir_folder="merge_files",
 
 
 def pick_lib_return_path(lib_key, output_dir_folder="merge_files",
-                         file_midfix="_mergedOnReads", file_suffix="parquet",) -> str:
+                         file_midfix="_mergedOnReads", file_suffix="parquet", ) -> str:
     [(lib_key, lib_path)] = pick_libs_return_paths_dict([lib_key],
                                                         file_suffix=file_suffix,
                                                         file_midfix=file_midfix,
                                                         output_dir_folder=output_dir_folder).items()
     return lib_path
+
 
 def load_read_assignments(assignment_file_parquet_path) -> pd.DataFrame:
     print(f"Loading read assignment file from: {assignment_file_parquet_path} ", end="")
@@ -718,7 +957,9 @@ def adjust_5_ends(df: pd.DataFrame):
     return df
 
 
-def gene_names_to_gene_ids(parquet_path: str = "/data16/marcus/genomes/elegansRelease100/Caenorhabditis_elegans.WBcel235.100.gtf.parquet") -> pd.DataFrame:
+def gene_names_to_gene_ids(
+        parquet_path: str = "/data16/marcus/genomes/elegansRelease100/"
+                            "Caenorhabditis_elegans.WBcel235.100.gtf.parquet") -> pd.DataFrame:
     df = pd.read_parquet(parquet_path)[["gene_name", "gene_id", "chr"]].drop_duplicates(ignore_index=True)
     return df
 
@@ -891,5 +1132,7 @@ def parse_read_assignment_allChrs_txt(assignment_file_txt, multi_row_isoforms=Fa
 
 
 if __name__ == '__main__':
-    reads_df, compressed_df = load_and_merge_lib_parquets(["xrn-1-5tera", "xrn-1-5tera-smg-6"])
-    print("breakpoint")
+    run = NanoporeRun(run_nickname="newerS5")
+    # run.print_run_dirs()
+    run.plot_read_length()
+    run.plot_tail_length_by_standard(y_lims=(0, 100))
