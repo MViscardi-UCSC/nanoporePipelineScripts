@@ -51,11 +51,10 @@ pieces of code I have around this repo.
  
  - Add some general QC steps to produce print-outs and plots.
 """
-import datetime
 import subprocess
 import sys
 import traceback
-from os import path, listdir, mkdir, environ
+from os import environ
 from argparse import ArgumentParser
 from pprint import pprint
 from typing import List
@@ -72,7 +71,6 @@ from tqdm import tqdm
 from nanoporePipelineCommon import find_newest_matching_file, get_dt, \
     gene_names_to_gene_ids, SamOrBamFile, FastqFile, gtf_to_df
 
-import numpy as np
 import pandas as pd
 
 # This is also in my .bashrc but that doesn't always seem to trigger,
