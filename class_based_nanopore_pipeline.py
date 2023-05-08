@@ -91,6 +91,8 @@ class NanoporePipeline:
      - Parsing the settings file
      - Running the requested steps
      - Logging the steps, their inputs, and their outputs
+     - Handling errors
+     - Maybe making some plots?
     """
 
     def __init__(self, skip_cli_dict: dict = None):
@@ -293,6 +295,7 @@ class NanoporePipeline:
             self.flair_ran = True
 
     def _parse_args(self) -> dict:
+        """Parse the arguments from the command line."""
         self.parser = ArgumentParser(description="A pipeline to handle the outputs "
                                                  "of nanopore runs!")
         # Required Arguments:
@@ -380,9 +383,13 @@ class NanoporePipeline:
 
     def _parse_settings(self, settings_file, printArgs=False, **other_kwargs_from_cli) -> dict:
         """
-        Will loop through and replace variables that are None
+        This function will parse a settings file and return a dictionary of the arguments
+        :param settings_file: Path to settings file
+        :param printArgs: Option to print the arguments as they are parsed
+        :param other_kwargs_from_cli: Catch-all for other arguments passed from the command line
+        :return: Dictionary of arguments that came from the settings file
         """
-        # first, parse the settings file to a dictionary called _settingsDict
+        # first, parse the settings file into _settingsDict
         settingsDict = {}
 
         with open(settings_file, 'r') as f:
@@ -458,6 +465,9 @@ class NanoporePipeline:
         return f"{hours:02}:{minutes:02}:{seconds:02.2f}"
 
     def pipeline_step_decorator(func):
+        """
+        This is a decorator that will be used to time each step of the pipeline.
+        """
         # So this currently works w/ self down below,
         # but I'm not sure if it's the best way...
         # Or if it will even work in all cases!
@@ -504,6 +514,13 @@ class NanoporePipeline:
     #  "X": OutputStep("extras", "Running random eXtra steps"),
 
     def run_cmd(self, command, command_nickname, save_output_to_file=True):
+        """
+        Runs a command and logs its output
+        :param command: A string of the command to run
+        :param command_nickname: A short string to describe the command
+        :param save_output_to_file: An optional boolean to save the output to a file
+        :return: None
+        """
         # set up output file
         output_file = self.log_dir / f"{get_dt(extended_for_file=True)}_{command_nickname}.log"
         with open(output_file, "w") as f:
@@ -531,6 +548,10 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def guppy_basecaller(self):
+        """
+        Runs guppy basecaller on the fast5 files in the data_dir.
+        Saves and concatenates the fastq files to the fastq_dir.
+        """
         guppy_run_tag_file = self.fastq_dir / "guppy_run_tag.txt"
         guppy_flag = self.regenerate or not guppy_run_tag_file.exists()
         if guppy_flag:
@@ -560,6 +581,9 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def trim_5TERA_adapters(self):
+        """
+        Trims the 5' TERA-Seq adapters from the fastq file. (Saves a backup of the original fastq file before trimming)
+        """
         cat_fastq_path = self.cat_files_dir / "cat.fastq"
         fastq_backup_path = self.cat_files_dir / "cat.untrimmed.fastq"
         if not fastq_backup_path.exists():
@@ -615,6 +639,10 @@ class NanoporePipeline:
         self.trim_5TERA_adapters_ran = True
 
     def _tera_adapter_tagging__(self):
+        """
+        This method will add the TERA3 and/or TERA5 adapter tags to the bam/sam files.
+        :return: 
+        """
         import simplesam as ssam
         fastq_path = self.cat_files_dir / "cat.fastq"
 
@@ -668,6 +696,10 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def minimap2_and_samtools(self):
+        """
+        This method will run minimap2 and samtools to align the cat.fastq file to the genome.
+        :return: 
+        """
         cat_bam_path = self.cat_files_dir / "cat.bam"
         minimap_flag = self.regenerate or not cat_bam_path.exists()
         if not minimap_flag:
@@ -736,6 +768,10 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def nanopolish(self):
+        """
+        This method will run nanopolish on the cat.fastq file to generate a file with polyA tail lengths called.
+        :return: 
+        """
         # First we have to index the fastq_files!
         nanopolish_index_file = self.cat_files_dir / "cat.fastq.index.readdb"
         nanopolish_index_flag = self.regenerate or not nanopolish_index_file.exists()
@@ -790,6 +826,10 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def tailfindr(self):
+        """
+        This method will run tailfindr on the cat.fastq file to generate a file with polyA tail lengths called.
+        :return: 
+        """
         # TODO: Add check for previous run!
         # First, lets make sure we have the fast5 files in out output directory:
         fast5_path = self.fastq_dir / "workspace"
@@ -815,6 +855,11 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def featureCounts(self):
+        """
+        This method will run featureCounts on the cat.sorted.mappedAndPrimary.bam
+        file to identify the genes that each read maps to.
+        :return:
+        """
         feature_counts_file = self.featureCounts_dir / "cat.sorted.mappedAndPrimary.bam.featureCounts"
         feature_counts_flag = self.regenerate or not feature_counts_file.exists()
         if feature_counts_flag:
@@ -862,6 +907,10 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def merge_files(self):
+        """
+        This method will merge the results from mapping, featureCounts, and nanopolish/tailfindr files into one file.
+        :return:
+        """
         # Load the sam file and add the strand column:
         sam_df = SamOrBamFile(f"{self.cat_files_dir}/cat.sorted.mappedAndPrimary.sam").df
         sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-", 0: "+"})
@@ -903,6 +952,10 @@ class NanoporePipeline:
         raise NotImplementedError
 
     def get_gene_ids_to_names_df(self):
+        """
+        This method will return a dataframe with the gene_id and gene_name columns.
+        :return: 
+        """
         # Find the file in the genome directory that ends with .gtf.parquet:
         gtf_parquet_file = glob(f"{self.genome_dir}/*.gtf.parquet")
         if len(gtf_parquet_file) > 1:
@@ -926,10 +979,17 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def assign_ENO2_standards(self):
+        # TODO: Rework this step a bit so that it will work with the new merge_files step.
+        #       AND so that it will work without merge_files happening first.
+        #       Should this be a separate step? Or should it be part of merge_files?
         raise NotImplementedError
 
     @pipeline_step_decorator
     def flair_for_transcripts(self):
+        """
+        This method will run the FLAIR pipeline on the cat.sorted.mappedAndPrimary.bam file.
+        :return: 
+        """
         raise NotImplementedError
 
     @pipeline_step_decorator
