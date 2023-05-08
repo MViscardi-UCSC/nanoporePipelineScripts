@@ -70,7 +70,7 @@ from functools import wraps
 from tqdm import tqdm
 
 from nanoporePipelineCommon import find_newest_matching_file, get_dt, \
-    gene_names_to_gene_ids, SamOrBamFile, FastqFile, assign_with_josh_method
+    gene_names_to_gene_ids, SamOrBamFile, FastqFile, gtf_to_df
 
 import numpy as np
 import pandas as pd
@@ -163,7 +163,7 @@ class NanoporePipeline:
         self.tera5adapter = self.arg_dict['tera5adapter']
         self.tera_trimming_ran = False
         self.do_not_log = self.arg_dict['do_not_log']
-        
+
         self.extra_guppy_options = self.arg_dict['extraGuppyOptions']
         self.freeze_guppy_version_6_3_8 = self.arg_dict['freezeGuppyVersion6_3_8']
         if isinstance(self.extra_guppy_options, str):
@@ -171,14 +171,14 @@ class NanoporePipeline:
                 self.extra_guppy_options = self.extra_guppy_options + " "
         else:
             self.extra_guppy_options = ""
-        
+
         if self.freeze_guppy_version_6_3_8 or "fast5_out" in self.extra_guppy_options:
             self.guppy_basecaller_path = GUPPY_6_3_8_PATH
             if "fast5_out" not in self.extra_guppy_options:
                 self.extra_guppy_options += "--fast5_out "
         else:
             self.guppy_basecaller_path = GUPPY_PATH
-        
+
         self.call_with_josh_method = self.arg_dict['callWithJoshMethod']
         self.regenerate = self.arg_dict['regenerate']
         self.drop_genes_with_hits_less_than = self.arg_dict['dropGeneWithHitsLessThan']
@@ -245,6 +245,14 @@ class NanoporePipeline:
                                            self.extra_steps,
                                            10),
                            }
+        # If the library was cDNA then we need to run tailfindr instead of nanopolish!:
+        self.tailfindr_tag = "N" in self.steps_to_run.upper() and any([self.guppy_config.startswith("dna"),
+                                                                       self.guppy_config.startswith("cdna")])
+        if self.tailfindr_tag:
+            self.steps_dict["N"] = OutputStep("tailfindr",
+                                              "Tailfindr polyA Calling",
+                                              self.tailfindr,
+                                              5)
         # Only keep the steps that are in the steps_to_run list:
         self.steps_dict = {key: value for key, value in self.steps_dict.items()
                            if key.upper() in self.steps_to_run.upper()}
@@ -727,16 +735,16 @@ class NanoporePipeline:
             else:
                 sequencing_summary_file = sequencing_summary_file[0]
                 seq_sum_call = f"--sequencing-summary={sequencing_summary_file} "
-                
+
             call = f"nanopolish index --directory={self.data_dir}/fast5 " \
-                   f"{seq_sum_call}" \
-                   f"{self.output_dir}/cat_files/cat.fastq"
+                   f"{seq_sum_call}{self.cat_files_dir}/cat.fastq"
             self.logger.warning(f"nanopolish index is very slow and has limited outputs, you've been warned!!")
             self.run_cmd(call, "nanopolish_index", save_output_to_file=False)
+            self.regenerate = True
         else:
             self.logger.info(f"Skipping nanopolish index because it has already been run on cat.fastq.")
-        
-        nanopolish_polya_output_file = self.output_dir / "nanopolish" / "polya.tsv"
+
+        nanopolish_polya_output_file = self.nanopolish_dir / "polya.tsv"
         nanopolish_polya_flag = self.regenerate or not nanopolish_polya_output_file.exists()
         if nanopolish_polya_flag:
             genome_fa_file = glob(f"{self.genome_dir}/*allChrs.fa")
@@ -745,26 +753,50 @@ class NanoporePipeline:
                                           f"with one fa files that ends with 'allChrs.fa'")
             else:
                 genome_fa_file = genome_fa_file[0]
-            call = f"nanopolish polya --threads={self.threads} --reads={self.output_dir}/cat_files/cat.fastq " \
-                   f"--bam={self.output_dir}/cat_files/cat.sorted.mappedAndPrimary.bam --genome={genome_fa_file} " \
+            call = f"nanopolish polya --threads={self.threads} --reads={self.cat_files_dir}/cat.fastq " \
+                   f"--bam={self.cat_files_dir}/cat.sorted.mappedAndPrimary.bam --genome={genome_fa_file} " \
                    f"> {nanopolish_polya_output_file}"
             self.run_cmd(call, "nanopolish_polya_calling", save_output_to_file=True)
+            self.regenerate = True
         else:
             self.logger.info(f"Skipping nanopolish polya because it has already been run on fast5 files.")
-        
-        nanopolish_polya_passed_file = self.output_dir / "nanopolish" / "polya.passed.tsv"
+
+        nanopolish_polya_passed_file = self.nanopolish_dir / "polya.passed.tsv"
         nanopolish_passed_flag = self.regenerate or not nanopolish_polya_passed_file.exists()
         if nanopolish_passed_flag:
             filter_call = f"head -n 1 {nanopolish_polya_output_file} > {nanopolish_polya_passed_file}; " \
                           f"grep PASS {nanopolish_polya_output_file} >> {nanopolish_polya_passed_file}"
             self.run_cmd(filter_call, "nanopolish_polya_filtering", save_output_to_file=False)
+            self.regenerate = True
         else:
             self.logger.info(f"Skipping nanopolish polya filtering because it has already been run on polya.tsv.")
-    
+        self.nanopolish_ran = True
+
     @pipeline_step_decorator
     def tailfindr(self):
-        raise NotImplementedError
-    
+        # TODO: Add check for previous run!
+        # First, lets make sure we have the fast5 files in out output directory:
+        fast5_path = self.fastq_dir / "workspace"
+        fast5_files = glob(f"{fast5_path}/*.fast5")
+        if not fast5_path.exists() or len(fast5_files) == 0:
+            # Raise an error if we don't have any fast5 files!
+            raise FileNotFoundError(f"Could not find fast5 files in {fast5_path}! ")
+        # Now we can run tailfindr!
+        r_command = f"Rscript -e 'library(tailfindr); " \
+                    f"library(arrow); " \
+                    f"Sys.setenv(HDF5_PLUGIN_PATH = \"/usr/local/hdf5/lib/plugin\"); " \
+                    f"r_df <- find_tails(" \
+                    f"fast5_dir = \"{fast5_path}\", " \
+                    f"num_cores = {self.threads}, " \
+                    f"save_dir = \"{self.tailfindr_dir}\"); " \
+                    f"write_parquet(r_df, \"{self.tailfindr_dir}/{get_dt()}_tailfindr.parquet\"); " \
+                    f"write.csv(r_df, \"{self.tailfindr_dir}/{get_dt()}_tailfindr.csv\")'"
+        # This currently doesn't log very well because of the way tailfindr makes progress bars...
+        # I'm not sure how to fix this, but it's not a huge deal because it's not a long running process.
+        self.run_cmd(r_command, "tailfindr", save_output_to_file=True)
+        # self.regenerate = True
+        self.tailfindr_ran = True
+
     @pipeline_step_decorator
     def featureCounts(self):
         feature_counts_file = self.output_dir / "featureCounts" / "cat.sorted.mappedAndPrimary.bam.featureCounts"
