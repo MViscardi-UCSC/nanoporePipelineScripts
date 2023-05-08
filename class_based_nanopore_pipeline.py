@@ -533,17 +533,29 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def guppy_basecaller(self):
-        """
-        Will run guppy_basecaller on the fast5 files
-        """
-        call = rf"""{self.guppy_basecaller_path} -x "cuda:0" {self.extra_guppy_options}--num_callers 12 """ \
-               rf"""--gpu_runners_per_device 8 """ \
-               rf"""-c {self.guppy_config} -i {self.data_dir}/fast5 -s {self.output_dir}/fastqs """
-        self.run_cmd(call, "guppy_basecalling")
-        
-        call = rf"cat {self.output_dir}/fastqs/pass/*.fastq > {self.output_dir}/cat_files/cat.fastq"
-        self.run_cmd(call, "concatenate_fastqs", save_output_to_file=False)
-    
+        guppy_run_tag_file = self.fastq_dir / "guppy_run_tag.txt"
+        guppy_flag = self.regenerate or not guppy_run_tag_file.exists()
+        if guppy_flag:
+            call = rf"""{self.guppy_basecaller_path} -x "cuda:0" """ \
+                   rf"""{self.extra_guppy_options}--num_callers 12 """ \
+                   rf"""--gpu_runners_per_device 8 """ \
+                   rf"""-c {self.guppy_config} -i {self.data_dir}/fast5 -s {self.fastq_dir} """
+            self.run_cmd(call, "guppy_basecalling", save_output_to_file=True)
+            guppy_run_tag_file.touch()
+            guppy_run_tag_file.write_text(f"Last run on {get_dt(for_print=True)}.")
+            self.regenerate = True
+        else:
+            self.logger.info("Guppy basecalling already completed, skipping")
+
+        concat_fastq = self.cat_files_dir / "cat.fastq"
+        concat_flag = self.regenerate or not concat_fastq.exists()
+        if concat_flag:
+            call = rf"cat {self.fastq_dir}/pass/*.fastq > {self.cat_files_dir}/cat.fastq"
+            self.run_cmd(call, "concatenate_fastqs", save_output_to_file=False)
+            self.regenerate = True
+        else:
+            self.logger.info("Fastq concatenation already completed, skipping")
+
     @pipeline_step_decorator
     def filter_alt_genomes(self):
         raise NotImplementedError
