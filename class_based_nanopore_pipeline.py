@@ -731,8 +731,10 @@ class NanoporePipeline:
             self.logger.info(f"Starting SAM/BAM file cleanup")
             for num, call in enumerate(calls):
                 self.run_cmd(call, f"bam-sam_cleanup_{num}_of_{len(calls)}", save_output_to_file=False)
+            self.regenerate = True
         else:
             self.logger.info(f"Skipping SAM/BAM file cleanup because it has already been run on cat.sorted.bam.")
+        self.minimap_ran = True
 
     @pipeline_step_decorator
     def nanopolish(self):
@@ -833,10 +835,12 @@ class NanoporePipeline:
                           f"cat.sorted.mappedAndPrimary.bam.featureCounts >> " \
                           f"{self.output_dir}/featureCounts/cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts"
             self.run_cmd(filter_call, "featureCounts_filtering", save_output_to_file=False)
+            self.regenerate = True
         else:
             self.logger.info(f"Skipping featureCounts because it has "
                              f"already been run on cat.sorted.mappedAndPrimary.bam.")
-    
+        self.featureCounts_ran = True
+
     @pipeline_step_decorator
     def merge_files(self):
         raise NotImplementedError
