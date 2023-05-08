@@ -559,11 +559,11 @@ class NanoporePipeline:
     @pipeline_step_decorator
     def filter_alt_genomes(self):
         raise NotImplementedError
-    
+
     @pipeline_step_decorator
     def trim_5TERA_adapters(self):
-        cat_fastq_path = self.output_dir / "cat_files" / "cat.fastq"
-        fastq_backup_path = self.output_dir / "cat_files" / "cat.untrimmed.fastq"
+        cat_fastq_path = self.cat_files_dir / "cat.fastq"
+        fastq_backup_path = self.cat_files_dir / "cat.untrimmed.fastq"
         if not fastq_backup_path.exists():
             # First backup the fastq file that the real minimap2 call will need:
             call = f"cp {cat_fastq_path} {fastq_backup_path}"
@@ -609,15 +609,17 @@ class NanoporePipeline:
 
             if isinstance(cutadapt_call, str):
                 print(f"Starting cutadapt at {get_dt(for_print=True)}\nUsing call:\t{cutadapt_call}\n")
-                self.run_cmd(cutadapt_call, "tera_adapter_trimming")
+                self.run_cmd(cutadapt_call, "tera_adapter_trimming", save_output_to_file=True)
                 self.tera_trimming_ran = True
+            self.regenerate = True
         else:
             self.logger.info(f"Skipping cutadapt because it has already been run on cat.fastq.")
+        self.trim_5TERA_adapters_ran = True
 
     def _tera_adapter_tagging__(self):
         import simplesam as ssam
-        fastq_path = self.output_dir / "cat_files" / "cat.fastq"
-        
+        fastq_path = self.cat_files_dir / "cat.fastq"
+
         if self.tera_trimming_ran:
             # This open block is just to look at the first line of the fastq
             with open(fastq_path, 'r') as f:
@@ -625,10 +627,10 @@ class NanoporePipeline:
                 # Check if each of the cutadapt comments were added, save for below.
                 tera3_was_run = 'TERAADAPTER3' in first_line
                 tera5_was_run = 'TERAADAPTER5' in first_line
-    
-                # If neither were run, just skip the rest of this method!
-                if not tera3_was_run and not tera5_was_run:
-                    raise ValueError(f"Neither TERA3 nor TERA5 adapter trimming was run on {fastq_path}!")
+
+            # If neither were run, just skip the rest of this method!
+            if not tera3_was_run and not tera5_was_run:
+                raise ValueError(f"Neither TERA3 nor TERA5 adapter trimming was run on {fastq_path}!")
 
         # If the adapter tag IS found in the cat.fastq, we'll add it to the bam/sam files!:
         tagged_fastq_df = FastqFile(fastq_path).df
@@ -651,8 +653,8 @@ class NanoporePipeline:
         # Finally we'll load and iterate through the bam file, creating a new sam file along the
         #   way and adding in the new tags!!
         tagged_fastq_df.set_index('read_id', inplace=True)
-        input_bam = self.output_dir / "cat_files" / "cat.sorted.bam"
-        output_sam = self.output_dir / "cat_files" / "cat.sorted.sam"
+        input_bam = self.cat_files_dir / "cat.sorted.bam"
+        output_sam = self.cat_files_dir / "cat.sorted.sam"
         self.logger.info(f"Starting sam file tagging with TERA-seq adapter information")
         with ssam.Reader(open(input_bam, 'r')) as in_bam:
             with ssam.Writer(open(output_sam, 'w'), in_bam.header) as out_sam:
@@ -668,7 +670,7 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def minimap2_and_samtools(self):
-        cat_bam_path = self.output_dir / "cat_files" / "cat.bam"
+        cat_bam_path = self.cat_files_dir / "cat.bam"
         minimap_flag = self.regenerate or not cat_bam_path.exists()
         if not minimap_flag:
             bam_length = cat_bam_path.stat().st_size
@@ -687,23 +689,25 @@ class NanoporePipeline:
                                           f"with one bed file that ends with '.bed'")
             else:
                 genome_bed_file = genome_bed_file[0]
-            call = f"minimap2 -a {self.minimap_param} {genome_fa_file} {self.output_dir}/cat_files/cat.fastq " \
+            call = f"minimap2 -a {self.minimap_param} {genome_fa_file} {self.cat_files_dir}/cat.fastq " \
                    f"-t {self.threads} --junc-bed {genome_bed_file} | samtools view -b - -o " \
                    f"{cat_bam_path}"
             self.run_cmd(call, "minimap2_mapping", save_output_to_file=True)
+            self.regenerate = True
         else:
             self.logger.info(f"Skipping minimap2 because it has already been run on cat.fastq.")
-        
-        sorted_cat_bam_path = self.output_dir / "cat_files" / "cat.sorted.bam"
+
+        sorted_cat_bam_path = self.cat_files_dir / "cat.sorted.bam"
         samtools_flag = self.regenerate or not sorted_cat_bam_path.exists()
         if samtools_flag:
-            call = f"samtools sort -m 16G -T tmp -o {self.output_dir}/cat_files/cat.sorted.bam " \
-                   f"{self.output_dir}/cat_files/cat.bam && samtools index " \
-                   f"{self.output_dir}/cat_files/cat.sorted.bam"
-            self.run_cmd(call, "samtools_sort_and_index", save_output_to_file=True)
+            call = f"samtools sort -m 16G -T tmp -o {self.cat_files_dir}/cat.sorted.bam " \
+                   f"{self.cat_files_dir}/cat.bam && samtools index " \
+                   f"{self.cat_files_dir}/cat.sorted.bam"
+            self.run_cmd(call, "samtools_sort_and_index", save_output_to_file=False)
+            self.regenerate = True
         else:
             self.logger.info(f"Skipping samtools because it has already been run on cat.bam.")
-        
+
         if self.tera_trimming_ran:
             # We need to tag BAM file with trimming flags (t5 and t3)
             self._tera_adapter_tagging__()
