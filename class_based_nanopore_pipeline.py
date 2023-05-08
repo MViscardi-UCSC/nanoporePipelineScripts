@@ -712,8 +712,8 @@ class NanoporePipeline:
             # We need to tag BAM file with trimming flags (t5 and t3)
             self._tera_adapter_tagging__()
         else:
-            call = f"samtools view {self.output_dir}/cat_files/cat.sorted.bam " \
-                   f"> {self.output_dir}/cat_files/cat.sorted.sam"
+            call = f"samtools view {self.cat_files_dir}/cat.sorted.bam " \
+                   f"> {self.cat_files_dir}/cat.sorted.sam"
             self.run_cmd(call, "bam_to_sam", save_output_to_file=False)
 
         bam_file_with_only_mappedAndPrimary = self.output_dir / "cat_files" / "cat.sorted.mappedAndPrimary.bam"
@@ -726,7 +726,7 @@ class NanoporePipeline:
                      #    0x800, SUPPLEMENTARY   =   reads that are supplemental alignments
                      f"samtools index {bam_file_with_only_mappedAndPrimary}",
                      f"samtools view {bam_file_with_only_mappedAndPrimary} "
-                     f"> {self.output_dir}/cat_files/cat.sorted.mappedAndPrimary.sam",
+                     f"> {self.cat_files_dir}/cat.sorted.mappedAndPrimary.sam",
                      ]
             self.logger.info(f"Starting SAM/BAM file cleanup")
             for num, call in enumerate(calls):
@@ -737,7 +737,7 @@ class NanoporePipeline:
     @pipeline_step_decorator
     def nanopolish(self):
         # First we have to index the fastq_files!
-        nanopolish_index_file = self.output_dir / "cat_files" / "cat.fastq.index.readdb"
+        nanopolish_index_file = self.cat_files_dir / "cat.fastq.index.readdb"
         nanopolish_index_flag = self.regenerate or not nanopolish_index_file.exists()
         if nanopolish_index_flag:
             sequencing_summary_file = glob(f"{self.data_dir}/sequencing_summary*.txt")
@@ -815,7 +815,7 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def featureCounts(self):
-        feature_counts_file = self.output_dir / "featureCounts" / "cat.sorted.mappedAndPrimary.bam.featureCounts"
+        feature_counts_file = self.featureCounts_dir / "cat.sorted.mappedAndPrimary.bam.featureCounts"
         feature_counts_flag = self.regenerate or not feature_counts_file.exists()
         if feature_counts_flag:
             genome_gtf_file = glob(f"{self.genome_dir}/*.gtf")
@@ -825,8 +825,8 @@ class NanoporePipeline:
             else:
                 genome_gtf_file = genome_gtf_file[0]
             call = f"featureCounts -L -T {self.threads} -R CORE -a {genome_gtf_file} " \
-                   f"-o {self.output_dir}/featureCounts/{get_dt(for_file=True)} " \
-                   f"{self.output_dir}/cat_files/cat.sorted.mappedAndPrimary.bam"
+                   f"-o {self.featureCounts_dir}/{get_dt(for_file=True)}_featureCounts " \
+                   f"{self.cat_files_dir}/cat.sorted.mappedAndPrimary.bam"
             self.run_cmd(call, "featureCounts", save_output_to_file=True)
 
             filter_call = f"grep Assigned {self.output_dir}/featureCounts/" \
@@ -844,15 +844,15 @@ class NanoporePipeline:
     @pipeline_step_decorator
     def assign_ENO2_standards(self):
         raise NotImplementedError
-    
+
     @pipeline_step_decorator
     def flair_for_transcripts(self):
         raise NotImplementedError
-    
+
     @pipeline_step_decorator
     def extra_steps(self):
         raise NotImplementedError
-    
+
     def run_pipeline(self):
         """
         Runs the pipeline based on the steps_to_run parameter in the settings file
