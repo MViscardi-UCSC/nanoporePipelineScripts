@@ -864,6 +864,44 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def merge_files(self):
+        # Load the sam file and add the strand column:
+        sam_df = SamOrBamFile(f"{self.cat_files_dir}/cat.sorted.mappedAndPrimary.sam").df
+        sam_df["strand"] = (sam_df.bit_flag & 16).replace(to_replace={16: "-", 0: "+"})
+        sam_df = sam_df.astype({'strand': 'category'})
+        
+        # Load the featureCounts file:
+        try:
+            featc_df = pd.read_parquet(
+                f"{self.featureCounts_dir}/cat.sorted.mappedAndPrimary.bam.featureCounts.parquet")
+        except FileNotFoundError:
+            featc_df = pd.read_csv(f"{self.featureCounts_dir}/cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts",
+                                   sep="\t",
+                                   names=["read_id",
+                                          "qc_tag_featc",
+                                          "qc_pass_featc",
+                                          "gene_id"])
+        if "gene_name" not in featc_df.columns:
+            names_df = self.get_gene_ids_to_names_df()
+            featc_df = featc_df.merge(names_df, on="gene_id", how="left")
+
+        if self.tailfindr_ran:
+            # Find the tailfindr file and load it into a dataframe:
+            tailfinder_parquet_path = glob(f"{self.tailfindr_dir}/*.parquet")
+            if len(tailfinder_parquet_path) != 1:
+                raise NotImplementedError(f"Currently this script only supports having tailfindrDirs "
+                                          f"with one parquet file.")
+            else:
+                tailfinder_parquet_path = tailfinder_parquet_path[0]
+            tail_df = pd.read_parquet(tailfinder_parquet_path)
+            # TODO: I have to massage this dataframe a bit to have it similar to nanopolish's output
+        elif self.nanopolish_ran:
+            tail_df = pd.read_csv(f"{self.nanopolish_dir}/polya.passed.tsv", sep="\t")
+            # For some god-awful reason the chr_pos in polyA are -1 to those in the SAM file:
+            tail_df["position"] = tail_df["position"] + 1
+            tail_df = tail_df.rename(columns={"readname": "read_id",
+                                              "qc_tag": "qc_tag_polya",  # b/c featC also has a qc_tag!
+                                              "position": "chr_pos",
+                                              "contig": "chr_id"})
         raise NotImplementedError
     
     @pipeline_step_decorator
