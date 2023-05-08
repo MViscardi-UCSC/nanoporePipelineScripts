@@ -122,8 +122,8 @@ class NanoporePipeline:
         if skip_cli_dict:
             self.cli_arg_dict = skip_cli_dict
         else:
-            self.cli_arg_dict = self._parseArgs()
-        self.settings_dict = self._parseSettings(**self.cli_arg_dict)
+            self.cli_arg_dict = self._parse_args()
+        self.settings_dict = self._parse_settings(**self.cli_arg_dict)
 
         self.arg_dict.update(self.absolute_default_dict)
         self.arg_dict.update(self.settings_dict)
@@ -199,7 +199,7 @@ class NanoporePipeline:
                 f.write(f"{key:>25} = {str(value)}\n")
         self.log_file = self.log_dir / f"{get_dt(extended_for_file=True)}_" \
                                        f"{self.sample_id}_{self.condition}.log"
-        self._setupLogging()
+        self._setup_logging()
 
         # Define a named tuple to store expected output directory and explanation
         OutputStep = namedtuple('OutputStep', ['directory', 'description', 'function', 'step_order_number'])
@@ -249,10 +249,43 @@ class NanoporePipeline:
                            if key.upper() in self.steps_to_run.upper()}
         # Create a list of the output directories and make them if they don't exist:
         self.sub_dirs = list(set([self.output_dir / value.directory for key, value in self.steps_dict.items()]))
-        self._setupDirectories()
-        self.steps_run = ""
+        self.sub_dirs_dict = {str(directory.name): directory for directory in self.sub_dirs}
+        self._setup_directories()
+        self.fastq_dir = self.output_dir / "fastqs"
+        self.cat_files_dir = self.output_dir / "cat_files"
+        self.tailfindr_dir = self.output_dir / "tailfindr"  # These are both here, but only one will be used.
+        self.nanopolish_dir = self.output_dir / "nanopolish"  # ^^^
+        self.featureCounts_dir = self.output_dir / "featureCounts"
+        self.merge_files_dir = self.output_dir / "merge_files"
+        self.flair_dir = self.output_dir / "flair"
+        self.extras_dir = self.output_dir / "extras"
 
-    def _parseArgs(self) -> dict:
+        # Add attributes for each step to keep track of whether it has been run:
+        self.trim_5TERA_adapters_ran = False
+        self.minimap_ran = False
+        self.nanopolish_ran = False
+        self.tailfindr_ran = False
+        self.featureCounts_ran = False
+        self.assign_standards_ran = False
+        self.flair_ran = False
+
+        # TODO: Make the below checks more robust:
+        #       The idea would be to actually check for the output files/edits.
+        # TODO: Should all of these checks, inclusing the regen stuff, happen
+        #       here instead of in the individual functions?
+        #       I think so, but I'm not sure. Revisit this.
+        if "G" not in self.steps_to_run.upper():
+            self.guppy_basecaller_ran = True
+        if "T" not in self.steps_to_run.upper():
+            self.trim_5TERA_adapters_ran = True
+        if "M" not in self.steps_to_run.upper():
+            self.minimap_ran = True
+        if "S" not in self.steps_to_run.upper():
+            self.assign_standards_ran = True
+        if "L" not in self.steps_to_run.upper():
+            self.flair_ran = True
+
+    def _parse_args(self) -> dict:
         self.parser = ArgumentParser(description="A pipeline to handle the outputs "
                                                  "of nanopore runs!")
         # Required Arguments:
@@ -331,14 +364,14 @@ class NanoporePipeline:
                                       "be activated!")
         self.parser.add_argument('--do_not_log', action='store_true',
                                  help="Boolean flag to turn off logging")
-        # parser.add_argument('-A', '--altGenomeProcessing', action='store_true',
-        #                     help="Boolean flag to ")
+        self.parser.add_argument('-T', '--useTailfindr', action='store_true',
+                                 help="Boolean flag to use tailfindr instead of nanopolish")
 
         # Spit out namespace object from argParse
         args = self.parser.parse_args()
-        return {arg: vars(args)[arg] for arg in vars(args)}
+        return {arg: vars(args)[arg] for arg in vars(args) if vars(args)[arg] is not None}
 
-    def _parseSettings(self, settings_file, printArgs=False, **other_kwargs_from_cli) -> dict:
+    def _parse_settings(self, settings_file, printArgs=False, **other_kwargs_from_cli) -> dict:
         """
         Will loop through and replace variables that are None
         """
@@ -369,7 +402,7 @@ class NanoporePipeline:
         settingsDict = {k: v for k, v in settingsDict.items() if v is not None and v != ''}
         return settingsDict
 
-    def _setupDirectories(self):
+    def _setup_directories(self):
         """
         Will create the output directory and subdirectories
         """
@@ -380,20 +413,20 @@ class NanoporePipeline:
         for sub_dir in self.sub_dirs:
             sub_dir.mkdir(exist_ok=True)
 
-    def _setupLogging(self):
+    def _setup_logging(self):
         """
         Will set up the logging file
         """
         # Create a custom logger
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
-        
+
         # Create handlers
         file_handler = logging.FileHandler(self.log_file)
         file_handler.setLevel(logging.DEBUG)
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.INFO)
-        
+
         # Create a formatter that includes the time, logging level, and message
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
@@ -402,7 +435,7 @@ class NanoporePipeline:
         # Add the handlers to the logger
         self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
-        
+
         self.logger.info(f"Initial set up complete.")
         self.logger.info(f"Check log file for more details: {self.log_file.parent.name}/{self.log_file.name}")
         self.logger.debug(f"Settings file: {self.settings_file}")
@@ -416,7 +449,7 @@ class NanoporePipeline:
         minutes = int((seconds % 3600) // 60)
         seconds = seconds % 60
         return f"{hours:02}:{minutes:02}:{seconds:02.2f}"
-    
+
     def pipeline_step_decorator(func):
         # So this currently works w/ self down below,
         # but I'm not sure if it's the best way...
@@ -446,9 +479,10 @@ class NanoporePipeline:
                                 f"{self.seconds_to_hms(elapsed_seconds)}.\n\n")
                     else:
                         f.write(f"Error occurred at {get_dt(for_print=True)}\n\n")
-                    f.write(f"Traceback Below:\n{'='*80}\n\n")
+                    f.write(f"Traceback Below:\n{'=' * 80}\n\n")
                     traceback.print_exc(file=f)
                 raise e
+
         return wrapper
 
     #  "G": OutputStep("fastq", "Guppy Basecalling"),
