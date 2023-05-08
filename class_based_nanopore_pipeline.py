@@ -53,6 +53,7 @@ pieces of code I have around this repo.
 """
 import datetime
 import subprocess
+import sys
 import traceback
 from os import path, listdir, mkdir, environ
 from argparse import ArgumentParser
@@ -821,16 +822,20 @@ class NanoporePipeline:
 
 
 if __name__ == '__main__':
-    pipeline = NanoporePipeline(skip_cli_dict={"settings_file": "/data16/marcus/working/"
-                                                                "230327_nanoporeRun_totalRNA_"
-                                                                "wt_xrn-1-KD_5TERA_rerun/230327_"
-                                                                "totalRNA_wt_xrn-1-KD_5TERA_rerun_"
-                                                                "settingsFile (copy).txt",
-                                               # "do_not_log": True,
-                                               "outputDir": "/data16/marcus/working/"
-                                                            "230425_reworkingPipeline/output_dir",
-                                               "stepsToRun": "GTMNF",
-                                               },
-                                )
-    pipeline.run_pipeline()
-    
+    if len(sys.argv) > 1:
+        print("Running pipeline with command line arguments...")
+        pipeline = NanoporePipeline()
+        pipeline.run_pipeline()
+    else:
+        print("Running test pipeline...")
+        pipeline = NanoporePipeline(skip_cli_dict={"settings_file": "/data16/marcus/working/"
+                                                                    "230501_nanoporeRun_sMV025-RNAStds_Nano3P/"
+                                                                    "230501_sMV025-RNAStds_Nano3P_settingsFile.txt",
+                                                   # "do_not_log": True,
+                                                   # "outputDir": f"/tmp/{get_dt()}_temporary_output_dir",
+                                                   "stepsToRun": "F",
+                                                   "useTailfindr": True,
+                                                   "regenerate": True,
+                                                   },
+                                    )
+        pipeline.run_pipeline()
