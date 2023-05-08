@@ -830,10 +830,31 @@ class NanoporePipeline:
                    f"-o {self.featureCounts_dir}/{get_dt(for_file=True)}_featureCounts " \
                    f"{self.cat_files_dir}/cat.sorted.mappedAndPrimary.bam"
             self.run_cmd(call, "featureCounts", save_output_to_file=True)
+            feature_counts_df = pd.read_table(feature_counts_file,
+                                              header=None,
+                                              names=('read_id', 'qc_tag', 'failed', 'gene_id'))
+            feature_counts_df.gene_id.fillna(feature_counts_df.qc_tag, inplace=True)
 
-            filter_call = f"grep Assigned {self.output_dir}/featureCounts/" \
-                          f"cat.sorted.mappedAndPrimary.bam.featureCounts >> " \
-                          f"{self.output_dir}/featureCounts/cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts"
+            names_df = self.get_gene_ids_to_names_df()
+            feature_counts_df = feature_counts_df.merge(names_df, on='gene_id', how='left')
+            feature_counts_df.gene_name.fillna(feature_counts_df.gene_id, inplace=True)
+            feature_counts_counts_df = feature_counts_df.gene_name \
+                .value_counts() \
+                .to_frame(name='gene_hits') \
+                .reset_index(names='gene_name').merge(names_df,
+                                                      on='gene_name',
+                                                      how='left')
+            feature_counts_counts_df = feature_counts_counts_df[['gene_id',
+                                                                 'gene_name',
+                                                                 'chr',
+                                                                 'gene_hits']]
+            print(f"Top 10 genes/assignments:")
+            print(feature_counts_counts_df.head(10))
+            self.logger.info(f"Saving featureCounts output to: "
+                             f"{feature_counts_file.parent.name}/{feature_counts_file.name}.parquet")
+            feature_counts_df.to_parquet(f"{feature_counts_file}.parquet")
+            filter_call = f"grep Assigned {self.featureCounts_dir}/cat.sorted.mappedAndPrimary.bam.featureCounts " \
+                          f">> {self.featureCounts_dir}/cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts"
             self.run_cmd(filter_call, "featureCounts_filtering", save_output_to_file=False)
             self.regenerate = True
         else:
