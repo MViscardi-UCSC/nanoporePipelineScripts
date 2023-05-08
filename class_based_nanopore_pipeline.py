@@ -903,7 +903,29 @@ class NanoporePipeline:
                                               "position": "chr_pos",
                                               "contig": "chr_id"})
         raise NotImplementedError
-    
+
+    def get_gene_ids_to_names_df(self):
+        # Find the file in the genome directory that ends with .gtf.parquet:
+        gtf_parquet_file = glob(f"{self.genome_dir}/*.gtf.parquet")
+        if len(gtf_parquet_file) > 1:
+            raise NotImplementedError(f"Currently this script only supports having genomeDirs "
+                                      f"with one gtf files that ends with '.gtf.parquet'")
+        if len(gtf_parquet_file) == 0:
+            self.logger.info(f"Could not find a pre-processed gtf.parquet file in {self.genome_dir}. Making one now.")
+            gtf_file = glob(f"{self.genome_dir}/*.gtf")
+            if len(gtf_file) != 1:
+                raise NotImplementedError(f"Currently this script only supports having genomeDirs "
+                                          f"with one gtf files that ends with '.gtf'")
+            else:
+                gtf_file = gtf_file[0]
+            gtf_parquet_file = gtf_to_df(gtf_file)
+            gtf_parquet_file.to_parquet(gtf_file + ".parquet")
+            names_df = gtf_parquet_file[["gene_name", "gene_id", "chr"]].drop_duplicates(ignore_index=True)
+        else:
+            gtf_parquet_file = gtf_parquet_file[0]
+            names_df = gene_names_to_gene_ids(parquet_path=gtf_parquet_file)
+        return names_df
+
     @pipeline_step_decorator
     def assign_ENO2_standards(self):
         raise NotImplementedError
