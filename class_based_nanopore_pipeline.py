@@ -495,7 +495,7 @@ class NanoporePipeline:
         return wrapper
 
     #  "G": OutputStep("fastq", "Guppy Basecalling"),
-    #  "A": OutputStep("cat_files", "Filtering Alt. Genomes (currently pretty rough and slow)"),
+    #  "A": OutputStep("cat_files", "Filtering Alt. Genomes (currently pretty rough and slow and unimplemented)"),
     #  "T": OutputStep("cat_files", "Trimming TERA-Seq Adapters"),
     #  "M": OutputStep("cat_files", "Minimap2 and SamTools"),
     #  "N": OutputStep("nanopolish", "Nanopolish Index and polyA Calling"),
