@@ -373,16 +373,18 @@ class NanoporeRun:
         self.fastq_dir = self.run_dir / "fastqs"
         self.nanopolish_dir = self.run_dir / "nanopolish"
         self.feature_counts_dir = self.run_dir / "featureCounts"
+        self.flair_dir = self.run_dir / "flair"
         self.logs_dir = self.run_dir / "logs"
         self.run_date = self.run_dir_name.split("_")[0]
 
         self.cat_files = list(self.cat_dir.glob("cat*"))
+        self.cat_files_dict = {file.name: file for file in self.cat_files}
         # print([file.name for file in self.cat_files])
 
         self.had_standards = False
         self.merge_parquet_path_dict = {}
         for merge_file in self.merge_dir.glob("*.parquet"):
-            short_name = merge_file.name[7:-8]
+            short_name = merge_file.stem[7:]
             if short_name in self.merge_parquet_path_dict.keys():
                 self.merge_parquet_path_dict[short_name].append(merge_file)
             else:
@@ -398,6 +400,43 @@ class NanoporeRun:
 
         self.fastq_path = self.cat_dir / "cat.fastq"
         self.fastq = None
+        with open(self.fastq_path, "r") as fastq_file:
+            # We can look for TERAADAPTER in the first line of the fastq to see if it was a TERA lib:
+            fastq_first_line = fastq_file.readline()
+            if "TERAADAPTER5" in fastq_first_line:
+                self.t5 = True
+            else:
+                self.t5 = False
+        
+        self.basecalled_read_count = -1
+        self.aligned_read_count = -1
+        self.primary_aligned_read_count = -1
+        self.tail_called_read_count = -1
+        self.gene_assigned_read_count = -1
+        self.transcript_assigned_read_count = -1
+        self._calc_read_counts()
+        self.protein_coding_read_count = -1
+        self.read_biotypes_dict = {}
+        self.adapted_read_count = -1
+        
+        settings_files = list(self.run_dir.parent.glob("*settingsFile.txt"))
+        if len(settings_files) == 1:
+            self.settings_file = settings_files[0]
+        else:
+            print(f"Found {len(settings_files)} settings files, we are going to pick the newest one!")
+            # Sort settings_files by date modified, then take the last one:
+            self.settings_file = sorted(settings_files, key=os.path.getmtime)[-1]  # ID if this works
+        self.genome_dir = None
+        with open(self.settings_file) as settings:
+            for line in settings.readlines():
+                if "genomeDir" in line:
+                    self.genome_dir = Path(line.split("|")[1].strip())
+                    if self.genome_dir.exists():
+                        break
+                    else:
+                        print(f"Could not fine genomeDir at {self.genome_dir}!")
+                        self.genome_dir = None
+        self.parsed_gtf = None
 
     def print_run_dirs(self) -> None:
         print(f"Run name: {self.run_name}\n"
@@ -406,11 +445,65 @@ class NanoporeRun:
         print(f"Run Dir contents:")
         for output_dir in self.run_dir.iterdir():
             print(f"--> {output_dir.name}")
-            if len(list(output_dir.iterdir())) <= 15:
-                for file in output_dir.iterdir():
-                    print(f"    --> {file.name}")
-            else:
-                print(f"    --> ({len(list(output_dir.iterdir()))} files)")
+            if output_dir.is_dir():
+                if len(list(output_dir.iterdir())) <= 15:
+                    for file in output_dir.iterdir():
+                        print(f"    --> {file.name}")
+                else:
+                    print(f"    --> ({len(list(output_dir.iterdir()))} files)")
+
+    def _calc_read_counts(self) -> None:
+        # Basecalled
+        with open(self.fastq_path, "rb") as f: num_fastq_lines = sum(1 for _ in f)
+        self.basecalled_read_count = num_fastq_lines // 4
+        if num_fastq_lines % 4 != 0:
+            raise ValueError(f"Fastq file {self.fastq_path} does not have a multiple of 4 lines!")
+        
+        # Aligned
+        self.aligned_read_count = get_bam_read_count(self.cat_files_dict["cat.sorted.bam"])
+        
+        # Primary Aligned
+        self.primary_aligned_read_count = get_bam_read_count(self.cat_files_dict["cat.sorted.mappedAndPrimary.bam"])
+        
+        # Tail Called
+        polya_passed = self.nanopolish_dir / "polya.passed.tsv"
+        with open(polya_passed, "rb") as f: num_polya_passed_lines = sum(1 for _ in f)
+        self.tail_called_read_count = num_polya_passed_lines - 1
+        
+        # Gene Assigned
+        feature_counts_summary = list(self.feature_counts_dir.glob("*.summary"))[0]
+        with open(feature_counts_summary, "r") as f:
+            line_dict = {line.split("\t")[0]: line.split("\t")[1] for line in f.readlines()}
+        self.gene_assigned_read_count = int(line_dict["Assigned"])
+        
+        # Transcript Assigned
+        flair_counts_matrix = self.flair_dir / "counts_matrix.tsv"
+        flair_counts_matrix_df = pd.read_table(flair_counts_matrix, skiprows=1, names=["transcript", "count"],
+                                               dtype={"transcript": str, "count": int})
+        self.transcript_assigned_read_count = flair_counts_matrix_df["count"].sum()
+
+    def print_read_counts(self) -> None:
+        total_reads = self.basecalled_read_count
+        for name, count in self.get_read_counts_dict().items():
+            name = name.replace("_", " ").title()
+            print(f"{f'{name} Reads:':<27}{count:>11,}{count/total_reads:>8.2%}")
+
+    def get_read_counts_dict(self) -> dict:
+        """
+        This returns a simple dict of read counts along steps of the pipeline.
+        Importantly, it does not generate any of these number upon the call,
+        so some will be returned as -1 if they have not been calculated yet.
+        
+        :return: Dictionary of read counts for each step of the pipeline
+        """
+        return {"basecalled": self.basecalled_read_count,
+                "aligned": self.aligned_read_count,
+                "primary_aligned": self.primary_aligned_read_count,
+                "tail_called": self.tail_called_read_count,
+                "gene_assigned": self.gene_assigned_read_count,
+                "transcript_assigned": self.transcript_assigned_read_count,
+                "protein_coding": self.protein_coding_read_count,
+                "adapted": self.adapted_read_count}
 
     def _load_merge_parquet(self, file_midfix: str = "") -> pd.DataFrame:
         if file_midfix not in self.merge_parquet_path_dict.keys():
@@ -455,7 +548,8 @@ class NanoporeRun:
         return self.fastq
 
     def plot_standards(self, save=False, show=True, show_ambiguous=False,
-                       show_non_standards=False, **kwargs) -> (plt.Figure, plt.Axes):
+                       show_non_standards=False, save_to: str or Path = "",
+                       filename_overwrite="", **kwargs) -> (plt.Figure, plt.Axes):
         if not self.had_standards:
             raise ValueError(f"Run {self.run_name} did not have standards")
         if self.mergedOnReads_df is None:
@@ -476,8 +570,12 @@ class NanoporeRun:
         ax.set_ylabel("Number of Reads")
         ax.set_xlabel("Assigned Standard")
         plt.tight_layout()
-        if save:
-            fig.savefig(f"{self.run_dir}/standards.png")
+        if save or save_to != "":
+            if save_to == "":
+                save_to = self.run_dir
+            if filename_overwrite == "":
+                filename_overwrite = f"standards"
+            fig.savefig(f"{save_to}/{filename_overwrite}.png")
         if show:
             plt.show()
         return fig, ax
@@ -500,6 +598,32 @@ class NanoporeRun:
             plt.show()
         return fig, ax
 
+    def plot_read_length_from_fastq(self, save=False, show=True,
+                                    x_lims=(0, 2500), save_to: str or Path = "",
+                                    filename_overwrite="", **kwargs) -> (plt.Figure, plt.Axes):
+        if self.fastq is None:
+            self.load_fastq()
+        if "figsize" not in kwargs.keys():
+            kwargs["figsize"] = (12, 8)
+
+        fig, ax = plt.subplots(**kwargs)
+        sea.histplot(self.fastq.get_read_lengths(), ax=ax, kde=True,
+                     binwidth=50)
+        ax.set_title(f"{self.run_nickname} Read Lengths")
+        ax.set_ylabel("Frequency")
+        ax.set_xlabel("Read Length")
+        ax.set_xlim(x_lims[0], x_lims[1])
+        plt.tight_layout()
+        if save or save_to != "":
+            if save_to == "":
+                save_to = self.run_dir
+            if filename_overwrite == "":
+                filename_overwrite = f"read_lengths"
+            fig.savefig(f"{save_to}/{filename_overwrite}.png")
+        if show:
+            plt.show()
+        return fig, ax
+
     def plot_tail_length_by_standard(self, save=False, show=True,
                                      y_lims=(0, 200), **kwargs) -> (plt.Figure, plt.Axes):
         if not self.had_standards:
@@ -508,10 +632,10 @@ class NanoporeRun:
             self.load_mergedOnReads()
         if "figsize" not in kwargs.keys():
             kwargs["figsize"] = (12, 8)
-        
+
         plot_df = self.mergedOnReads_df[['assignment', 'polya_length']]
         plot_df = plot_df[~plot_df.assignment.str.contains("Ambiguous")]
-        
+
         fig, ax = plt.subplots(**kwargs)
         sea.boxplot(plot_df, ax=ax,
                     x='assignment', y='polya_length')
@@ -519,19 +643,184 @@ class NanoporeRun:
         ax.set_ylabel("Tail Length")
         ax.set_xlabel("Assigned Standard")
         ax.set_ylim(y_lims[0], y_lims[1])
-        
+
         plt.tight_layout()
         if save:
             fig.savefig(f"{self.run_dir}/tail_lengths_by_standard.png")
         if show:
             plt.show()
         return fig, ax
-    
+
     # TODO: Add ability to tag standards reads with "perfect" or "imperfect" based on presence of barcode
+    
+    def produce_metrics(self, tsv_to_append_to: str or Path = ""):
+        """
+        Hopefully a quick script to spit out some useful metrics of my nanopore runs
+        """
+        if self.mergedOnReads_df is None:
+            self.load_mergedOnReads()
+        print(f"Reporting Metrics for {self.run_nickname}:")
+        print(f"Additionally stored in {self.run_dir}/{get_dt()}_metrics.txt")
+        metrics_file = open(f"{self.run_dir}/{get_dt()}_metrics.txt", 'w')
+
+        final_read_count = len(self.mergedOnReads_df)
+        metrics_file.write(f"\tFinal Read Count: {final_read_count}\n")
+        print(f"\tFinal Read Count: {final_read_count}")
+        if self.t5:
+            adapted_count = len(self.mergedOnReads_df[self.mergedOnReads_df['t5'] == '+'])
+            # if adapted_count == 0:
+            #     adapted_count = len(self.mergedOnReads_df[self.mergedOnReads_df['t5']])  # Can't do truthy with pandas series
+            if adapted_count == 0:
+                adapted_count = len(self.mergedOnReads_df[self.mergedOnReads_df['t5'] == '1'])
+            if adapted_count == 0:
+                adapted_count = len(self.mergedOnReads_df[self.mergedOnReads_df['t5'] == 1])
+            adapted_fraction = adapted_count / final_read_count
+            metrics_file.write(f"\tAdapted Read Count: {adapted_count}\n")
+            metrics_file.write(f"\tAdapted Read Fraction: {adapted_fraction:.3}\n")
+            print(f"\tAdapted Read Count: {adapted_count}")
+            print(f"\tAdapted Read Fraction: {adapted_fraction:.3}")
+        
+        metrics_file.close()  # This is a bad way to do this (rather than a context manager) but I'm lazy...
+        
+        if tsv_to_append_to != "":  # This would make a lot more sense to just load this as a
+            #                         pandas df and append to it then save again!
+            tsv_to_append = Path(tsv_to_append_to)
+            if not tsv_to_append.exists():
+                tsv = open(tsv_to_append, 'w')
+                header_names = ['Run', 'Final_Read_Count']
+                if self.t5:
+                    header_names.append('Adapted_Read_Count')
+                    header_names.append('Adapted_Read_Fraction')
+                tsv.write("\t".join(header_names) + "\n")
+            else:
+                tsv = open(tsv_to_append, 'a')
+            entries = [self.run_nickname, final_read_count]
+            if self.t5:
+                entries.append(adapted_count)
+                entries.append(adapted_fraction)
+            tsv.write("\t".join([str(x) for x in entries]) + "\n")
+            tsv.close()  # Again, bad way to do this... Don't judge me.
+        return None
+    
+    def get_read_biotype_count_dict(self, force_regenerate=False) -> dict:
+        if self.read_biotypes_dict != {} and not force_regenerate:
+            return self.read_biotypes_dict
+        feature_counts_path = self.feature_counts_dir / f"cat.sorted.mappedAndPrimary.bam.Assigned.featureCounts"
+        feature_counts_df = pd.read_table(feature_counts_path, header=None,
+                                          names=["read_id", "featC_QC_tag", "featC_QC_score", "gene_id"])
+        if self.parsed_gtf is None:
+            parsed_gtf_matches = list(self.genome_dir.glob("*.gtf.parquet"))
+            if len(parsed_gtf_matches) == 1:
+                self.parsed_gtf = pd.read_parquet(parsed_gtf_matches[0])
+            elif len(parsed_gtf_matches) == 0:
+                raise ValueError(f"Could not find parsed gtf for {self.run_nickname} in {self.genome_dir}!")
+            else:
+                raise ValueError(f"Found multiple parsed gtf for {self.run_nickname}!")
+        simple_gtf = self.parsed_gtf.copy().query("feature == 'gene'")[["gene_id", "gene_name", "gene_biotype"]]
+        feature_counts_df = pd.merge(feature_counts_df, simple_gtf, on="gene_id", how="left")
+        feature_counts_df.drop_duplicates(inplace=True)
+        feature_counts_biotype_dict = feature_counts_df["gene_biotype"].value_counts().to_dict()
+        self.protein_coding_read_count = feature_counts_biotype_dict["protein_coding"]
+        self.read_biotypes_dict = feature_counts_biotype_dict
+        return feature_counts_biotype_dict
+    
+    def get_raw_adapted_count(self) -> int:
+        # This is a little slow, but should take <10 seconds for 1 million reads
+        bam = pysam.AlignmentFile(self.cat_files_dict['cat.sorted.bam'], 'r')
+        t5_list = [read.get_tag('t5') for read in bam.fetch()]
+        bam.close()
+        better_t5_list = [1 if t5 == '+' else 0 for t5 in t5_list]
+        self.adapted_read_count = sum(better_t5_list)
+        return self.adapted_read_count
+    
+    def biotypes_bar_plot(self, save_dir=None) -> plt.Figure:
+        sea.set_style('whitegrid')
+        
+        long_df = pd.DataFrame.from_dict(self.get_read_biotype_count_dict(), orient='index', columns=['reads']).reset_index(
+            names='gene_biotype')
+        long_df['lib'] = self.run_nickname
+        long_df['specifics'] = long_df['gene_biotype'] == 'protein_coding'
+
+        known_biotypes = ['protein_coding', 'rRNA', 'pseudogene', 'ncRNA', 'lincRNA', 'snoRNA', 'snRNA',
+                          'antisense_RNA', 'piRNA', 'miRNA', 'tRNA']
+        color_dict = dict(zip(known_biotypes,  # This could prove to be an issue in the future!*
+                              cycle(sea.color_palette())))
+        # Note that if you are getting a valueError down below, it is because you have a biotype
+        # that is not in the list above! Add it manually?
+
+        fig = plt.figure(figsize=(5, 4),
+                         # layout='constrained',
+                         dpi=96,
+                         )
+        wide, zoom = fig.subfigures(1, 2)
+
+        wide_sea_axis = (
+            so.Plot(long_df,
+                    x="lib",
+                    color='gene_biotype')
+            .scale(color=color_dict)
+            .add(so.Bars(width=0.5),
+                 so.Stack(),
+                 y='reads')
+        ).on(wide).plot()
+
+        zoom_sea_axis = (
+            so.Plot(long_df[long_df.gene_biotype != 'protein_coding'],
+                    x="lib",
+                    color='gene_biotype')
+            .scale(color=color_dict)
+            .add(so.Bars(width=0.5),
+                 so.Stack(),
+                 y='reads')
+        ).on(zoom).plot()
+        
+        for ax in fig.axes:
+            ax.set_position([0.05, 0.125, 0.7, 0.775])
+            ax.get_xaxis().set_visible(False)
+            mkfunc = lambda x, pos: '%1.0fM' % (x * 1e-6) if x >= 1e6 else '%1.0fK' % (
+                        x * 1e-3) if x >= 1e3 else '%1.0f' % x
+            ax.get_yaxis().set_major_formatter(plt.FuncFormatter(mkfunc))
+        
+        # Fix legends!
+        leg1, leg2 = fig.legends.pop(0), fig.legends.pop(0)
+        legend_text = [t.get_text().replace("_", " ") for t in leg1.texts]
+        fig.legend(leg1.legendHandles, [t.title() if t.islower() else t for t in legend_text],
+                   loc='upper center',
+                   bbox_to_anchor=(0.4, 0.00),
+                   ncol=3,
+                   )
+        plt.title(f"Read Counts by Assigned Biotype", x=-0.3, y=1.025)
+        if save_dir and Path(save_dir).exists():
+            plt.savefig(f"{save_dir}/{get_dt()}_{self.run_nickname}_biotypesBarplot.png",
+                        dpi=300,
+                        bbox_inches='tight')
+            plt.savefig(f"{save_dir}/{get_dt()}_{self.run_nickname}_biotypesBarplot.svg",
+                        bbox_inches='tight')
+        plt.show()
+        return fig
 
 
 class NanoJAMDF(pd.DataFrame):
     pass
+
+
+def get_bam_read_count(bam_file_path, print_out=False):
+    chr_count_dict = get_bam_read_count_dict(bam_file_path)
+    total = sum(chr_count_dict.values())
+    if print_out:
+        print(f"Total reads in {bam_file_path.name}: {total:,}")
+    return total
+
+
+def get_bam_read_count_dict(bam_file_path):
+    idx_stats = pysam.idxstats(str(bam_file_path))
+    chr_count_dict = {}
+    # print(idx_stats)
+    for line in idx_stats.strip("\n").split("\n"):
+        chromo, len, maps, unmaps = line.split("\t")
+        if chromo != '*':
+            chr_count_dict[chromo] = int(maps)
+    return chr_count_dict
 
 
 def load_and_merge_lib_parquets(lib_list, genomeDir=f"/data16/marcus/genomes/elegansRelease100/",
@@ -839,7 +1128,7 @@ def pick_libs_return_paths_dict(lib_list: list, output_dir_folder="merge_files",
                                 file_midfix="_mergedOnReads", file_suffix="parquet",
                                 return_all: bool = False, ignore_unmatched_keys: bool = False) -> dict:
     output_dir_dict = OUTPUT_DIR_DICT
-    if not isinstance(lib_list, list) or not isinstance(lib_list, tuple):
+    if not isinstance(lib_list, list) and not isinstance(lib_list, tuple):
         raise NotImplementedError(f"Please pass a list/tuple of library keys, "
                                   f"you passed a {type(lib_list)}. "
                                   f"If you only want one value, "
@@ -979,11 +1268,13 @@ def gene_names_to_gene_ids(
     return df
 
 
-def get_dt(for_print=False, for_file=True):
+def get_dt(for_print=False, for_file=True, extended_for_file=False):
     from datetime import datetime
     now = datetime.now()
     if for_print:
         return str(now.strftime("%m/%d/%y @ %I:%M:%S %p"))
+    elif extended_for_file:
+        return str(now.strftime("%y%m%d_%H:%M:%S"))
     elif for_file:
         return str(now.strftime("%y%m%d"))
     else:
@@ -1055,7 +1346,7 @@ def find_newest_matching_file(path_str):
         latest_file = max(list_of_files, key=path.getctime)
         return latest_file
     except ValueError:
-        raise ValueError(f"Failed to find any files matching \"{path_str}\"")
+        raise FileNotFoundError(f"Failed to find any files matching \"{path_str}\"")
 
 
 def load_ski_pelo_targets(as_df=False):
