@@ -74,12 +74,18 @@ OUTPUT_DIR_DICT = {
              "output_dir",
     "sPM57": "/data16/marcus/working/230130_nanoporeRun_totalRNA_sPM57_xrn-1-KD_5PTERA/"
              "output_dir",
+    "dRNA_StdsTest": "/data16/marcus/working/221112_nanoporeRun_ENO2RNAStds_dRNA/output_dir",
+    "nano3P_StdsTest": "/data16/marcus/working/221028_nanoporeRun_ENO2RNAStds_Nano3P/output_dir",
     "5tera_xrn-1-KD_wt_rerun": "/data16/marcus/working/230327_nanoporeRun_totalRNA_wt_xrn-1-KD_5TERA_rerun/"
                                "output_dir",
     "5tera_xrn-1-KD_smg-6_rerun": "/data16/marcus/working/230403_nanoporeRun_totalRNA_smg-6_xrn-1-KD_5TERA_rerun/"
                                   "output_dir",
     "5tera_xrn-1-KD_smg-5_rerun": "/data16/marcus/working/230410_nanoporeRun_totalRNA_smg-5_xrn-1-KD_5TERA_rerun/"
                                   "output_dir",
+    "nano3P_sMV025andStds_LTandBH": "/data16/marcus/working/230406_nanoporeRun_totalRNAandStds_sMV025_Nano3P/"
+                                    "output_dir",
+    "nano3P_sMV025andStds_LTandBH_2": "/data16/marcus/working/230417_nanoporeRun_totalRNAandStds_sMV025_Nano3P_again/"
+                                      "output_dir",
 }
 REV_OUTPUT_DIR_DICT = {v: k for k, v in OUTPUT_DIR_DICT.items()}
 
@@ -94,7 +100,13 @@ CONVERSION_DICT = {"xrn-1-5tera": "oldN2",
                    "5tera_xrn-1-KD_smg-5_rerun": "newerS5",
                    "sPM57": "sPM57",
                    "sPM58": "sPM58",
+                   "nano3P_sMV025andStds_LTandBH": "nano3P_N2andStds",
+                   "nano3P_sMV025andStds_LTandBH_2": "nano3P_N2andStds_2",
+                   "dRNA_StdsTest": "dRNA_STDs",
+                   "nano3P_StdsTest": "nano3P_STDs",
                    }
+add_to_conversion_dict = {key: key for key in OUTPUT_DIR_DICT.keys() if key not in CONVERSION_DICT.keys()}
+CONVERSION_DICT.update(add_to_conversion_dict)
 REV_CONVERSION_DICT = {val: key for key, val in CONVERSION_DICT.items()}
 
 
