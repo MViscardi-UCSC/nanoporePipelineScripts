@@ -4,7 +4,8 @@ Marcus Viscardi,    September 22, 2021
 
 A common location for some often used methods.
 """
-
+import re
+import pysam
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -12,8 +13,10 @@ import os
 from subprocess import Popen, CalledProcessError, PIPE
 from pathlib import Path
 import datetime
+from itertools import cycle
 
 import seaborn as sea
+import seaborn.objects as so
 import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
