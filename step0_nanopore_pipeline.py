@@ -574,7 +574,7 @@ def concat_files(outputDir, tera3adapter, tera5adapter, regenerate, **other_kwar
     if concat_flag:
         calls = [f"samtools view -b -F 0x904 {original_bam_file} > {bam_file_with_only_mappedAndPrimary}",
                  # The above command will build a new bam file w/out reads w/ bit_flags:
-                 #    0x004, UNMAP           =   reads who's sequence didn't align to the genome
+                 #    0x004, UNMAP           =   reads whose sequence didn't align to the genome
                  #    0x100, SECONDARY       =   reads that are secondary alignments
                  #    0x800, SUPPLEMENTARY   =   reads that are supplemental alignments
                  f"samtools index {bam_file_with_only_mappedAndPrimary}",
