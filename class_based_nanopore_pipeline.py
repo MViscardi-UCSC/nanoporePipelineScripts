@@ -262,6 +262,7 @@ class NanoporePipeline:
         self._setup_directories()
         self.fastq_dir = self.output_dir / "fastqs"
         self.cat_files_dir = self.output_dir / "cat_files"
+        self.cat_files_dir.mkdir(exist_ok=True)  # I think we ALWAYS need the cat_files dir...
         self.tailfindr_dir = self.output_dir / "tailfindr"  # These are both here, but only one will be used.
         self.nanopolish_dir = self.output_dir / "nanopolish"  # ^^^
         self.featureCounts_dir = self.output_dir / "featureCounts"
