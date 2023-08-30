@@ -695,6 +695,12 @@ class NanoporePipeline:
         # Finally, we'll overwrite the old bam with the new, tagged sam file, and index it:
         call = f'samtools view -b {output_sam} -o {input_bam}'
         self.run_cmd(call, "tagged_sam_to_bam", save_output_to_file=False)
+        
+        # We also want to index the new sam/bam files:
+        call = f'samtools index {output_sam}'
+        self.run_cmd(call, "tagged_sam_to_bam", save_output_to_file=False)
+        call = f'samtools index {input_bam}'
+        self.run_cmd(call, "tagged_sam_to_bam", save_output_to_file=False)
 
     @pipeline_step_decorator
     def minimap2_and_samtools(self):
