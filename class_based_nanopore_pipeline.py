@@ -837,6 +837,12 @@ class NanoporePipeline:
         if not fast5_path.exists() or len(fast5_files) == 0:
             # Raise an error if we don't have any fast5 files!
             raise FileNotFoundError(f"Could not find fast5 files in {fast5_path}! ")
+        guppy_run_tag_file = self.fastq_dir / "guppy_run_tag.txt"
+        guppy_run_tag_text = guppy_run_tag_file.read_text()
+        if "--fast5_out" not in guppy_run_tag_text or "--trim_strategy none" not in guppy_run_tag_text:
+            self.logger.warning(f"WARNING: You are not using the recommended guppy options for tailfindr! "
+                                f"Tailfindr requires the following options: --fast5_out --trim_strategy none")
+            self.logger.warning(f"I'll leave ^this up to you to fix, but I'm going to continue anyway...")
         # Now we can run tailfindr!
         r_command = f"Rscript -e 'library(tailfindr); " \
                     f"library(arrow); " \
