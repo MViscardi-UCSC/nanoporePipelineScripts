@@ -333,6 +333,9 @@ class FastqFile:
                                                             sep="\n",
                                                             quoting=QUOTE_NONE)
 
+    def get_read_lengths(self) -> list:
+        return self.df["sequence"].apply(len).to_list()
+
 
 class NanoporeRun:
     def __init__(self, run_name: str = None, run_nickname: str = None,
