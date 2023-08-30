@@ -269,8 +269,10 @@ def coverage_plotting_5tera(bam_df_for_plot, gene_name=None, gene_id=None,
     axes[0]: plt.Axes
     axes[1]: plt.Axes
     
-    axes[0].fill_between(index_array, zeros_array, locus_array_ad, color=adapted_color)
-    axes[1].fill_between(index_array, zeros_array, locus_array_unad, color=unadapted_color)
+    axes[0].fill_between(index_array, zeros_array, locus_array_ad,
+                         color=adapted_color, linewidth=0)
+    axes[1].fill_between(index_array, zeros_array, locus_array_unad,
+                         color=unadapted_color, linewidth=0)
     axes[0].set_xticks([])
     axes[1].set_xticks([])
     # axes[0].set_xlabel
