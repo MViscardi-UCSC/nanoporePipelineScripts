@@ -5,7 +5,7 @@ library(tailfindr)
 library(arrow)
 
 # Holy F*&#ing S%#t, this helps:
-# So the vbz plugin from ONT is extreamly important for being
+# So the vbz plugin from ONT is extremely important for being
 # able to read the compressed nanopore hdf5 files (fast5s)
 Sys.setenv(HDF5_PLUGIN_PATH = "/usr/local/hdf5/lib/plugin")
 
