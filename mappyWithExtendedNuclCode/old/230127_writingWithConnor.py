@@ -6,8 +6,8 @@ Marcus Viscardi,    January 27, 2023
 
 from Bio import SeqIO
 
-input_file = './testRef.fasta'
-output_file = './testRef.new.fasta'
+input_file = 'testRef.fasta'
+output_file = 'testRef.new.fasta'
 
 if __name__ == '__main__':
     # Read fasta file to fasta_sequences:
