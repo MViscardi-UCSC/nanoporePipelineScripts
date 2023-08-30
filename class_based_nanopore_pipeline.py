@@ -822,6 +822,21 @@ class NanoporePipeline:
             self.regenerate = True
         else:
             self.logger.info(f"Skipping nanopolish polya filtering because it has already been run on polya.tsv.")
+
+        nanopolish_polya_simplified_file = self.nanopolish_dir / "polya.passed.simple.tsv"
+        nanopolish_simplified_flag = self.regenerate or not nanopolish_polya_simplified_file.exists()
+        if nanopolish_simplified_flag:
+            tails_df = pd.read_csv(nanopolish_polya_passed_file, sep="\t")
+            tails_df = tails_df[["read_name", "contig", "position", "polya_length", "qc_tag"]]
+            tails_df = tails_df.rename(columns={"read_name": "read_name",
+                                                "contig": "chr",
+                                                "position": "start"})
+            tails_df.to_csv(nanopolish_polya_simplified_file, sep="\t", index=False)
+            self.logger.info(f"Saved simplified polya file to {nanopolish_polya_simplified_file}")
+            self.regenerate = True
+        else:
+            self.logger.info(f"Skipping nanopolish polya simplifying because "
+                             f"it has already been run on polya.passed.tsv.")
         self.nanopolish_ran = True
 
     @pipeline_step_decorator
