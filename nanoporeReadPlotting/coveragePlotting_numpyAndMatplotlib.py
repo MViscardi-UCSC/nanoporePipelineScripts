@@ -67,13 +67,13 @@ def build_coverage_dictionary(bam_df, chrs=("I", "II", "III", "IV", "V", "MtDNA"
         gen_pos_col = "chr_pos"
 
     # These are actually annotation ends:
-    chr_max_length_dict = {'I': 15072426,
-                           'II': 15279420,
-                           'III': 13783459,
-                           'IV': 17493829,
-                           'V': 20922738,
-                           'X': 17718743,
-                           'MtDNA': 13327}
+    chr_max_length_dict = {'I':   15_072_426,
+                           'II':  15_279_420,
+                           'III': 13_783_459,
+                           'IV':  17_493_829,
+                           'V':   20_922_738,
+                           'X':   17_718_743,
+                           'MtDNA':   13_327}
     # Because of some python weirdness, we need to turn single chromosomes into lists!
     if not isinstance(chrs, (list, tuple)):
         chrs = [chrs]
