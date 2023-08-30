@@ -264,6 +264,8 @@ class StdLibrary:
 if __name__ == '__main__':
     SY_nano3P = StdLibrary(f"/data16/marcus/nanoporeSoftLinks/"
                            f"230224_nanoporeRun_RNAStds_SY-TGIRT-50ng_Nano3P/output_dir", False)
-    # dRNA = StdLibrary(f"/data16/marcus/nanoporeSoftLinks/"
-    #                   f"221112_nanoporeRun_ENO2RNAStds_dRNA/output_dir", True)
+    dRNA = StdLibrary(f"/data16/marcus/nanoporeSoftLinks/"
+                      f"221112_nanoporeRun_ENO2RNAStds_dRNA/output_dir", True)
+    # BHLT_nano3P = StdLibrary(f"/data16/marcus/working/230501_nanoporeRun_PureRNAStds_Nano3P/output_dir", False)
     print("done.")
+
