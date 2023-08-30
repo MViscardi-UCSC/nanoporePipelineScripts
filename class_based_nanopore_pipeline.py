@@ -561,7 +561,8 @@ class NanoporePipeline:
                    rf"""-c {self.guppy_config} -i {self.data_dir}/fast5 -s {self.fastq_dir} """
             self.run_cmd(call, "guppy_basecalling", save_output_to_file=True)
             guppy_run_tag_file.touch()
-            guppy_run_tag_file.write_text(f"Last run on {get_dt(for_print=True)}.")
+            guppy_run_tag_file.write_text(f"Last run on {get_dt(for_print=True)}.\n")
+            guppy_run_tag_file.write_text(f"Run command: {call}\n")
             self.regenerate = True
         else:
             self.logger.info("Guppy basecalling already completed, skipping")
