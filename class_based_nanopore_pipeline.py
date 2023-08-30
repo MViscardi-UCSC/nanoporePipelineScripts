@@ -853,7 +853,9 @@ class NanoporePipeline:
         This method will run tailfindr on the cat.fastq file to generate a file with polyA tail lengths called.
         :return: 
         """
+        tailfindr_output_files = glob(f"{self.tailfindr_dir}/*_tailfindr.parquet")
         # TODO: Add check for previous run!
+        # TODO: porechop??!! I don't even know!
         # First, lets make sure we have the fast5 files in out output directory:
         fast5_path = self.fastq_dir / "workspace"
         fast5_files = glob(f"{fast5_path}/*.fast5")
