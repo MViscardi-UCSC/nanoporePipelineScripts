@@ -1441,7 +1441,16 @@ def parse_read_assignment_allChrs_txt(assignment_file_txt, multi_row_isoforms=Fa
 
 
 if __name__ == '__main__':
-    run = NanoporeRun(run_nickname="newerS5")
-    # run.print_run_dirs()
-    run.plot_read_length()
-    run.plot_tail_length_by_standard(y_lims=(0, 100))
+    # save_path = Path("/data16/marcus/working/230418_RNAStds_butWithIllumina/plots")
+    # save_path.mkdir(exist_ok=True)
+    # for nickname in ["newerN2", "newerS6", "newerS5",
+    #                  "oldN2", "oldS6",
+    #                  "newN2", "newS6", "newS5",
+    #                  # "nano3P_STDs",
+    #                  # "dRNA_STDs",
+    #                  ]:
+    #     NanoporeRun(
+    #         run_nickname=nickname,
+    #     ).produce_metrics(tsv_to_append_to=f"./{get_dt()}_nanopore_run_metrics.tsv")
+    gtf_in = "/data16/marcus/genomes/plus-pTRIxef_elegansRelease100/210928_allChrs_plus-pTRI.gtf"
+    gtf_to_df(gtf_in).to_parquet(gtf_in + ".parquet")
