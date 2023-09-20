@@ -86,6 +86,12 @@ OUTPUT_DIR_DICT = {
                                     "output_dir",
     "nano3P_sMV025andStds_LTandBH_2": "/data16/marcus/working/230417_nanoporeRun_totalRNAandStds_sMV025_Nano3P_again/"
                                       "output_dir",
+    "5tera_xrn-1-KD_wt_third": "/data16/marcus/working/230918_nanoporeRun_sMV013_wt_xrn-1-KD_5TERA/"
+                               "output_dir",
+    "5tera_xrn-1-KD_smg-5_third": "/data16/marcus/working/230918_nanoporeRun_sMV014_smg-5_xrn-1-KD_5TERA/"
+                                  "output_dir",
+    "5tera_xrn-1-KD_smg-6_third": "/data16/marcus/working/230918_nanoporeRun_sMV015_smg-6_xrn-1-KD_5TERA/"
+                                  "output_dir",
 }
 REV_OUTPUT_DIR_DICT = {v: k for k, v in OUTPUT_DIR_DICT.items()}
 
@@ -98,6 +104,9 @@ CONVERSION_DICT = {"xrn-1-5tera": "oldN2",
                    "5tera_xrn-1-KD_wt_rerun": "newerN2",
                    "5tera_xrn-1-KD_smg-6_rerun": "newerS6",
                    "5tera_xrn-1-KD_smg-5_rerun": "newerS5",
+                   "5tera_xrn-1-KD_wt_third": "thirdN2",
+                   "5tera_xrn-1-KD_smg-5_third": "thirdS5",
+                   "5tera_xrn-1-KD_smg-6_third": "thirdS6",
                    "sPM57": "sPM57",
                    "sPM58": "sPM58",
                    "nano3P_sMV025andStds_LTandBH": "nano3P_N2andStds",
@@ -417,6 +426,7 @@ class NanoporeRun:
         self.tail_called_read_count = -1
         self.gene_assigned_read_count = -1
         self.transcript_assigned_read_count = -1
+        self.standards_assigned_read_count = -1
         self._calc_read_counts()
         self.protein_coding_read_count = -1
         self.read_biotypes_dict = {}
@@ -484,6 +494,10 @@ class NanoporeRun:
         flair_counts_matrix_df = pd.read_table(flair_counts_matrix, skiprows=1, names=["transcript", "count"],
                                                dtype={"transcript": str, "count": int})
         self.transcript_assigned_read_count = flair_counts_matrix_df["count"].sum()
+        
+        # Standards Assigned
+        self.standards_assigned_read_count = get_bam_read_count(self.cat_files_dict["cat.sorted.mappedAndPrimary.bam"],
+                                                                specific_chromo="cerENO2")
 
     def print_read_counts(self) -> None:
         total_reads = self.basecalled_read_count
@@ -505,6 +519,7 @@ class NanoporeRun:
                 "tail_called": self.tail_called_read_count,
                 "gene_assigned": self.gene_assigned_read_count,
                 "transcript_assigned": self.transcript_assigned_read_count,
+                "standards_assigned": self.standards_assigned_read_count,
                 "protein_coding": self.protein_coding_read_count,
                 "adapted": self.adapted_read_count}
 
@@ -807,12 +822,18 @@ class NanoJAMDF(pd.DataFrame):
     pass
 
 
-def get_bam_read_count(bam_file_path, print_out=False):
+def get_bam_read_count(bam_file_path, specific_chromo=None, print_out=False):
     chr_count_dict = get_bam_read_count_dict(bam_file_path)
-    total = sum(chr_count_dict.values())
-    if print_out:
-        print(f"Total reads in {bam_file_path.name}: {total:,}")
-    return total
+    if specific_chromo is not None:
+        total = chr_count_dict[specific_chromo]
+        if print_out:
+            print(f"Reads in {bam_file_path.name} on {specific_chromo}: {total:,}")
+        return total
+    else:
+        total = sum(chr_count_dict.values())
+        if print_out:
+            print(f"Total reads in {bam_file_path.name}: {total:,}")
+        return total
 
 
 def get_bam_read_count_dict(bam_file_path):
