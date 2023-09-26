@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, '/data16/marcus/scripts/nanoporePipelineScripts')
-from nanoporePipelineCommon import get_dt, pick_lib_return_path
+from nanoporePipelineCommon import get_dt, pick_lib_return_path, CONVERSION_DICT
 
 MIN_COVERAGE_OF_GENE = 50  # Min number of nucleotides mapped w/in the gene to consider it a hit
 FRAC_COVERAGE_OF_REGION = 0.1  # Fraction of the region that must be covered to ID a isoform
@@ -73,18 +73,7 @@ NMD_ISO_REGIONS = {
     #           'region_is_target': True},
 }
 
-CONVERSION_DICT = {"xrn-1-5tera": "oldN2",
-                   "xrn-1-5tera-smg-6": "oldS6",
-                   "5tera_xrn-1-KD_wt": "newN2",
-                   "5tera_xrn-1-KD_wt_rerun": "newerN2",
-                   "5tera_xrn-1-KD_smg-6_rerun": "newerS6",
-                   "5tera_xrn-1-KD_smg-5_rerun": "newerS5",
-                   "5tera_xrn-1-KD_smg-5": "newS5",
-                   "5tera_xrn-1-KD_smg-6": "newS6",
-                   "5tera_xrn-1-KD_smg-7": "newS7",
-                   "sPM57": "sPM57",
-                   "sPM58": "sPM58",
-                   }
+CONVERSION_DICT = CONVERSION_DICT
 REV_CONVERSION_DICT = {val: key for key, val in CONVERSION_DICT.items()}
 LIB_NAMES = list(REV_CONVERSION_DICT.keys())
 
