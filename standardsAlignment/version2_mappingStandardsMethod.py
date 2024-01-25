@@ -64,6 +64,7 @@ def print_mappy_hit_alignment(mappy_hit_obj: mappy.Alignment,
     read_seq = read_seq[mappy_hit_obj.q_st: mappy_hit_obj.q_en].upper()
     read_pos = 0
     if mappy_hit_obj.strand == -1:
+        print("Reverse Complementing b/c read is on reverse strand")
         read_seq = mp.revcomp(read_seq)
     top_line = ""
     middle_line = ""
