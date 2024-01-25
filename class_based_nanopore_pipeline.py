@@ -888,7 +888,7 @@ class NanoporePipeline:
     def featureCounts(self):
         """
         This method will run featureCounts on the cat.sorted.mappedAndPrimary.bam
-        file to identify the genes that each read maps to.
+        file to identify the gene(s) that each read maps to.
         :return:
         """
         feature_counts_file = self.featureCounts_dir / "cat.sorted.mappedAndPrimary.bam.featureCounts"
@@ -1010,10 +1010,40 @@ class NanoporePipeline:
 
     @pipeline_step_decorator
     def assign_ENO2_standards(self):
-        # TODO: Rework this step a bit so that it will work with the new merge_files step.
-        #       AND so that it will work without merge_files happening first.
-        #       Should this be a separate step? Or should it be part of merge_files?
-        raise NotImplementedError
+        # Used ChatGPT to convert the old method to this one
+        # TODO: Determine if this is the correct way to do this!!!
+        
+        # Check if the merge_files step has already been run
+        merge_on_reads_path = self.merge_files_dir / f"{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet"
+
+        if not self.regenerate and merge_on_reads_path.exists():
+            self.logger.info("EN02 standards already assigned, skipping.")
+            return
+
+        # Import the necessary classes and modules for standards assignment
+        from standardsAlignment.version2_mappingStandardsMethod_classBased import StandardsAlignerENO2
+
+        # Determine the library type based on the guppyConfig
+        if self.guppy_config.startswith('rna'):
+            library_type = 'dRNA'
+        elif self.guppy_config.startswith('dna'):
+            library_type = 'cDNA'
+        else:
+            library_type = None  # Handle unknown library type here if needed
+
+        # Load the merged data if it hasn't been loaded already
+        if not hasattr(self, 'merged_df') or self.merged_df is None:
+            merge_on_reads_path = find_newest_matching_file(f"{self.merge_files_dir}/*mergedOnReads.parquet")
+            self.merged_df = pd.read_parquet(merge_on_reads_path)
+
+        # Perform standards alignment and save the result
+        aligner = StandardsAlignerENO2(mjv_compressed_df=self.merged_df.sort_values("chr_id"),
+                                       library_type=library_type)
+        output_df = aligner.run_alignments()
+        out_file_path = self.merge_files_dir / f"{get_dt(for_file=True)}_mergedOnReads.plusStandards.parquet"
+        output_df.to_parquet(out_file_path)
+
+        self.logger.info("EN02 standards assigned successfully.")
 
     @pipeline_step_decorator
     def flair_for_transcripts(self):
