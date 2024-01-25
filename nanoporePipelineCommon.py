@@ -496,8 +496,11 @@ class NanoporeRun:
         self.transcript_assigned_read_count = flair_counts_matrix_df["count"].sum()
         
         # Standards Assigned
-        self.standards_assigned_read_count = get_bam_read_count(self.cat_files_dict["cat.sorted.mappedAndPrimary.bam"],
-                                                                specific_chromo="cerENO2")
+        try:
+            self.standards_assigned_read_count = get_bam_read_count(self.cat_files_dict["cat.sorted.mappedAndPrimary.bam"],
+                                                                    specific_chromo="cerENO2")
+        except KeyError:
+            self.standards_assigned_read_count = -1
 
     def print_read_counts(self) -> None:
         total_reads = self.basecalled_read_count
@@ -754,8 +757,9 @@ class NanoporeRun:
     def biotypes_bar_plot(self, save_dir=None) -> plt.Figure:
         sea.set_style('whitegrid')
         
-        long_df = pd.DataFrame.from_dict(self.get_read_biotype_count_dict(), orient='index', columns=['reads']).reset_index(
-            names='gene_biotype')
+        long_df = pd.DataFrame.from_dict(self.get_read_biotype_count_dict(),
+                                         orient='index',
+                                         columns=['reads']).reset_index(names='gene_biotype')
         long_df['lib'] = self.run_nickname
         long_df['specifics'] = long_df['gene_biotype'] == 'protein_coding'
 
@@ -763,7 +767,7 @@ class NanoporeRun:
                           'antisense_RNA', 'piRNA', 'miRNA', 'tRNA']
         color_dict = dict(zip(known_biotypes,  # This could prove to be an issue in the future!*
                               cycle(sea.color_palette())))
-        # Note that if you are getting a valueError down below, it is because you have a biotype
+        # Note that if you are getting a ValueError down below, it is because you have a biotype
         # that is not in the list above! Add it manually?
 
         fig = plt.figure(figsize=(5, 4),
@@ -1185,10 +1189,26 @@ def pick_libs_return_paths_dict(lib_list: list, output_dir_folder="merge_files",
 
 def pick_lib_return_path(lib_key, output_dir_folder="merge_files",
                          file_midfix="_mergedOnReads", file_suffix="parquet", ) -> str:
-    [(lib_key, lib_path)] = pick_libs_return_paths_dict([lib_key],
-                                                        file_suffix=file_suffix,
-                                                        file_midfix=file_midfix,
-                                                        output_dir_folder=output_dir_folder).items()
+    """
+    This method will return the path to various library files based on the lib_key passed.
+    
+    :param lib_key: 
+    :param output_dir_folder: 
+    :param file_midfix: 
+    :param file_suffix: 
+    :return: 
+    """
+    try:
+        [(lib_key, lib_path)] = pick_libs_return_paths_dict([lib_key],
+                                                            file_suffix=file_suffix,
+                                                            file_midfix=file_midfix,
+                                                            output_dir_folder=output_dir_folder).items()
+    except FileNotFoundError:
+        print(f"Couldn't find file for {lib_key}, trying to use this as a short key...")
+        [(lib_key, lib_path)] = pick_libs_return_paths_dict([REV_CONVERSION_DICT[lib_key]],
+                                                            file_suffix=file_suffix,
+                                                            file_midfix=file_midfix,
+                                                            output_dir_folder=output_dir_folder).items()
     return lib_path
 
 
