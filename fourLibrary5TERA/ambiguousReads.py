@@ -1,8 +1,29 @@
 """
 ambiguousReads.py
 Marcus Viscardi,    July 03, 2023
+Updated by Marcus Viscardi,    May 1, 2024
 
-This is basically just meant to turn the musings in ambiguousReads.ipynb into a runnable script!
+This script will iterate through a BAM file given from an NMD library, then it will identify reads that map to the
+NMD-sensitive region of hardcoded genes. More specificially:
+1. It will find the BAM file based on the library name by using the code in the nanoporePipelineCommon.py script.
+2. It will load a hard-coded dictionary of genes that are known to be NMD-sensitive in C. elegans.
+3. The NMD-sensitive genes ill be combined with a GTF reference annotations file to get the exact coordinates of the
+   overall gene and other details.
+4. Then for each NMD-sensitive gene, the script will iterate through the reads in the BAM file that overalap with the
+   gene and determine if they overlap with the NMD-sensitive region of the gene.
+5. The reads will be split into three categories based on their overlap with the NMD-sensitive region:
+    a. Reads that overlap with the NMD-sensitive region (NMD_Targets)
+    b. Reads that do not overlap with the NMD-sensitive region (Non_NMD_Targets)
+    c. Reads that are ambiguous because they do not span the NMD-sensitive region (Ambiguous)
+6. The script will output four BAM files:
+    a. NMD_Targets.bam
+    b. Non_NMD_Targets.bam
+    c. Ambiguous.bam
+    d. Merged.bam (all three of the above combined)
+Importantly the outputted BAM files will have new tags added to them:
+    - nC: This will be the category of the read (NMD_Targets, Non_NMD_Targets, Ambiguous)
+    - gA: This will be the gene_id of the gene that the read overlapped with
+The script will also output a CSV file with the details of the NMD-sensitive genes that were used in the analysis.
 """
 import pysam
 import pandas as pd
@@ -13,7 +34,7 @@ sys.path.insert(0, '/data16/marcus/scripts/nanoporePipelineScripts')
 from nanoporePipelineCommon import get_dt, pick_lib_return_path, CONVERSION_DICT
 
 MIN_COVERAGE_OF_GENE = 50  # Min number of nucleotides mapped w/in the gene to consider it a hit
-FRAC_COVERAGE_OF_REGION = 0.1  # Fraction of the region that must be covered to ID a isoform
+FRAC_COVERAGE_OF_REGION = 0.05  # Fraction of the region that must be covered to ID a isoform
 
 NMD_ISO_REGIONS = {
     'rpl-30': {'start': 10_436_292,
@@ -111,12 +132,12 @@ if __name__ == '__main__':
             if not Path(output_dir).exists():
                 Path(output_dir).mkdir(parents=True, exist_ok=True)
     else:
+        print(f"Using default values for lib_name and output_dir")
         lib_name = "newerN2"
         output_dir = "/tmp"
         long_output_names = True
         bam_file = Path(pick_lib_return_path(REV_CONVERSION_DICT[lib_name], output_dir_folder='cat_files',
                                              file_midfix='cat.sorted.mappedAndPrimary', file_suffix='.bam'))
-        print(f"Using default values for lib_name and output_dir")
 
     print(f"Finished imports at: {get_dt(for_print=True)}")
 
@@ -155,27 +176,29 @@ if __name__ == '__main__':
         general_name = f'{output_dir}/{bam_file.parent.parent.parent.stem}.all'
     else:
         general_name = f'{output_dir}/{get_dt()}_nmd_targets.all'
+    
+    # Output BAM paths:
     nmd_bam_path = Path(f'{general_name}.nmd.bam')
-    nmd_bam = pysam.AlignmentFile(nmd_bam_path, 'wb', template=bam)
     non_nmd_bam_path = Path(f'{general_name}.non_nmd.bam')
-    non_nmd_bam = pysam.AlignmentFile(non_nmd_bam_path, 'wb', template=bam)
     ambiguous_bam_path = Path(f'{general_name}.ambiguous.bam')
+    
+    # Output BAM pysam objects:
+    nmd_bam = pysam.AlignmentFile(nmd_bam_path, 'wb', template=bam)
+    non_nmd_bam = pysam.AlignmentFile(non_nmd_bam_path, 'wb', template=bam)
     ambiguous_bam = pysam.AlignmentFile(ambiguous_bam_path, 'wb', template=bam)
 
     for gene_id, gene_name in zip(targets_df['gene_id'], targets_df['gene_name']):
-        if gene_name == 'ubl-1':
-            # print('ubl-1')
-            pass
         chromosome, start, end, strand, nmd_start, nmd_end, region_is_nmd = targets_df.loc[targets_df['gene_id'] ==
-                                                                                           gene_id, [
-            'chr',
-            'start',
-            'end',
-            'strand',
-            'nmd_region_start',
-            'nmd_region_end',
-            'nmd_region_is_target',
-        ]].values[0]
+                                                                                           gene_id,
+                                                                                           [
+                                                                                               'chr',
+                                                                                               'start',
+                                                                                               'end',
+                                                                                               'strand',
+                                                                                               'nmd_region_start',
+                                                                                               'nmd_region_end',
+                                                                                               'nmd_region_is_target',
+                                                                                           ]].values[0]
 
         gene_is_reverse = (strand == '-')
         gene_is_forward = not gene_is_reverse
@@ -242,11 +265,19 @@ if __name__ == '__main__':
                   f"total_count: {hit_count + ambiguous_count + non_hit_count:>11,}")
 
     for bam in [nmd_bam, non_nmd_bam, ambiguous_bam]:
+        file_name = bam.filename.decode()
+        file_path = Path(file_name)
+        print(f"Closing {file_path}")
+        file_path_string = str(file_path)
         bam.close()
-        pysam.sort(bam.filename, '-o', bam.filename)
-        pysam.index(bam.filename)  # These samtools methods aren't in the pysam __init__ file, but they work!
+        pysam.sort(file_path_string, '-o', file_path_string)
+        pysam.index(file_path_string)  # These samtools methods aren't in the pysam __init__ file, but they work!
 
-    pysam.merge('-f', f'{general_name}.merge.bam', str(nmd_bam_path), str(non_nmd_bam_path), str(ambiguous_bam_path))
+    pysam.merge('-f', f'{general_name}.merge.bam',
+                str(nmd_bam_path),
+                str(non_nmd_bam_path),
+                str(ambiguous_bam_path))
     pysam.sort(f'{general_name}.merge.bam', '-o', f'{general_name}.merge.bam')
     pysam.index(f'{general_name}.merge.bam')
-    print(f"Done! Wrote all outputs to {output_dir}")
+    print(f"Merged all three categories into {general_name}.merge.bam")
+    print(f"Done! Wrote all outputs to {output_dir}\n\n")

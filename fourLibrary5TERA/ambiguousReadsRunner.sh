@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # I want to have this script run the ambiguousReads.py script on a short list of libraries:
-for LIBRARY in newerN2 newerS5 newerS6 oldN2 oldS6
+for LIBRARY in newerN2 newerS5 newerS6 oldN2 oldS6 thirdN2 thirdS6 thirdS5
 do
     python ambiguousReads.py $LIBRARY input
 done

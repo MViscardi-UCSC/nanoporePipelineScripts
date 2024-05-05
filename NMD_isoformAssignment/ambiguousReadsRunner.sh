@@ -1,0 +1,1 @@
+/data16/marcus/scripts/nanoporePipelineScripts/fourLibrary5TERA/ambiguousReadsRunner.sh
