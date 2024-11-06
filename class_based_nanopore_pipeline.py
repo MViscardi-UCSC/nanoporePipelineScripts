@@ -2,10 +2,10 @@
 class_based_nanopore_pipeline.py
 Marcus Viscardi,    March 24, 2023
 
-This is a semi temporary file. The goal is to move the majority
-of my pipeline functionality to a class based system. The main
-reason for this is that there are many flags that should be carried
-between the separate steps/functions of the pipeline.
+The goal is to move the majority of my pipeline functionality to a
+class based system. The main reason for this is that there are
+many flags that should be carried between the separate
+steps/functions of the pipeline.
 
 I am not sure if this is the right approach to the problem at hand,
 but it is the best way I can think of!
